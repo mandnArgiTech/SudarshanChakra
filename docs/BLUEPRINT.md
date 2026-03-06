@@ -1187,7 +1187,7 @@ public class AlertConsumerService {
             alertRepository.save(alert);
             
             // Push notification to Android app
-            fcmService.sendAlertNotification(alert);
+            // Alerts auto-delivered via RabbitMQ MQTT plugin to subscribed Android clients
             
             // Real-time WebSocket update to React dashboard
             wsService.broadcastAlert(alert);
@@ -1396,7 +1396,7 @@ services:
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sudarshanchakra
       - SPRING_RABBITMQ_HOST=rabbitmq
-      - FCM_CREDENTIALS_PATH=/app/firebase-adminsdk.json
+      - # No Firebase dependency — push via MQTT direct
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_started }
