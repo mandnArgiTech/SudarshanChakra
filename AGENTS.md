@@ -8,7 +8,7 @@ SudarshanChakra is an enterprise smart farm hazard detection & security system (
 
 | Component | Stack | Status |
 |-----------|-------|--------|
-| `backend/` | Java 21, Spring Boot 3.2, Gradle (Kotlin DSL) | Scaffolded (only `alert-service` has `build.gradle.kts`; other services need implementation) |
+| `backend/` | Java 21, Spring Boot 3.2, Gradle (Kotlin DSL) | Scaffolded (`alert-service` and `api-gateway` have `build.gradle.kts`; other services need implementation) |
 | `dashboard/` | React 18, Vite, TypeScript, Tailwind CSS | Scaffolded (`package.json` only; source files need implementation) |
 | `edge/` | Python 3.12, YOLO, Flask, OpenCV | Fully implemented (7 `.py` files) |
 | `cloud/` | Docker Compose, PostgreSQL 16, RabbitMQ 3 | Fully implemented (infrastructure configs) |
@@ -44,8 +44,9 @@ sudo docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
 ### Backend (Java/Spring Boot)
 
 - Java 21 is pre-installed. Gradle wrapper is in `backend/` (`./gradlew`).
-- `settings.gradle.kts` references 5 subprojects but only `alert-service` has files. Building the root project will fail; build individual subprojects: `./gradlew :alert-service:build`
-- No Java source files exist yet — the services need to be implemented per `AGENT_INSTRUCTIONS.md` Phase 1.
+- `settings.gradle.kts` references 5 subprojects. `alert-service` and `api-gateway` have `build.gradle.kts`; other services need implementation. Build individual subprojects: `./gradlew :alert-service:build` or `./gradlew :api-gateway:build`
+- The `api-gateway` (Spring Cloud Gateway on Netty) excludes `spring-boot-starter-web` and `spring-boot-starter-tomcat` — do NOT add those deps to it. Run: `./gradlew :api-gateway:bootRun` (port 8080).
+- CI/CD: `.github/workflows/backend.yml` runs matrix builds for all 5 services.
 
 ### Dashboard (React)
 
