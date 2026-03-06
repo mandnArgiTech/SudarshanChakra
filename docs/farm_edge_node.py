@@ -307,6 +307,11 @@ def main():
         node_id=NODE_ID,
     )
     
+    # ── Step 7b: Wire ESP32 fall detector to alert engine ──
+    if lora:
+        lora.fall_callbacks.append(alert_engine.process_fall_event)
+        log.info("Fall detector callback wired: LoRa → AlertEngine")
+    
     # ── Step 8: Start Flask GUI in background thread ──
     flask_app = create_app(zone_engine, cameras, CONFIG_DIR)
     flask_thread = threading.Thread(

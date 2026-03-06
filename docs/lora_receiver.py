@@ -81,7 +81,7 @@ class LoRaReceiver(threading.Thread):
 
                 while not self._stop_event.is_set():
                     line = ser.readline().decode("utf-8", errors="ignore").strip()
-                    if line:
+                    if line and not line.startswith("#"):  # Skip bridge stats/comments
                         self._parse_packet(line)
 
             except serial.SerialException as e:
