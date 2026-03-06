@@ -1,6 +1,6 @@
 package com.sudarshanchakra.auth.controller;
 
-import com.sudarshanchakra.auth.dto.FcmTokenRequest;
+import com.sudarshanchakra.auth.dto.MqttClientIdRequest;
 import com.sudarshanchakra.auth.dto.UserResponse;
 import com.sudarshanchakra.auth.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,12 +31,12 @@ public class UserController {
         return ResponseEntity.ok(userService.findAll());
     }
 
-    @PatchMapping("/me/fcm-token")
-    @Operation(summary = "Update FCM token", description = "Update the current user's FCM push notification token")
-    public ResponseEntity<Void> updateFcmToken(
+    @PatchMapping("/me/mqtt-client-id")
+    @Operation(summary = "Update MQTT client ID", description = "Update the current user's MQTT client ID for direct push notifications")
+    public ResponseEntity<Void> updateMqttClientId(
             Authentication authentication,
-            @Valid @RequestBody FcmTokenRequest request) {
-        userService.updateFcmToken(authentication.getName(), request.getFcmToken());
+            @Valid @RequestBody MqttClientIdRequest request) {
+        userService.updateMqttClientId(authentication.getName(), request.getMqttClientId());
         return ResponseEntity.noContent().build();
     }
 }

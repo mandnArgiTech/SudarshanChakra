@@ -255,14 +255,14 @@ Get siren activation history. Paginated.
 
 List all users (admin only).
 
-### PATCH `/users/me/fcm-token`
+### PATCH `/users/me/mqtt-client-id`
 
-Update Firebase Cloud Messaging token for push notifications.
+Update MQTT client ID for direct push notifications via the RabbitMQ broker.
 
 **Request:**
 ```json
 {
-  "token": "fcm-token-string"
+  "mqttClientId": "android-client-uuid"
 }
 ```
 

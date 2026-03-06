@@ -1002,7 +1002,7 @@ CREATE TABLE users (
     username VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'manager', 'viewer')),
-    fcm_token TEXT,  -- Firebase Cloud Messaging for Android push
+    mqtt_client_id VARCHAR(100),  -- MQTT client ID for direct push
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -1111,7 +1111,7 @@ CREATE TABLE suppression_log (
 
 **Acceptance Criteria:**
 - 4 core services + 1 API gateway:
-  - **alert-service**: Consumes alerts from RabbitMQ, stores in PostgreSQL, pushes to FCM
+  - **alert-service**: Consumes alerts from RabbitMQ, stores in PostgreSQL, pushes via MQTT
   - **device-service**: Manages edge nodes, cameras, zones, and worker tags
   - **auth-service**: JWT-based authentication, user management, role-based access
   - **siren-service**: Receives siren commands from frontend/app, publishes to RabbitMQ
@@ -1129,7 +1129,7 @@ CREATE TABLE suppression_log (
 ```
 ┌──────────────┐     AMQP      ┌──────────────┐
 │  RabbitMQ    │──────────────▶│ alert-service │──▶ PostgreSQL
-│              │               │               │──▶ FCM (push)
+│              │               │               │──▶ MQTT (push)
 │  (MQTT in)   │               └──────────────┘
 │              │     AMQP      ┌──────────────┐
 │              │◀──────────────│ siren-service │◀── REST API
@@ -1151,7 +1151,7 @@ CREATE TABLE suppression_log (
 public class AlertConsumerService {
 
     @Autowired private AlertRepository alertRepository;
-    @Autowired private FCMService fcmService;
+    @Autowired private MqttPushService mqttPushService;
     @Autowired private WebSocketService wsService;
 
     @RabbitListener(queues = "alert.critical", priority = "10")
@@ -1186,8 +1186,8 @@ public class AlertConsumerService {
             
             alertRepository.save(alert);
             
-            // Push notification to Android app
-            fcmService.sendAlertNotification(alert);
+            // Push notification to Android app via MQTT
+            mqttPushService.sendAlertNotification(alert);
             
             // Real-time WebSocket update to React dashboard
             wsService.broadcastAlert(alert);
@@ -1250,19 +1250,19 @@ public class SirenController {
 
 ---
 
-### Story 3.4 — Firebase Cloud Messaging Integration
+### Story 3.4 — MQTT Direct Push Notifications
 
 **As a** mobile user,
 **I want** instant push notifications on my Android phone,
 **So that** I am alerted to critical farm events even when the app is backgrounded.
 
 **Acceptance Criteria:**
-- FCM server SDK integrated into alert-service
-- Priority mapping: `critical` → FCM high priority (wakes device), `high` → normal
+- Android app maintains a persistent MQTT connection to the RabbitMQ broker
+- Priority mapping: `critical` → high-priority MQTT QoS 1 (wakes device via foreground service), `high` → normal
 - Notification payload includes: alert type, zone name, snapshot thumbnail URL
 - Data payload includes: full alert JSON for in-app rendering
-- User FCM tokens stored in `users` table, refreshed on app login
-- Failed token delivery marks token as stale for cleanup
+- MQTT client ID stored in `users` table, set on app login
+- Android Foreground Service keeps the MQTT connection alive when app is backgrounded
 
 ---
 
@@ -1313,7 +1313,7 @@ public class SirenController {
 - MVVM architecture with Hilt DI
 - Retrofit for REST API calls
 - HiveMQ MQTT client for real-time subscriptions
-- Firebase Cloud Messaging for push notifications
+- MQTT (real-time push via RabbitMQ broker)
 - Room database for offline alert cache
 - Navigation Compose for screen routing
 
@@ -1396,7 +1396,7 @@ services:
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sudarshanchakra
       - SPRING_RABBITMQ_HOST=rabbitmq
-      - FCM_CREDENTIALS_PATH=/app/firebase-adminsdk.json
+      - SPRING_RABBITMQ_HOST=rabbitmq
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_started }
@@ -1475,7 +1475,7 @@ Push to main
   ├── [Edge AI Python] ──▶ Lint → Test → Docker Build → Push to GHCR
   │                         (Manual deploy to Edge Nodes via SSH)
   │
-  └── [Android App] ──▶ Build → Test → Sign APK → Upload to Firebase App Distribution
+  └── [Android App] ──▶ Build → Test → Sign APK → Distribute
 ```
 
 **GitHub Actions Workflow (Java services):**

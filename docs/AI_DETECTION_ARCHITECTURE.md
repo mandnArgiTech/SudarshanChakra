@@ -868,7 +868,7 @@ If NO tag is detected:
   t=0.410s  Publish to farm/alerts/high (QoS 1)
   t=0.500s  VPS receives alert via MQTT over VPN
   t=0.600s  Alert service stores in PostgreSQL
-  t=0.700s  FCM push notification sent to Android app
+  t=0.700s  MQTT push delivered to Android app
   t=1.500s  Android notification appears on screen
   
   Total end-to-end latency: ~1.5 seconds from detection to phone buzz
@@ -951,7 +951,7 @@ PATH 1: Visual Detection (Camera AI)
   CRITICAL alert published immediately
     │
     ▼
-  farm/alerts/critical → VPS → FCM → Android phone
+  farm/alerts/critical → VPS → MQTT → Android phone
   Simultaneously: farm/siren/trigger → Edge Node → PA system
 
 
@@ -974,7 +974,7 @@ PATH 2: Fall Detection (ESP32 Wearable)
     │
   CRITICAL alert published immediately
     │
-  farm/alerts/critical → VPS → FCM → Android phone
+  farm/alerts/critical → VPS → MQTT → Android phone
 
 
 BOTH PATHS ARE INDEPENDENT:

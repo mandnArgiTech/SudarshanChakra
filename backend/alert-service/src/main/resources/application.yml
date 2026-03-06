@@ -24,9 +24,6 @@ server:
 jwt:
   secret: ${JWT_SECRET:default-dev-secret-change-in-production}
 
-fcm:
-  credentials-path: ${FCM_CREDENTIALS_PATH:/app/config/firebase-adminsdk.json}
-
 management:
   endpoints:
     web:

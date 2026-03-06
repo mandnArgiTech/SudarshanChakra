@@ -84,7 +84,7 @@
 | G3 | **No Android app** | Farmers cannot receive push notifications or control siren from phone | Phase 3 |
 | G4 | **No trained YOLO model** | Edge nodes cannot detect custom classes (snake, scorpion, fire, child) | Phase 8 |
 | G5 | **RabbitMQ topology not initialized** | Queues/exchanges not created on deployment | Phase 5 |
-| G6 | **No Firebase FCM integration** | Push notifications to Android not possible | Phase 1.1 |
+| G6 | **MQTT direct push** | Push notifications delivered via RabbitMQ MQTT plugin | Resolved |
 
 ### 3.2 Functional Gaps (Feature Incomplete)
 
@@ -210,7 +210,7 @@
 | **Builder** | Alert payload construction in `alert_engine.py` | Complex object with many optional fields |
 | **Retry with Backoff** | `vpn_health_monitor.py` RabbitMQ connection | Currently fails silently on connection error |
 | **Dependency Injection** | `farm_edge_node.py` wiring | Replace manual object wiring with DI container for testability |
-| **Unit of Work** | Backend transaction management | Ensure atomic alert storage + FCM push |
+| **Unit of Work** | Backend transaction management | Ensure atomic alert storage + MQTT push |
 
 ---
 

@@ -37,8 +37,8 @@ public class User {
     @Column(nullable = false, length = 20)
     private Role role;
 
-    @Column(name = "fcm_token")
-    private String fcmToken;
+    @Column(name = "mqtt_client_id", length = 100)
+    private String mqttClientId;
 
     @Column(name = "last_login")
     private OffsetDateTime lastLogin;
