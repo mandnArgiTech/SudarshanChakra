@@ -1,0 +1,94 @@
+{
+  "cameras": [
+    {
+      "camera_id": "cam-03",
+      "zones": [
+        {
+          "id": "zone-pond-danger",
+          "name": "Pond Danger Zone",
+          "type": "zero_tolerance",
+          "priority": "critical",
+          "target_classes": ["person", "child"],
+          "polygon": [[120, 80], [520, 80], [540, 400], [100, 400]],
+          "enabled": true,
+          "suppress_with_worker_tag": false
+        }
+      ]
+    },
+    {
+      "camera_id": "cam-01",
+      "zones": [
+        {
+          "id": "zone-front-perimeter",
+          "name": "Front Gate Perimeter",
+          "type": "intrusion",
+          "priority": "high",
+          "target_classes": ["person"],
+          "polygon": [[0, 0], [640, 0], [640, 480], [0, 480]],
+          "enabled": true,
+          "suppress_with_worker_tag": true
+        }
+      ]
+    },
+    {
+      "camera_id": "cam-05",
+      "zones": [
+        {
+          "id": "zone-snake-alpha",
+          "name": "Snake Zone Alpha",
+          "type": "hazard",
+          "priority": "high",
+          "target_classes": ["snake", "scorpion"],
+          "polygon": [[50, 100], [590, 100], [590, 440], [50, 440]],
+          "enabled": true,
+          "suppress_with_worker_tag": false
+        }
+      ]
+    },
+    {
+      "camera_id": "cam-02",
+      "zones": [
+        {
+          "id": "zone-storage-fire",
+          "name": "Storage Shed Fire Watch",
+          "type": "hazard",
+          "priority": "critical",
+          "target_classes": ["fire", "smoke"],
+          "polygon": [[0, 0], [640, 0], [640, 480], [0, 480]],
+          "enabled": true,
+          "suppress_with_worker_tag": false
+        }
+      ]
+    },
+    {
+      "camera_id": "cam-06",
+      "zones": [
+        {
+          "id": "zone-cattle-pen",
+          "name": "Cattle Containment Pen",
+          "type": "livestock_containment",
+          "priority": "warning",
+          "target_classes": ["cow"],
+          "polygon": [[80, 60], [560, 60], [560, 420], [80, 420]],
+          "enabled": true,
+          "suppress_with_worker_tag": false
+        }
+      ]
+    },
+    {
+      "camera_id": "cam-07",
+      "zones": [
+        {
+          "id": "zone-pasture-boundary",
+          "name": "NW Pasture Boundary",
+          "type": "livestock_containment",
+          "priority": "warning",
+          "target_classes": ["cow"],
+          "polygon": [[0, 0], [640, 0], [640, 480], [0, 480]],
+          "enabled": true,
+          "suppress_with_worker_tag": false
+        }
+      ]
+    }
+  ]
+}

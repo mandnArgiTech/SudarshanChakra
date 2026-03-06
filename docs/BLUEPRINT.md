@@ -1662,43 +1662,32 @@ See `authorized_tags.json` for worker tag registry.
 ```
 SudarshanChakra/
 ├── AlertManagement/          # Pi Zero 2W PA system (already deployed)
-├── docs/                     # This blueprint + UI mockups + configs
-│   ├── BLUEPRINT.md          # This document
-│   ├── dashboard-mockup.jsx  # Interactive React dashboard wireframe
-│   ├── android-mockup.jsx    # Interactive Android app wireframe
-│   ├── db-schema.sql         # PostgreSQL schema
-│   ├── farm_edge_node.py     # Main entrypoint (Dockerfile CMD)
-│   ├── edge_gui.py           # Flask polygon drawing GUI
-│   ├── esp32_lora_tag.ino    # ESP32 LoRa worker beacon + child fall detector
-│   ├── cameras.json          # Camera config with TP-Link RTSP URLs
-│   └── authorized_tags.json  # Worker tag registry
-├── edge/                     # Edge AI Docker container
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── farm_edge_node.py
-│   ├── pipeline.py
-│   ├── zone_engine.py
-│   ├── lora_receiver.py
-│   ├── alert_engine.py
-│   └── config/
-│       ├── zones.json
-│       └── authorized_tags.json
-├── backend/                  # Java Spring Boot microservices
-│   ├── api-gateway/
-│   ├── alert-service/
-│   ├── device-service/
-│   ├── auth-service/
-│   └── siren-service/
-├── dashboard/                # React.js admin dashboard
-├── android/                  # Kotlin Android app
-├── infra/                    # Docker Compose, VPN configs, CI/CD
-│   ├── cloud/
-│   │   └── docker-compose.yml
-│   ├── edge/
-│   │   └── docker-compose.yml
-│   └── vpn/
-│       └── openvpn-server.conf
-└── .github/
-    └── workflows/
-        └── deploy.yml
+├── docs/                         # Complete implementation — all deliverables
+│   ├── BLUEPRINT.md              # This document
+│   ├── dashboard-mockup.jsx      # Interactive React admin dashboard wireframe
+│   ├── android-mockup.jsx        # Interactive Android app wireframe (3 screens)
+│   ├── farm_edge_node.py         # Main entrypoint (Dockerfile CMD)
+│   ├── pipeline.py               # Multi-camera RTSP frame-skipping + YOLO inference
+│   ├── zone_engine.py            # Virtual fence polygon engine (Shapely)
+│   ├── lora_receiver.py          # ESP32 LoRa USB-Serial receiver
+│   ├── alert_engine.py           # Central alert decision engine
+│   ├── edge_gui.py               # Flask polygon drawing GUI (:5000)
+│   ├── Dockerfile                # Edge AI container
+│   ├── requirements.txt          # Python dependencies
+│   ├── docker-compose.edge.yml   # Edge Node stack (VPN + AI)
+│   ├── docker-compose.cloud.yml  # VPS stack (all services)
+│   ├── db-schema.sql             # PostgreSQL schema
+│   ├── vpn_health_monitor.py     # VPN tunnel health check
+│   ├── rabbitmq.conf             # RabbitMQ broker config
+│   ├── enabled_plugins           # RabbitMQ MQTT plugin
+│   ├── esp32_lora_tag.ino        # ESP32 worker beacon + child fall detector
+│   ├── cameras.json              # TP-Link RTSP camera configs
+│   ├── zones.json                # Virtual fence zone definitions
+│   ├── authorized_tags.json      # Worker/child tag registry
+│   └── .env.example              # Environment variable template
+├── edge/                         # (Future: production edge code)
+├── backend/                      # (Future: Java Spring Boot microservices)
+├── dashboard/                    # (Future: React.js admin dashboard)
+├── android/                      # (Future: Kotlin Android app)
+└── .github/workflows/            # (Future: CI/CD pipelines)
 ```

@@ -1,0 +1,23 @@
+# SudarshanChakra Edge AI Node — Python Dependencies
+# ====================================================
+# Installed inside ultralytics/ultralytics:latest Docker image
+# which already includes: ultralytics, torch, torchvision, opencv, numpy
+
+# Web GUI
+flask==3.1.*
+flask-cors==5.*
+
+# MQTT client (publish alerts to VPS broker over VPN)
+paho-mqtt==2.*
+
+# USB-Serial for ESP32 LoRa receiver
+pyserial==3.*
+
+# Geometry library for point-in-polygon virtual fence checks
+shapely==2.*
+
+# Image processing (already in base image, pinned for safety)
+Pillow>=10.0
+
+# Production WSGI server (Flask runs in a thread, not standalone)
+gunicorn==23.*

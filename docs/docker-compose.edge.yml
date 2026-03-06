@@ -1,0 +1,109 @@
+# ==============================================================================
+# SudarshanChakra — Edge Node Docker Compose
+# ==============================================================================
+# Runs on Node A (i5-10400 / RTX 3060 / 32GB RAM)
+# Duplicate for Node B with different VPN config and NODE_ID
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f edge-ai
+# ==============================================================================
+
+version: "3.8"
+
+services:
+  # ── OpenVPN Client ──────────────────────────────────────────────────────
+  # Establishes VPN tunnel to VPS at vivasvan-tech.in
+  # All traffic from edge-ai routes through this tunnel
+  openvpn-client:
+    image: dperson/openvpn-client
+    container_name: openvpn-client
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    volumes:
+      - ./vpn/edge-node-a.ovpn:/vpn/vpn.conf:ro
+    environment:
+      - FIREWALL=
+    restart: always
+    networks:
+      - farm-net
+    healthcheck:
+      test: ["CMD", "ping", "-c", "1", "-W", "3", "10.8.0.1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Edge AI Pipeline + Flask GUI ────────────────────────────────────────
+  # YOLO inference, zone engine, LoRa receiver, alert publisher
+  edge-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: edge-ai
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # Node identity
+      - NODE_ID=edge-node-a
+      # MQTT broker (VPS via VPN)
+      - VPN_BROKER_IP=10.8.0.1
+      - MQTT_PORT=1883
+      - MQTT_USER=edge-publisher
+      - MQTT_PASS=${MQTT_EDGE_PASS:-changeme}
+      # Paths
+      - CONFIG_DIR=/app/config
+      - MODEL_DIR=/app/models
+      - FLASK_PORT=5000
+      # LoRa
+      - LORA_ENABLED=true
+      - LORA_PORT=/dev/ttyUSB0
+      # PA system bridge (optional — if Pi PA controller is on local network)
+      - PA_MQTT_BROKER=${PA_BROKER_IP:-}
+      # Tuning
+      - CONFIDENCE_THRESHOLD=0.40
+      - INPUT_SIZE=640
+      - ALERT_DEDUP_SECONDS=30
+      - LOG_LEVEL=INFO
+    volumes:
+      # Persist TensorRT engine across container restarts
+      - ./models:/app/models
+      # Persist zone configs
+      - ./config:/app/config
+      # Snapshots (temporary — on host tmpfs ideally)
+      - /tmp/farm-snapshots:/tmp/snapshots
+    ports:
+      - "5000:5000"   # Edge Flask GUI
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0  # LoRa USB-Serial receiver
+    depends_on:
+      openvpn-client:
+        condition: service_healthy
+    network_mode: "service:openvpn-client"
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        limits:
+          memory: 8G
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+networks:
+  farm-net:
+    driver: bridge
