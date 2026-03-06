@@ -83,6 +83,18 @@ sudo docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
 - `Tag` was renamed to `WorkerTag` to avoid collision with `retrofit2.http.Tag`.
 - No Android emulator is available in this environment; builds produce an APK at `app/build/outputs/apk/debug/app-debug.apk` but cannot be run on-device.
 
+### Startup order for services
+
+1. Start Docker daemon (see Docker gotcha below)
+2. Start or create PostgreSQL and RabbitMQ containers (`sudo docker start postgres rabbitmq` if they already exist)
+3. Wait for both to be ready, then run `RABBITMQ_PASS=devpassword123 python3 cloud/scripts/rabbitmq_init.py`
+4. Start backend services: `auth-service`, `device-service`, `alert-service`, `siren-service`, then `api-gateway`
+5. Start dashboard: `cd dashboard && npm run dev`
+
+**Docker in nested container gotcha:** The Docker daemon needs to be started manually with `sudo dockerd &`. The daemon config at `/etc/docker/daemon.json` must use `fuse-overlayfs` storage driver, and `iptables-legacy` must be selected via `update-alternatives`. These are pre-configured in the VM snapshot.
+
+**Auth API path convention:** All backend REST endpoints use the `/api/v1/` prefix (e.g. `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/devices`, `/api/v1/alerts`). The Spring Security config permits `/api/v1/auth/**` unauthenticated; all other paths require a `Bearer` JWT token.
+
 ### Dev credentials (local only)
 
 See `cloud/.env` (generated from `.env.example`):
