@@ -13,6 +13,7 @@ SudarshanChakra is an enterprise smart farm hazard detection & security system (
 | `edge/` | Python 3.12, YOLO, Flask, OpenCV | Fully implemented (7 `.py` files) |
 | `cloud/` | Docker Compose, PostgreSQL 16, RabbitMQ 3 | Fully implemented (infrastructure configs) |
 | `firmware/` | C++ / Arduino (ESP32) | Fully implemented |
+| `android/` | Kotlin 1.9, Jetpack Compose, Hilt, Retrofit, Room, MQTT | Fully implemented (Gradle 8.5, AGP 8.2.2) |
 | `AlertManagement/` | Python (Raspberry Pi PA system) | Fully implemented |
 
 See `AGENT_INSTRUCTIONS.md` for the full implementation plan and phased build order.
@@ -71,6 +72,16 @@ sudo docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
 - Syntax-check all files: `python3 -m py_compile edge/*.py`
 - Lint: `python3 -m flake8 --max-line-length=120 edge/*.py`
 - The edge services require NVIDIA GPU + RTSP cameras to run the inference pipeline. The Flask GUI (`edge_gui.py`) also depends on OpenCV for generating placeholder images.
+
+### Android (Kotlin/Compose)
+
+- `ANDROID_HOME` must be set to `/opt/android-sdk`. The SDK has `platforms;android-34` and `build-tools;34.0.0`.
+- Java 21 is pre-installed; the app targets `jvmTarget = "17"`.
+- Gradle wrapper (8.5) is in `android/`. Build: `cd android && ANDROID_HOME=/opt/android-sdk ./gradlew assembleDebug --no-daemon`
+- Unit tests: `cd android && ANDROID_HOME=/opt/android-sdk ./gradlew testDebugUnitTest --no-daemon`
+- The HiveMQ MQTT client pulls in Netty jars whose `META-INF/INDEX.LIST` conflicts — the `packaging.resources.excludes` block in `app/build.gradle.kts` handles this.
+- `Tag` was renamed to `WorkerTag` to avoid collision with `retrofit2.http.Tag`.
+- No Android emulator is available in this environment; builds produce an APK at `app/build/outputs/apk/debug/app-debug.apk` but cannot be run on-device.
 
 ### Dev credentials (local only)
 
