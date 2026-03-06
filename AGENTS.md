@@ -57,9 +57,13 @@ sudo docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
 ### Dashboard (React)
 
 - Node.js 22+ and npm are pre-installed. Run `npm install` in `dashboard/`.
-- Only `package.json` exists — no `vite.config.ts`, `tsconfig.json`, or source files. These need to be created per `AGENT_INSTRUCTIONS.md` Phase 2.
-- Lint: `npm run lint` (ESLint 8)
-- Dev server: `npm run dev` (once source files are created)
+- Fully implemented with Vite 5, React 18, TypeScript, Tailwind CSS 3.
+- Build: `npm run build` (runs `tsc && vite build`)
+- Lint: `npm run lint` (ESLint 8 with `@typescript-eslint`, `react-hooks`, `react-refresh` plugins)
+- Dev server: `npm run dev` (Vite on port 3000, proxies `/api` to `localhost:8080` and `/ws` to `localhost:8081`)
+- `sockjs-client` requires `global: 'globalThis'` in `vite.config.ts` `define` — without this the app crashes with "global is not defined".
+- The dashboard uses fallback mock data when backend APIs are unavailable, so it renders fully without running backend services.
+- Auth uses JWT stored in `localStorage` (`sc_token`, `sc_user`). Unauthenticated users are redirected to `/login`.
 
 ### Edge AI (Python)
 
