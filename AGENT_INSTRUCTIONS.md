@@ -37,7 +37,7 @@ SudarshanChakra/
 │       └── authorized_tags.json   ✅ DONE — worker/child tag registry
 │
 ├── backend/                       # Java Spring Boot Microservices
-│   ├── alert-service/             🔨 BUILD — consumes alerts, stores in PG, pushes FCM
+│   ├── alert-service/             🔨 BUILD — consumes alerts, stores in PG, broadcasts via MQTT
 │   ├── device-service/            🔨 BUILD — CRUD for nodes, cameras, zones, tags
 │   ├── auth-service/              🔨 BUILD — JWT auth, user management
 │   ├── siren-service/             🔨 BUILD — siren commands → RabbitMQ
@@ -102,7 +102,7 @@ Execute phases in this exact order. Each phase builds on the previous.
 
 #### Task 1.1: Create `backend/alert-service`
 
-This service consumes alerts from RabbitMQ, stores in PostgreSQL, pushes FCM notifications.
+This service consumes alerts from RabbitMQ, stores in PostgreSQL, pushes 
 
 **Files to create:**
 
@@ -127,7 +127,7 @@ backend/alert-service/
 │   ├── service/
 │   │   ├── AlertConsumerService.java    # @RabbitListener — consumes from queues
 │   │   ├── AlertService.java           # Business logic
-│   │   ├── FCMService.java             # Firebase Cloud Messaging push
+│   │   ├── MqttPushService.java         # Publishes alerts to MQTT topics for Android
 │   │   └── WebSocketService.java       # Real-time alert feed to React dashboard
 │   └── controller/
 │       └── AlertController.java         # REST API: GET /api/v1/alerts, PATCH status
@@ -145,7 +145,7 @@ backend/alert-service/
 public void handleCriticalAlert(String message) {
     AlertPayload payload = objectMapper.readValue(message, AlertPayload.class);
     Alert alert = alertRepository.save(mapToEntity(payload));
-    fcmService.sendNotification(alert);  // Push to Android
+    mqttPushService.publishToMobile(alert);  // Push via MQTT to Android
     webSocketService.broadcast(alert);   // Push to React dashboard
 }
 
@@ -399,7 +399,7 @@ dashboard/
 - MVVM + Hilt (DI)
 - Retrofit (REST API)
 - HiveMQ MQTT client (real-time subscriptions)
-- Firebase Cloud Messaging (push notifications)
+- HiveMQ MQTT client for persistent push (replaces Firebase FCM — zero Google dependency)
 - Room (offline alert cache)
 - Navigation Compose
 
@@ -457,7 +457,7 @@ android/app/src/main/java/com/sudarshanchakra/
 │       ├── SirenButton.kt
 │       └── BottomNavBar.kt
 ├── service/
-│   └── FCMService.kt               # Firebase messaging service
+│   └── MqttForegroundService.kt     # Persistent MQTT connection for real-time push
 └── util/
     └── Constants.kt                 # API base URL, MQTT broker URL
 ```
@@ -466,7 +466,7 @@ android/app/src/main/java/com/sudarshanchakra/
 
 **MQTT connection:** `mqtts://vivasvan-tech.in:8883` — subscribe to `farm/alerts/#` for real-time alerts. Publish to `farm/siren/trigger` for siren commands.
 
-**FCM:** alert-service sends push notifications. App must register FCM token on login via `POST /api/v1/users/me/fcm-token`.
+**
 
 ---
 
@@ -706,7 +706,7 @@ SIREN:
 
 USERS:
   GET  /users               (admin only)
-  PATCH /users/me/fcm-token { token }
+  POST /users/me/mqtt-client-id { clientId }   # Register MQTT client for push
 
 WEBSOCKET:
   ws://vivasvan-tech.in/ws/alerts    (STOMP over SockJS)
@@ -729,7 +729,7 @@ After implementation, verify these end-to-end flows:
 □ 6. Manager triggers siren from Android app → PA system sounds on farm
 □ 7. Manager triggers siren from React dashboard → same result
 □ 8. Edge Node loses power → VPN reconnects within 90 seconds
-□ 9. Android app receives FCM push notification for critical alert
+□ 9. Android app receives 
 □ 10. ESP32 child fall detector → CRITICAL alert on all platforms within 3 seconds
 □ 11. Login → JWT token → authorized API access → token refresh works
 □ 12. Snake detected at night (IR mode) → alert with correct confidence
