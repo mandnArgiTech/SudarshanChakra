@@ -44,7 +44,10 @@ sudo docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
 ### Backend (Java/Spring Boot)
 
 - Java 21 is pre-installed. Gradle wrapper is in `backend/` (`./gradlew`).
-- `settings.gradle.kts` references 5 subprojects. `alert-service` and `api-gateway` have `build.gradle.kts`; other services need implementation. Build individual subprojects: `./gradlew :alert-service:build` or `./gradlew :api-gateway:build`
+- `settings.gradle.kts` references 5 subprojects. `alert-service`, `auth-service`, `device-service`, and `api-gateway` have `build.gradle.kts`. Build individual subprojects: e.g. `./gradlew :auth-service:build`
+- **auth-service** (port 8083): JWT authentication, user registration/login. Run: `./gradlew :auth-service:bootRun`
+- **device-service** (port 8082): CRUD for edge nodes, cameras, zones, worker tags. Run: `./gradlew :device-service:bootRun`
+- Both services use `spring.jpa.hibernate.ddl-auto=validate` — the PostgreSQL schema must already exist (loaded from `cloud/db/init.sql`).
 - The `api-gateway` (Spring Cloud Gateway on Netty) excludes `spring-boot-starter-web` and `spring-boot-starter-tomcat` — do NOT add those deps to it. Run: `./gradlew :api-gateway:bootRun` (port 8080).
 - CI/CD: `.github/workflows/backend.yml` runs matrix builds for all 5 services.
 
