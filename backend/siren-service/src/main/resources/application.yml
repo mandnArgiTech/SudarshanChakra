@@ -1,6 +1,6 @@
 spring:
   application:
-    name: alert-service
+    name: siren-service
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/sudarshanchakra}
     username: ${SPRING_DATASOURCE_USERNAME:scadmin}
@@ -19,13 +19,7 @@ spring:
     password: ${SPRING_RABBITMQ_PASSWORD:devpassword123}
 
 server:
-  port: 8081
-
-jwt:
-  secret: ${JWT_SECRET:default-dev-secret-change-in-production}
-
-fcm:
-  credentials-path: ${FCM_CREDENTIALS_PATH:/app/config/firebase-adminsdk.json}
+  port: 8084
 
 management:
   endpoints:

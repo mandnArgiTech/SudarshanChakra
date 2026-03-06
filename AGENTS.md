@@ -8,7 +8,7 @@ SudarshanChakra is an enterprise smart farm hazard detection & security system (
 
 | Component | Stack | Status |
 |-----------|-------|--------|
-| `backend/` | Java 21, Spring Boot 3.2, Gradle (Kotlin DSL) | Scaffolded (`alert-service` and `api-gateway` have `build.gradle.kts`; other services need implementation) |
+| `backend/` | Java 21, Spring Boot 3.2, Gradle (Kotlin DSL) | `alert-service` (8081), `siren-service` (8084), `auth-service` (8083), `device-service` (8082), `api-gateway` (8080) implemented |
 | `dashboard/` | React 18, Vite, TypeScript, Tailwind CSS | Scaffolded (`package.json` only; source files need implementation) |
 | `edge/` | Python 3.12, YOLO, Flask, OpenCV | Fully implemented (7 `.py` files) |
 | `cloud/` | Docker Compose, PostgreSQL 16, RabbitMQ 3 | Fully implemented (infrastructure configs) |
@@ -45,9 +45,12 @@ sudo docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
 
 - Java 21 is pre-installed. Gradle wrapper is in `backend/` (`./gradlew`).
 - `settings.gradle.kts` references 5 subprojects. `alert-service`, `auth-service`, `device-service`, and `api-gateway` have `build.gradle.kts`. Build individual subprojects: e.g. `./gradlew :auth-service:build`
+- **alert-service** (port 8081): Alert CRUD, RabbitMQ consumer, WebSocket broadcast. Run: `./gradlew :alert-service:bootRun`
+- **siren-service** (port 8084): Siren trigger/stop via RabbitMQ, audit log. Run: `./gradlew :siren-service:bootRun`
 - **auth-service** (port 8083): JWT authentication, user registration/login. Run: `./gradlew :auth-service:bootRun`
 - **device-service** (port 8082): CRUD for edge nodes, cameras, zones, worker tags. Run: `./gradlew :device-service:bootRun`
-- Both services use `spring.jpa.hibernate.ddl-auto=validate` — the PostgreSQL schema must already exist (loaded from `cloud/db/init.sql`).
+- All services use `spring.jpa.hibernate.ddl-auto=validate` — the PostgreSQL schema must already exist (loaded from `cloud/db/init.sql`).
+- After starting PostgreSQL and RabbitMQ, run `RABBITMQ_PASS=devpassword123 python3 cloud/scripts/rabbitmq_init.py` to create the messaging topology.
 - The `api-gateway` (Spring Cloud Gateway on Netty) excludes `spring-boot-starter-web` and `spring-boot-starter-tomcat` — do NOT add those deps to it. Run: `./gradlew :api-gateway:bootRun` (port 8080).
 - CI/CD: `.github/workflows/backend.yml` runs matrix builds for all 5 services.
 

@@ -1,0 +1,15 @@
+package com.sudarshanchakra.alert.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class AlertUpdateRequest {
+
+    private String notes;
+}
