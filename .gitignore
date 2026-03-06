@@ -1,0 +1,57 @@
+# Java / Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+
+# Node / React
+node_modules/
+dist/
+.next/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Environment & Secrets
+.env
+*.env
+!.env.example
+!pa.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Models (too large for git)
+*.engine
+*.pt
+*.onnx
+
+# Audio files
+*.mp3
+*.wav
+*.flac
+
+# TLS certs
+certs/
+*.pem
+*.key
+
+# VPN configs (contain secrets)
+vpn/*.ovpn
+
+# Snapshots
+/tmp/snapshots/
+/tmp/farm-snapshots/

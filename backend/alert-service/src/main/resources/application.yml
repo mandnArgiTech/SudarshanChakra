@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: alert-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/sudarshanchakra}
+    username: ${SPRING_DATASOURCE_USERNAME:scadmin}
+    password: ${SPRING_DATASOURCE_PASSWORD:changeme}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: 5672
+    username: ${SPRING_RABBITMQ_USERNAME:admin}
+    password: ${SPRING_RABBITMQ_PASSWORD:changeme}
+
+server:
+  port: 8081
+
+jwt:
+  secret: ${JWT_SECRET:default-dev-secret-change-in-production}
+
+fcm:
+  credentials-path: ${FCM_CREDENTIALS_PATH:/app/config/firebase-adminsdk.json}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
