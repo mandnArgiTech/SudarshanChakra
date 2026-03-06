@@ -1,0 +1,25 @@
+package com.sudarshanchakra.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+val CreamBackground = Color(0xFFF8F7F4)
+val Terracotta = Color(0xFFC8553D)
+val TerracottaDark = Color(0xFFB04530)
+val HighOrange = Color(0xFFD4832F)
+val WarningAmber = Color(0xFFB8962E)
+val SuccessGreen = Color(0xFF4A8C5C)
+val CardWhite = Color(0xFFFFFFFF)
+val TextPrimary = Color(0xFF2D2A26)
+val TextSecondary = Color(0xFF6B6560)
+val TextMuted = Color(0xFF9E9891)
+val DividerColor = Color(0xFFE8E5E0)
+val SurfaceLight = Color(0xFFF0EDE8)
+val NavBarBackground = Color(0xFFFFFFFF)
+val NavBarInactive = Color(0xFFADA8A2)
+val CriticalRed = Color(0xFFC8553D)
+val HighPriority = Color(0xFFD4832F)
+val WarningPriority = Color(0xFFB8962E)
+val LowPriority = Color(0xFF7A9E7E)
+val StatusOnline = Color(0xFF4A8C5C)
+val StatusOffline = Color(0xFFB0A89E)
+val StatusDegraded = Color(0xFFD4832F)

@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/sudarshanchakra
+    username: scadmin
+    password: devpassword123
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+jwt:
+  secret: test-secret-key-that-is-long-enough-for-hmac-sha256-algorithm
+  expiration-ms: 86400000

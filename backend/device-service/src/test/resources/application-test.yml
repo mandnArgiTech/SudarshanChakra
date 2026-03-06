@@ -1,0 +1,8 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/sudarshanchakra
+    username: scadmin
+    password: devpassword123
+  jpa:
+    hibernate:
+      ddl-auto: validate

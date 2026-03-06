@@ -82,12 +82,17 @@ class ZoneEngine:
             log.info("Zone engine loaded: %d cameras, %d active zones",
                      len(self.zones), len(self.polygons))
 
+    PRIORITY_ORDER = {"critical": 0, "high": 1, "warning": 2, "info": 3}
+
     def check_detection(self, detection: dict) -> Optional[dict]:
         """
         Check if a detection's bottom-center point falls inside any zone.
         
         For 'intrusion', 'zero_tolerance', 'hazard': triggers when INSIDE polygon.
         For 'livestock_containment': triggers when OUTSIDE polygon.
+        
+        When a detection violates multiple overlapping zones, the violation
+        with the HIGHEST priority is returned (critical > high > warning > info).
         
         Args:
             detection: dict with keys: camera_id, class, bottom_center, confidence, bbox
@@ -102,50 +107,41 @@ class ZoneEngine:
             point = Point(bx, by)
 
             zones = self.zones.get(cam_id, [])
+            violations = []
 
-            # First pass: check intrusion/zero_tolerance/hazard zones
             for zone in zones:
                 if not zone.get("enabled", True):
                     continue
                 if cls not in zone.get("target_classes", []):
                     continue
+
+                key = f"{cam_id}:{zone['id']}"
+                polygon = self.polygons.get(key)
+                if polygon is None:
+                    continue
+
+                triggered = False
                 if zone["type"] == "livestock_containment":
-                    continue  # Handle separately below
+                    triggered = not polygon.contains(point)
+                else:
+                    triggered = polygon.contains(point)
 
-                key = f"{cam_id}:{zone['id']}"
-                polygon = self.polygons.get(key)
-
-                if polygon and polygon.contains(point):
-                    return {
+                if triggered:
+                    violations.append({
                         "zone_id": zone["id"],
                         "zone_name": zone["name"],
                         "zone_type": zone["type"],
                         "priority": zone["priority"],
                         "detection": detection,
-                    }
+                    })
 
-            # Second pass: livestock containment (triggers when OUTSIDE)
-            for zone in zones:
-                if not zone.get("enabled", True):
-                    continue
-                if zone["type"] != "livestock_containment":
-                    continue
-                if cls not in zone.get("target_classes", []):
-                    continue
+            if not violations:
+                return None
 
-                key = f"{cam_id}:{zone['id']}"
-                polygon = self.polygons.get(key)
-
-                if polygon and not polygon.contains(point):
-                    return {
-                        "zone_id": zone["id"],
-                        "zone_name": zone["name"],
-                        "zone_type": zone["type"],
-                        "priority": zone["priority"],
-                        "detection": detection,
-                    }
-
-        return None
+            violations.sort(
+                key=lambda v: self.PRIORITY_ORDER.get(v["priority"], 99)
+            )
+            return violations[0]
 
     def get_zones_for_camera(self, camera_id: str) -> List[dict]:
         """Return all zone definitions for a specific camera."""

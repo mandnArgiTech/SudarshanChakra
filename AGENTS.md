@@ -1,0 +1,91 @@
+# AGENTS.md
+
+## Cursor Cloud specific instructions
+
+### Project overview
+
+SudarshanChakra is an enterprise smart farm hazard detection & security system (IoT + Edge AI + Cloud). It is a monorepo with these components:
+
+| Component | Stack | Status |
+|-----------|-------|--------|
+| `backend/` | Java 21, Spring Boot 3.2, Gradle (Kotlin DSL) | `alert-service` (8081), `siren-service` (8084), `auth-service` (8083), `device-service` (8082), `api-gateway` (8080) implemented |
+| `dashboard/` | React 18, Vite, TypeScript, Tailwind CSS | Scaffolded (`package.json` only; source files need implementation) |
+| `edge/` | Python 3.12, YOLO, Flask, OpenCV | Fully implemented (7 `.py` files) |
+| `cloud/` | Docker Compose, PostgreSQL 16, RabbitMQ 3 | Fully implemented (infrastructure configs) |
+| `firmware/` | C++ / Arduino (ESP32) | Fully implemented |
+| `android/` | Kotlin 1.9, Jetpack Compose, Hilt, Retrofit, Room, MQTT | Fully implemented (Gradle 8.5, AGP 8.2.2) |
+| `AlertManagement/` | Python (Raspberry Pi PA system) | Fully implemented |
+
+See `AGENT_INSTRUCTIONS.md` for the full implementation plan and phased build order.
+
+### Infrastructure services
+
+Start PostgreSQL and RabbitMQ via Docker (without the `deploy.resources` limits that fail in nested containers):
+
+```bash
+sudo docker network create sc-net 2>/dev/null
+sudo docker run -d --name postgres --network sc-net \
+  -e POSTGRES_DB=sudarshanchakra -e POSTGRES_USER=scadmin -e POSTGRES_PASSWORD=devpassword123 \
+  -p 127.0.0.1:5432:5432 \
+  -v /workspace/cloud/db/init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro \
+  postgres:16-alpine
+sudo docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
+  -e RABBITMQ_DEFAULT_USER=admin -e RABBITMQ_DEFAULT_PASS=devpassword123 \
+  -p 5672:5672 -p 1883:1883 -p 15672:15672 \
+  -v /workspace/cloud/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro \
+  rabbitmq:3-management
+```
+
+**Gotchas:**
+- The `cloud/docker-compose.yml` includes `deploy.resources.limits.memory` on the `postgres` service, which fails in nested Docker (cgroup v2 threaded mode). Use `docker run` directly without resource limits instead.
+- The `cloud/rabbitmq/rabbitmq.conf` references TLS certificate paths (`/etc/rabbitmq/certs/`) that don't exist locally. Start RabbitMQ **without** mounting that config file to avoid prelaunch failures. Only mount `enabled_plugins`.
+- RabbitMQ Management UI: http://localhost:15672 (admin / devpassword123)
+- PostgreSQL: `localhost:5432`, database `sudarshanchakra`, user `scadmin`, password `devpassword123`
+
+### Backend (Java/Spring Boot)
+
+- Java 21 is pre-installed. Gradle wrapper is in `backend/` (`./gradlew`).
+- `settings.gradle.kts` references 5 subprojects. `alert-service`, `auth-service`, `device-service`, and `api-gateway` have `build.gradle.kts`. Build individual subprojects: e.g. `./gradlew :auth-service:build`
+- **alert-service** (port 8081): Alert CRUD, RabbitMQ consumer, WebSocket broadcast. Run: `./gradlew :alert-service:bootRun`
+- **siren-service** (port 8084): Siren trigger/stop via RabbitMQ, audit log. Run: `./gradlew :siren-service:bootRun`
+- **auth-service** (port 8083): JWT authentication, user registration/login. Run: `./gradlew :auth-service:bootRun`
+- **device-service** (port 8082): CRUD for edge nodes, cameras, zones, worker tags. Run: `./gradlew :device-service:bootRun`
+- All services use `spring.jpa.hibernate.ddl-auto=validate` — the PostgreSQL schema must already exist (loaded from `cloud/db/init.sql`).
+- After starting PostgreSQL and RabbitMQ, run `RABBITMQ_PASS=devpassword123 python3 cloud/scripts/rabbitmq_init.py` to create the messaging topology.
+- The `api-gateway` (Spring Cloud Gateway on Netty) excludes `spring-boot-starter-web` and `spring-boot-starter-tomcat` — do NOT add those deps to it. Run: `./gradlew :api-gateway:bootRun` (port 8080).
+- CI/CD: `.github/workflows/backend.yml` runs matrix builds for all 5 services.
+
+### Dashboard (React)
+
+- Node.js 22+ and npm are pre-installed. Run `npm install` in `dashboard/`.
+- Fully implemented with Vite 5, React 18, TypeScript, Tailwind CSS 3.
+- Build: `npm run build` (runs `tsc && vite build`)
+- Lint: `npm run lint` (ESLint 8 with `@typescript-eslint`, `react-hooks`, `react-refresh` plugins)
+- Dev server: `npm run dev` (Vite on port 3000, proxies `/api` to `localhost:8080` and `/ws` to `localhost:8081`)
+- `sockjs-client` requires `global: 'globalThis'` in `vite.config.ts` `define` — without this the app crashes with "global is not defined".
+- The dashboard uses fallback mock data when backend APIs are unavailable, so it renders fully without running backend services.
+- Auth uses JWT stored in `localStorage` (`sc_token`, `sc_user`). Unauthenticated users are redirected to `/login`.
+
+### Edge AI (Python)
+
+- Python 3.12 is pre-installed. Install deps: `pip install -r edge/requirements.txt`
+- Syntax-check all files: `python3 -m py_compile edge/*.py`
+- Lint: `python3 -m flake8 --max-line-length=120 edge/*.py`
+- The edge services require NVIDIA GPU + RTSP cameras to run the inference pipeline. The Flask GUI (`edge_gui.py`) also depends on OpenCV for generating placeholder images.
+
+### Android (Kotlin/Compose)
+
+- `ANDROID_HOME` must be set to `/opt/android-sdk`. The SDK has `platforms;android-34` and `build-tools;34.0.0`.
+- Java 21 is pre-installed; the app targets `jvmTarget = "17"`.
+- Gradle wrapper (8.5) is in `android/`. Build: `cd android && ANDROID_HOME=/opt/android-sdk ./gradlew assembleDebug --no-daemon`
+- Unit tests: `cd android && ANDROID_HOME=/opt/android-sdk ./gradlew testDebugUnitTest --no-daemon`
+- The HiveMQ MQTT client pulls in Netty jars whose `META-INF/INDEX.LIST` conflicts — the `packaging.resources.excludes` block in `app/build.gradle.kts` handles this.
+- `Tag` was renamed to `WorkerTag` to avoid collision with `retrofit2.http.Tag`.
+- No Android emulator is available in this environment; builds produce an APK at `app/build/outputs/apk/debug/app-debug.apk` but cannot be run on-device.
+
+### Dev credentials (local only)
+
+See `cloud/.env` (generated from `.env.example`):
+- `DB_PASS=devpassword123`
+- `RABBITMQ_PASS=devpassword123`
+- `JWT_SECRET=devsecret1234567890abcdef...`
