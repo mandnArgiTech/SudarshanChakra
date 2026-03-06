@@ -1,0 +1,102 @@
+{
+  "_comment": [
+    "SudarshanChakra — Camera Configuration",
+    "",
+    "TP-Link RTSP URL Formats:",
+    "  VIGI C540-W (Pan/Tilt): rtsp://<user>:<pass>@<ip>:554/stream1 (main 2K)",
+    "                          rtsp://<user>:<pass>@<ip>:554/stream2 (sub 640x480)",
+    "  Tapo C210 (Indoor):     rtsp://<user>:<pass>@<ip>:554/stream1 (main 1080p)",
+    "                          rtsp://<user>:<pass>@<ip>:554/stream2 (sub 640x360)",
+    "  Tapo C320WS (Outdoor):  rtsp://<user>:<pass>@<ip>:554/stream1 (main 2K)",
+    "                          rtsp://<user>:<pass>@<ip>:554/stream2 (sub 640x480)",
+    "",
+    "IMPORTANT: For frame-skipping inference at 2-3 FPS, use stream2 (sub-stream).",
+    "This reduces bandwidth from ~4 Mbps to ~512 Kbps per camera.",
+    "",
+    "Tapo Setup: Tapo App → Camera Settings → Advanced → Device Account",
+    "  Set a username/password to enable RTSP access.",
+    "VIGI Setup: VIGI App or NVR → Network → RTSP (enabled by default)."
+  ],
+  "cameras": [
+    {
+      "id": "cam-01",
+      "name": "Front Gate (VIGI C540-W)",
+      "model": "TP-Link VIGI C540-W",
+      "rtsp_url": "rtsp://admin:farm2024@192.168.1.201:554/stream2",
+      "fps": 2.5,
+      "enabled": true,
+      "location": "Main entrance gate — facing driveway",
+      "notes": "Pan/Tilt — set home position facing gate before locking"
+    },
+    {
+      "id": "cam-02",
+      "name": "Storage Shed (Tapo C210)",
+      "model": "TP-Link Tapo C210",
+      "rtsp_url": "rtsp://admin:farm2024@192.168.1.202:554/stream2",
+      "fps": 2.0,
+      "enabled": true,
+      "location": "Inside storage shed — facing equipment",
+      "notes": "Indoor camera — fire/smoke detection primary zone"
+    },
+    {
+      "id": "cam-03",
+      "name": "Pond Area (VIGI C540-W)",
+      "model": "TP-Link VIGI C540-W",
+      "rtsp_url": "rtsp://admin:farm2024@192.168.1.203:554/stream2",
+      "fps": 3.0,
+      "enabled": true,
+      "location": "Overlooking pond — zero tolerance safety zone",
+      "notes": "CRITICAL: Higher FPS (3.0) for child safety. Pan/Tilt locked on pond."
+    },
+    {
+      "id": "cam-04",
+      "name": "East Perimeter (Tapo Outdoor)",
+      "model": "TP-Link Tapo C320WS",
+      "rtsp_url": "rtsp://admin:farm2024@192.168.1.204:554/stream2",
+      "fps": 2.0,
+      "enabled": true,
+      "location": "East fence line — intrusion detection",
+      "notes": "Outdoor rated IP66 — starlight sensor for night detection"
+    },
+    {
+      "id": "cam-05",
+      "name": "Snake Zone Alpha (VIGI C540-W)",
+      "model": "TP-Link VIGI C540-W",
+      "rtsp_url": "rtsp://admin:farm2024@192.168.1.205:554/stream2",
+      "fps": 2.0,
+      "enabled": true,
+      "location": "Rocky area near south boundary — snake/scorpion zone",
+      "notes": "Low mounting position (~1m) for ground-level hazard detection"
+    },
+    {
+      "id": "cam-06",
+      "name": "Cattle Pen (Tapo C210)",
+      "model": "TP-Link Tapo C210",
+      "rtsp_url": "rtsp://admin:farm2024@192.168.1.206:554/stream2",
+      "fps": 2.0,
+      "enabled": true,
+      "location": "Cattle holding area — livestock containment monitoring",
+      "notes": "Livestock containment zone — alert if cow detected outside polygon"
+    },
+    {
+      "id": "cam-07",
+      "name": "Pasture NW (Tapo Outdoor)",
+      "model": "TP-Link Tapo C320WS",
+      "rtsp_url": "rtsp://admin:farm2024@192.168.1.207:554/stream2",
+      "fps": 2.0,
+      "enabled": true,
+      "location": "Northwest pasture boundary",
+      "notes": "Wide angle — covers pasture edge for cow escape detection"
+    },
+    {
+      "id": "cam-08",
+      "name": "Farmhouse (VIGI C540-W)",
+      "model": "TP-Link VIGI C540-W",
+      "rtsp_url": "rtsp://admin:farm2024@192.168.1.208:554/stream2",
+      "fps": 2.0,
+      "enabled": true,
+      "location": "Farmhouse front porch — general security",
+      "notes": "Pan/Tilt — covers front approach and parking area"
+    }
+  ]
+}

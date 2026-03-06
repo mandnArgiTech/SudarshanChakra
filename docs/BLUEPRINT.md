@@ -1564,16 +1564,114 @@ jobs:
 
 ---
 
-## Appendix A: Repository Structure
+## Appendix A: TP-Link Camera RTSP Configuration
+
+### Supported Models & RTSP URL Formats
+
+| Camera Model | Type | Resolution | RTSP Main Stream | RTSP Sub Stream (use this) |
+|:-------------|:-----|:-----------|:-----------------|:---------------------------|
+| VIGI C540-W | Pan/Tilt | 2K | `rtsp://user:pass@IP:554/stream1` | `rtsp://user:pass@IP:554/stream2` |
+| Tapo C210 | Indoor | 1080p | `rtsp://user:pass@IP:554/stream1` | `rtsp://user:pass@IP:554/stream2` |
+| Tapo C320WS | Outdoor | 2K | `rtsp://user:pass@IP:554/stream1` | `rtsp://user:pass@IP:554/stream2` |
+
+**Critical Notes:**
+- Always use `stream2` (sub-stream, 640×480) for AI inference — reduces bandwidth from ~4 Mbps to ~512 Kbps per camera and gives adequate resolution for YOLOv8n at 640×640 input
+- Tapo cameras require enabling RTSP first: Tapo App → Camera Settings → Advanced → Device Account (set username/password)
+- VIGI cameras use NVR or standalone admin credentials — RTSP enabled by default
+- For 8 cameras at stream2 on a single Edge Node, total bandwidth is approximately 4 Mbps — well within WiFi or wired network capacity
+
+### Camera Placement Guidelines for AI Detection
+
+| Zone | Camera | Mount Height | Notes |
+|:-----|:-------|:-------------|:------|
+| Pond (Zero Tolerance) | VIGI C540-W | 3-4m | Lock Pan/Tilt on pond. Set FPS to 3.0 for faster child detection. |
+| Snake/Scorpion Zone | VIGI C540-W | 1-1.5m | Low mount for ground-level hazard detection. |
+| Perimeter/Gate | Tapo C320WS | 3m | Outdoor rated IP66. Starlight sensor for night. |
+| Cattle Pen | Tapo C210 | 2.5m | Wide angle to cover entire pen boundary. |
+| Storage Shed | Tapo C210 | 2m | Indoor — primary for fire/smoke detection. |
+
+---
+
+## Appendix B: ESP32/LoRa Firmware
+
+### Overview
+
+The `esp32_lora_tag.ino` firmware runs in two modes:
+
+**Mode 1 — WORKER_BEACON:** Broadcasts `TAG:<id>,TYPE:WORKER_PING` every 5 seconds. Edge Node LoRa receiver checks this against `authorized_tags.json` to suppress intrusion alarms for known workers.
+
+**Mode 2 — CHILD_SAFETY:** Broadcasts `TAG:<id>,TYPE:CHILD_PING,ACCEL:<g>` every 2 seconds with accelerometer data. Includes two-phase fall detection:
+1. **Free-fall phase:** Acceleration magnitude drops below 0.3g (body in free fall experiences near-zero gravity)
+2. **Impact phase:** Acceleration spikes above 2.5g within 500ms (hitting water surface or ground)
+
+When both phases are detected, the tag immediately transmits `TYPE:FALL,PRIORITY:CRITICAL` three times for reliability and sounds a local buzzer.
+
+### Hardware BOM (per tag)
+
+| Component | Part | Approx. Cost |
+|:----------|:-----|:-------------|
+| MCU | ESP32 DevKit V1 | ₹350 |
+| LoRa | SX1276 433MHz module | ₹250 |
+| Accelerometer | MPU6050 breakout | ₹100 |
+| Battery | 3.7V 1000mAh LiPo | ₹200 |
+| Charger | TP4056 USB-C module | ₹50 |
+| Enclosure | IP65 ABS box 80×50×25mm | ₹80 |
+
+### Wiring Diagram
+
+```
+ESP32 DevKit V1
+┌─────────────────────┐
+│ GPIO 5  ──────── SCK │──→ SX1276 SCK
+│ GPIO 19 ──────── MISO│──→ SX1276 MISO
+│ GPIO 27 ──────── MOSI│──→ SX1276 MOSI
+│ GPIO 18 ──────── NSS │──→ SX1276 NSS
+│ GPIO 14 ──────── RST │──→ SX1276 RESET
+│ GPIO 26 ──────── DIO0│──→ SX1276 DIO0
+│                       │
+│ GPIO 21 ──────── SDA │──→ MPU6050 SDA
+│ GPIO 22 ──────── SCL │──→ MPU6050 SCL
+│                       │
+│ GPIO 4  ──────── BUZ │──→ Piezo Buzzer +
+│ 3.3V    ──────── VCC │──→ SX1276 VCC, MPU6050 VCC
+│ GND     ──────── GND │──→ SX1276 GND, MPU6050 GND
+│ GPIO 35 ──────── VBAT│──→ Battery voltage divider
+└─────────────────────┘
+```
+
+---
+
+## Appendix C: Edge Flask GUI — Polygon Zone Editor
+
+The `edge_gui.py` provides a browser-based polygon drawing tool at `http://<edge-node-ip>:5000`. Key features:
+
+- **Live camera snapshots** refreshed every 2 seconds from the inference pipeline
+- **Click-to-draw polygons** on camera images — coordinates saved in image space
+- **Zone types:** intrusion, zero_tolerance, livestock_containment, hazard
+- **CRUD operations** — add, view, delete zones per camera
+- **Auto-reload** — zone engine reloads automatically when zones are saved, no restart required
+- **No external dependencies** — pure HTML/JS/Canvas embedded in Flask template
+
+See `cameras.json` for camera configuration with TP-Link RTSP URLs.
+See `authorized_tags.json` for worker tag registry.
+
+---
+
+## Appendix D: Repository Structure
 
 ```
 SudarshanChakra/
 ├── AlertManagement/          # Pi Zero 2W PA system (already deployed)
-├── docs/                     # This blueprint + UI mockups
-│   ├── BLUEPRINT.md
-│   ├── dashboard-mockup.jsx
-│   ├── android-mockup.jsx
-│   └── db-schema.sql
+├── docs/                     # This blueprint + UI mockups + configs
+│   ├── BLUEPRINT.md          # This document
+│   ├── dashboard-mockup.jsx  # Interactive React dashboard wireframe
+│   ├── android-mockup.jsx    # Interactive Android app wireframe
+│   ├── db-schema.sql         # PostgreSQL schema
+│   ├── farm_edge_node.py     # Main entrypoint (Dockerfile CMD)
+│   ├── edge_gui.py           # Flask polygon drawing GUI
+│   ├── esp32_lora_tag.ino    # ESP32 LoRa worker beacon + child fall detector
+│   ├── cameras.json          # Camera config with TP-Link RTSP URLs
+│   └── authorized_tags.json  # Worker tag registry
 ├── edge/                     # Edge AI Docker container
 │   ├── Dockerfile
 │   ├── requirements.txt

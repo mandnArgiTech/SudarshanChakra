@@ -1,0 +1,32 @@
+{
+  "_comment": "ESP32 LoRa tag IDs authorized for this farm. Tags in this list will suppress intruder alarms when detected nearby.",
+  "tags": [
+    "TAG-W001",
+    "TAG-W002",
+    "TAG-W003"
+  ],
+  "tag_details": {
+    "TAG-W001": {
+      "worker_name": "Ravi Kumar",
+      "role": "Farm Manager",
+      "type": "WORKER_BEACON"
+    },
+    "TAG-W002": {
+      "worker_name": "Srinivas Reddy",
+      "role": "Field Worker",
+      "type": "WORKER_BEACON"
+    },
+    "TAG-W003": {
+      "worker_name": "Lakshmi Devi",
+      "role": "Field Worker",
+      "type": "WORKER_BEACON"
+    }
+  },
+  "child_tags": {
+    "TAG-C001": {
+      "child_name": "Child Safety Tag #1",
+      "type": "CHILD_SAFETY",
+      "notes": "Zero-tolerance — never suppresses alarms, always triggers critical alert if FALL detected"
+    }
+  }
+}
