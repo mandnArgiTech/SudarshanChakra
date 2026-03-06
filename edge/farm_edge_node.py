@@ -207,12 +207,11 @@ def setup_siren_listener(mqtt_client):
     mqtt_client.on_message = on_siren_message
 
 
-def start_heartbeat(mqtt_client):
-    """Publish periodic heartbeat with GPU/system stats."""
+def start_heartbeat(mqtt_client, pipeline=None, alert_engine=None):
+    """Publish periodic heartbeat with GPU/system stats and pipeline metrics."""
     def heartbeat_loop():
         while True:
             try:
-                # Read GPU stats if nvidia-smi available
                 gpu_info = {}
                 try:
                     import subprocess
@@ -230,7 +229,10 @@ def start_heartbeat(mqtt_client):
                         }
                 except Exception:
                     pass
-                
+
+                pipeline_stats = pipeline.get_stats() if pipeline else {}
+                engine_stats = alert_engine.get_stats() if alert_engine else {}
+
                 mqtt_client.publish(
                     f"farm/nodes/{NODE_ID}/heartbeat",
                     json.dumps({
@@ -238,14 +240,16 @@ def start_heartbeat(mqtt_client):
                         "timestamp": time.time(),
                         "status": "online",
                         **gpu_info,
+                        "pipeline": pipeline_stats,
+                        "engine": engine_stats,
                     }),
                     qos=0,
                 )
             except Exception as e:
                 log.warning("Heartbeat error: %s", e)
-            
+
             time.sleep(30)
-    
+
     t = threading.Thread(target=heartbeat_loop, daemon=True, name="heartbeat")
     t.start()
 
@@ -291,10 +295,7 @@ def main():
     
     mqtt_client.loop_start()
     
-    # ── Step 6: Start heartbeat ──
-    start_heartbeat(mqtt_client)
-    
-    # ── Step 7: Initialize alert decision engine ──
+    # ── Step 6 & 7: Initialize alert decision engine (heartbeat started after) ──
     # Create a placeholder LoRa for the engine if LoRa is disabled
     class DummyLoRa:
         def is_worker_nearby(self, max_age_seconds=15.0): return False
@@ -312,7 +313,10 @@ def main():
         lora.fall_callbacks.append(alert_engine.process_fall_event)
         log.info("Fall detector callback wired: LoRa → AlertEngine")
     
-    # ── Step 8: Start Flask GUI in background thread ──
+    # ── Step 8: Start heartbeat with engine/pipeline references ──
+    # (pipeline object created below, heartbeat will access stats via closure)
+
+    # ── Step 9: Start Flask GUI in background thread ──
     flask_app = create_app(zone_engine, cameras, CONFIG_DIR)
     flask_thread = threading.Thread(
         target=lambda: flask_app.run(host="0.0.0.0", port=FLASK_PORT, debug=False),
@@ -321,10 +325,11 @@ def main():
     flask_thread.start()
     log.info("Flask Edge GUI started on port %d", FLASK_PORT)
     
-    # ── Step 9: Start inference pipeline (blocking) ──
+    # ── Step 10: Start inference pipeline (blocking) ──
     log.info("Starting inference pipeline with %d cameras...", len(cameras))
     pipeline = InferencePipeline(model, cameras)
     pipeline.results_callbacks.append(alert_engine.process_detection)
+    start_heartbeat(mqtt_client, pipeline=pipeline, alert_engine=alert_engine)
     
     # Graceful shutdown
     def shutdown(signum, frame):

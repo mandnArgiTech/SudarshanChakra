@@ -8,15 +8,22 @@ and publishes online/offline events to RabbitMQ.
 Usage: Runs inside docker-compose.cloud.yml vpn-health-monitor service.
 """
 
+import logging
 import subprocess
 import json
 import time
 import os
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+log = logging.getLogger("vpn_health_monitor")
+
 try:
     import pika
 except ImportError:
-    print("ERROR: pika not installed. Run: pip install pika")
+    log.error("pika not installed. Run: pip install pika")
     exit(1)
 
 NODES = {
@@ -89,11 +96,11 @@ def publish_event(node_id: str, event_type: str):
             ),
         )
 
-        print(f"[EVENT] {node_id}: {event_type}")
+        log.info("Published event: %s %s", node_id, event_type)
         connection.close()
 
     except Exception as e:
-        print(f"[ERROR] Failed to publish event: {e}")
+        log.error("Failed to publish event for %s: %s", node_id, e)
 
 
 def main():
@@ -108,16 +115,17 @@ def main():
         if reachable:
             if state[node_id]["was_offline"]:
                 publish_event(node_id, "online")
-                print(f"[OK] {node_id} ({ip}): Back ONLINE")
+                log.info("%s (%s): Back ONLINE", node_id, ip)
             else:
-                print(f"[OK] {node_id} ({ip}): Reachable")
+                log.debug("%s (%s): Reachable", node_id, ip)
 
             state[node_id]["fail_count"] = 0
             state[node_id]["was_offline"] = False
         else:
             state[node_id]["fail_count"] += 1
-            print(f"[WARN] {node_id} ({ip}): Unreachable "
-                  f"(fail {state[node_id]['fail_count']}/{FAIL_THRESHOLD})")
+            log.warning("%s (%s): Unreachable (fail %d/%d)",
+                        node_id, ip, state[node_id]["fail_count"],
+                        FAIL_THRESHOLD)
 
             if state[node_id]["fail_count"] >= FAIL_THRESHOLD:
                 if not state[node_id]["was_offline"]:

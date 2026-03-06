@@ -16,16 +16,19 @@ Decision pipeline per detection:
 import json
 import logging
 import os
+import threading
 import time
 import uuid
 from typing import Optional
 
+import cv2
+import numpy as np
 import paho.mqtt.client as mqtt
 
 try:
     from detection_filters import filter_detection
 except ImportError:
-    filter_detection = None  # Graceful fallback if filters not available
+    filter_detection = None
 
 log = logging.getLogger("alert_engine")
 
@@ -35,10 +38,10 @@ class AlertDecisionEngine:
     Central brain: detection + zone + LoRa → alert decision.
     
     Thread safety: process_detection() is called from the inference
-    thread. All mutable state (_recent_alerts) is protected.
+    thread. All mutable state (_recent_alerts) is protected via lock.
     
     State transitions per detection:
-      detection → zone_check → dedup_check → lora_fusion → publish/suppress
+      detection → filter → zone_check → dedup_check → lora_fusion → publish/suppress
     """
 
     def __init__(self, zone_engine, lora_receiver, mqtt_client: mqtt.Client,
@@ -48,66 +51,82 @@ class AlertDecisionEngine:
         self.mqtt = mqtt_client
         self.node_id = node_id
 
-        # Deduplication
-        self._recent_alerts: dict = {}  # "zone_id:class" → timestamp
+        self._recent_alerts: dict = {}
+        self._dedup_lock = threading.Lock()
         self.DEDUP_WINDOW = int(os.getenv("ALERT_DEDUP_SECONDS", "30"))
 
-        # Snapshot directory (for saving detection frames)
         self.snapshot_dir = os.getenv("SNAPSHOT_DIR", "/tmp/snapshots")
         os.makedirs(self.snapshot_dir, exist_ok=True)
 
-        # Counters for monitoring
+        self.vpn_ip = os.getenv("VPN_IP", self._default_vpn_ip())
+
         self.stats = {
             "total_detections": 0,
             "zone_violations": 0,
             "alerts_published": 0,
             "worker_suppressed": 0,
             "deduplicated": 0,
+            "filtered_out": 0,
         }
 
-    def process_detection(self, detection: dict):
+    def process_detection(self, detection: dict, frame: np.ndarray = None):
         """
         Main decision pipeline for a single detection.
         
         Called by InferencePipeline for every detected object in every frame.
         Must be fast — target <1ms per call.
+        
+        Args:
+            detection: Detection dict from YOLO inference.
+            frame: Original camera frame (optional). When provided, enables
+                   fire/smoke color validation and snapshot saving.
         """
+        correlation_id = str(uuid.uuid4())[:8]
+        detection["correlation_id"] = correlation_id
         self.stats["total_detections"] += 1
 
-        # ── Step 0: Post-processing filters (geometric, color, temporal) ──
         if filter_detection is not None:
-            detection = filter_detection(detection)
+            detection = filter_detection(detection, frame=frame)
             if detection is None:
-                return  # Filtered out by post-processing
+                self.stats["filtered_out"] += 1
+                return
 
-        # ── Step 1: Zone Check ──
         violation = self.zone_engine.check_detection(detection)
         if not violation:
-            return  # Detection is not in any monitored zone — ignore
+            return
 
         self.stats["zone_violations"] += 1
 
-        # ── Step 2: Deduplication ──
+        if violation["zone_type"] == "zero_tolerance" and detection["class"] == "person":
+            if detection.get("metadata", {}).get("possible_child"):
+                violation["priority"] = "critical"
+                detection["class"] = "possible_child"
+                log.info("[%s] Child heuristic escalated person to critical in %s",
+                         correlation_id, violation["zone_name"])
+
         dedup_key = f"{violation['zone_id']}:{detection['class']}"
         now = time.time()
 
-        if dedup_key in self._recent_alerts:
-            if now - self._recent_alerts[dedup_key] < self.DEDUP_WINDOW:
-                self.stats["deduplicated"] += 1
-                return  # Already alerted for this zone+class recently
+        with self._dedup_lock:
+            if dedup_key in self._recent_alerts:
+                if now - self._recent_alerts[dedup_key] < self.DEDUP_WINDOW:
+                    self.stats["deduplicated"] += 1
+                    return
 
-        # ── Step 3: LoRa Sensor Fusion ──
-        # Zero-tolerance zones NEVER get suppressed (even if workers are nearby)
         if violation["zone_type"] not in ("zero_tolerance",):
             if detection["class"] == "person" and self.lora.is_worker_nearby():
                 self.stats["worker_suppressed"] += 1
                 self._publish_suppression(detection, violation)
-                return  # Authorized worker — suppress alarm
+                return
 
-        # ── Step 4: Build Alert Payload ──
         alert_id = str(uuid.uuid4())
+        snapshot_url = ""
+        if frame is not None:
+            snapshot_url = self._save_snapshot(alert_id, frame, detection)
+
         alert = {
             "alert_id": alert_id,
+            "correlation_id": correlation_id,
             "node_id": self.node_id,
             "camera_id": detection["camera_id"],
             "zone_id": violation["zone_id"],
@@ -118,7 +137,7 @@ class AlertDecisionEngine:
             "confidence": round(detection["confidence"], 3),
             "bbox": [round(v, 1) for v in detection["bbox"]],
             "bottom_center": [round(v, 1) for v in detection["bottom_center"]],
-            "snapshot_url": f"http://{self._get_vpn_ip()}:5000/snapshots/{alert_id}.jpg",
+            "snapshot_url": snapshot_url,
             "worker_suppressed": False,
             "timestamp": now,
             "metadata": {
@@ -127,26 +146,46 @@ class AlertDecisionEngine:
             },
         }
 
-        # ── Step 5: Publish to VPS Broker ──
         topic = f"farm/alerts/{violation['priority']}"
         try:
             result = self.mqtt.publish(topic, json.dumps(alert), qos=1)
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
                 self.stats["alerts_published"] += 1
-                log.info("ALERT [%s] %s: %s in %s (%.0f%% conf)",
+                log.info("[%s] ALERT [%s] %s: %s in %s (%.0f%% conf)",
+                         correlation_id,
                          violation["priority"].upper(),
                          detection["class"],
                          violation["zone_name"],
                          detection["camera_id"],
                          detection["confidence"] * 100)
             else:
-                log.error("MQTT publish failed (rc=%d) for alert %s", result.rc, alert_id)
+                log.error("[%s] MQTT publish failed (rc=%d) for alert %s",
+                          correlation_id, result.rc, alert_id)
         except Exception as e:
-            log.error("Failed to publish alert: %s", e)
+            log.error("[%s] Failed to publish alert: %s", correlation_id, e)
 
-        # Update deduplication tracker
-        self._recent_alerts[dedup_key] = now
-        self._cleanup_dedup()
+        with self._dedup_lock:
+            self._recent_alerts[dedup_key] = now
+            self._cleanup_dedup()
+
+    def _save_snapshot(self, alert_id: str, frame: np.ndarray,
+                       detection: dict) -> str:
+        """Save detection frame as JPEG snapshot and return its URL."""
+        try:
+            x1, y1, x2, y2 = [int(v) for v in detection["bbox"]]
+            annotated = frame.copy()
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            label = f"{detection['class']} {detection['confidence']:.0%}"
+            cv2.putText(annotated, label, (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+
+            path = os.path.join(self.snapshot_dir, f"{alert_id}.jpg")
+            cv2.imwrite(path, annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            log.debug("Snapshot saved: %s", path)
+            return f"http://{self.vpn_ip}:5000/snapshots/{alert_id}.jpg"
+        except Exception as e:
+            log.warning("Failed to save snapshot: %s", e)
+            return ""
 
     def process_fall_event(self, tag_id: str, packet_data: dict):
         """
@@ -211,8 +250,8 @@ class AlertDecisionEngine:
             if now - v < cutoff
         }
 
-    def _get_vpn_ip(self) -> str:
-        """Get this node's VPN IP for snapshot URLs."""
+    def _default_vpn_ip(self) -> str:
+        """Get this node's VPN IP from well-known mappings."""
         node_ips = {
             "edge-node-a": "10.8.0.10",
             "edge-node-b": "10.8.0.11",

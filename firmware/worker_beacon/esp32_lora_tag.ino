@@ -44,6 +44,7 @@
 #include <SPI.h>
 #include <LoRa.h>
 #include <Wire.h>
+#include <esp_task_wdt.h>
 
 // ── CONFIGURATION — CHANGE THESE PER DEVICE ──────────────────────────────
 // Set device mode: "WORKER_BEACON" or "CHILD_SAFETY"
@@ -100,7 +101,11 @@ int packetCounter = 0;
 // ── SETUP ────────────────────────────────────────────────────────────────
 void setup() {
     Serial.begin(115200);
-    while (!Serial && millis() < 3000); // Wait up to 3s for serial
+    while (!Serial && millis() < 3000);
+    
+    // Hardware watchdog: reset if loop hangs for >30 seconds
+    esp_task_wdt_init(30, true);
+    esp_task_wdt_add(NULL);
     
     pinMode(LED_PIN, OUTPUT);
     pinMode(BUZZER_PIN, OUTPUT);
@@ -303,12 +308,18 @@ void loop() {
             fallDetected = true;
             sendFallAlert();
             
-            // After fall alert, keep sending alerts every 5 seconds
-            // until device is manually reset
-            while (1) {
+            // Send repeated fall alerts for FALL_REPEAT_DURATION_MS then
+            // resume normal operation so the tag can detect subsequent events.
+            unsigned long fallStart = millis();
+            const unsigned long FALL_REPEAT_DURATION_MS = 60000; // 1 minute
+            while (millis() - fallStart < FALL_REPEAT_DURATION_MS) {
                 sendFallAlert();
                 delay(5000);
+                esp_task_wdt_reset();
             }
+            // Reset fall state so the tag can detect new falls
+            fallDetected = false;
+            freeFallStart = 0;
         }
         
         // Regular beacon (slower interval)
@@ -317,6 +328,7 @@ void loop() {
             lastBeaconTime = now;
         }
         
+        esp_task_wdt_reset();
         delay(50); // 20 Hz accelerometer sampling
         
     } else {
@@ -327,6 +339,7 @@ void loop() {
             lastBeaconTime = now;
         }
         
+        esp_task_wdt_reset();
         if (ENABLE_DEEP_SLEEP) {
             // Deep sleep between beacons (uses ~10µA vs ~80mA active)
             Serial.flush();

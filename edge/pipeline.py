@@ -212,7 +212,7 @@ class InferencePipeline:
                 log.error("Inference error on %s: %s", packet.camera_id, e)
 
     def _process_results(self, packet: FramePacket, result):
-        """Extract detections and dispatch to callbacks."""
+        """Extract detections and dispatch to callbacks with the original frame."""
         if result.boxes is None or len(result.boxes) == 0:
             return
 
@@ -234,7 +234,12 @@ class InferencePipeline:
 
             for callback in self.results_callbacks:
                 try:
-                    callback(detection)
+                    callback(detection, frame=packet.frame)
+                except TypeError:
+                    try:
+                        callback(detection)
+                    except Exception as e:
+                        log.error("Detection callback error: %s", e)
                 except Exception as e:
                     log.error("Detection callback error: %s", e)
 

@@ -28,6 +28,7 @@
 
 #include <SPI.h>
 #include <LoRa.h>
+#include <esp_task_wdt.h>
 
 // ── LoRa Configuration (must match transmitter tags) ─────────────────────
 #define LORA_FREQUENCY    433E6      // Must match esp32_lora_tag.ino
@@ -51,6 +52,9 @@ unsigned long lastStatsTime = 0;
 void setup() {
     Serial.begin(115200);
     while (!Serial && millis() < 3000);
+
+    esp_task_wdt_init(30, true);
+    esp_task_wdt_add(NULL);
 
     pinMode(LED_PIN, OUTPUT);
 
@@ -91,7 +95,7 @@ void setup() {
 }
 
 void loop() {
-    // Check for incoming LoRa packet
+    esp_task_wdt_reset();
     int packetSize = LoRa.parsePacket();
 
     if (packetSize > 0) {
