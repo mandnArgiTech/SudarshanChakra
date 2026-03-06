@@ -1,0 +1,28 @@
+# /boot/config.txt additions for PCM5102A I2S DAC
+# =================================================
+# Add these lines to /boot/config.txt (or /boot/firmware/config.txt on Bookworm)
+#
+# IMPORTANT: Comment out or remove the default audio line:
+#   #dtparam=audio=on       ← DISABLE onboard audio
+#
+# Then add:
+dtoverlay=hifiberry-dac
+# Forces I2S audio output through GPIO header to PCM5102A
+# GPIO Pinout (directly on Pi header — no resistors needed):
+#   BCK  → GPIO 18 (Pin 12)
+#   LRCK → GPIO 19 (Pin 35)
+#   DIN  → GPIO 21 (Pin 40)
+#   VIN  → 3.3V   (Pin 1)
+#   GND  → GND    (Pin 6)
+#   FMT  → GND    (forces I2S standard format)
+#   XSMT → 3.3V   (un-mute, tie high)
+#   SCK  → GND    (uses internal clock)
+
+# GPU memory — we're headless, give minimum to GPU
+gpu_mem=16
+
+# Disable Bluetooth to free UART and reduce interference
+dtoverlay=disable-bt
+
+# Disable WiFi power management (prevents dropouts during streaming)
+# Note: Also enforced at OS level via NetworkManager/dhcpcd

@@ -1,0 +1,53 @@
+[Unit]
+Description=PA System MQTT Audio Controller
+Documentation=https://github.com/your-repo/pa-system
+After=network-online.target sound.target
+Wants=network-online.target
+# Ensure ALSA is ready before we start
+After=alsa-restore.service
+
+[Service]
+Type=simple
+User=pi
+Group=audio
+
+# --- Environment ---
+# Override any of these in /etc/pa-system/pa.env
+EnvironmentFile=-/etc/pa-system/pa.env
+
+# --- Execution ---
+ExecStartPre=/usr/bin/test -e /usr/bin/mpv
+ExecStart=/usr/bin/python3 /opt/pa-system/pa_controller.py
+
+# --- Crash Recovery ---
+# Restart on ANY failure — this is a security-critical service
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+# --- Watchdog ---
+# systemd kills the service if it stops responding
+WatchdogSec=0
+
+# --- Resource Limits ---
+# Pi Zero 2 W has 512 MB — cap this service to prevent OOM
+MemoryMax=128M
+MemoryHigh=96M
+
+# --- Security Hardening ---
+# Read-only FS means we don't need write access to most paths
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true
+# Allow /tmp for mpv socket
+ReadWritePaths=/tmp
+
+# --- Logging ---
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pa-controller
+
+[Install]
+WantedBy=multi-user.target

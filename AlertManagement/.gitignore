@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Environment & Secrets
+*.env
+.env.*
+!pa.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Audio files (too large for git — serve via Nginx)
+*.mp3
+*.wav
+*.flac
+*.ogg
