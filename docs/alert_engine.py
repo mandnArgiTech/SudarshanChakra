@@ -22,6 +22,11 @@ from typing import Optional
 
 import paho.mqtt.client as mqtt
 
+try:
+    from detection_filters import filter_detection
+except ImportError:
+    filter_detection = None  # Graceful fallback if filters not available
+
 log = logging.getLogger("alert_engine")
 
 
@@ -68,6 +73,12 @@ class AlertDecisionEngine:
         Must be fast — target <1ms per call.
         """
         self.stats["total_detections"] += 1
+
+        # ── Step 0: Post-processing filters (geometric, color, temporal) ──
+        if filter_detection is not None:
+            detection = filter_detection(detection)
+            if detection is None:
+                return  # Filtered out by post-processing
 
         # ── Step 1: Zone Check ──
         violation = self.zone_engine.check_detection(detection)

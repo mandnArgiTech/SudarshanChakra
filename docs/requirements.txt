@@ -21,3 +21,11 @@ Pillow>=10.0
 
 # Production WSGI server (Flask runs in a thread, not standalone)
 gunicorn==23.*
+
+# Optional: Multi-object tracking (for livestock containment)
+# Uncomment if ByteTrack is needed for per-cow tracking
+# bytetracker>=0.3
+
+# Optional: Sliced inference for tiny objects (scorpion detection)
+# Uncomment if SAHI is needed for specific cameras
+# sahi>=0.11
