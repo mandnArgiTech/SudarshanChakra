@@ -94,8 +94,7 @@ services:
       - siren-service
     restart: always
 
-  # Alert Service — consumes from RabbitMQ, stores in PostgreSQL
-  # Push notifications delivered via MQTT direct (no Firebase)
+  # Alert Service — consumes from RabbitMQ, stores in PostgreSQL, pushes via MQTT
   alert-service:
     image: ghcr.io/mandnargitech/sudarshanchakra/alert-service:latest
     container_name: alert-service

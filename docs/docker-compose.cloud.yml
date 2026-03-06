@@ -94,7 +94,7 @@ services:
       - siren-service
     restart: always
 
-  # Alert Service — consumes from RabbitMQ, stores in PostgreSQL
+  # Alert Service — consumes from RabbitMQ, stores in PostgreSQL, pushes via MQTT
   alert-service:
     image: ghcr.io/mandnargitech/sudarshanchakra/alert-service:latest
     container_name: alert-service
@@ -106,8 +106,6 @@ services:
       - SPRING_RABBITMQ_HOST=rabbitmq
       - SPRING_RABBITMQ_USERNAME=${RABBITMQ_USER:-admin}
       - SPRING_RABBITMQ_PASSWORD=${RABBITMQ_PASS}
-      - # Push notifications via MQTT direct — no Firebase dependency
-    volumes:
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }

@@ -11,10 +11,10 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "FCM token update request")
-public class FcmTokenRequest {
+@Schema(description = "MQTT client ID update request")
+public class MqttClientIdRequest {
 
-    @NotBlank(message = "FCM token is required")
-    @Schema(description = "Firebase Cloud Messaging token")
-    private String fcmToken;
+    @NotBlank(message = "MQTT client ID is required")
+    @Schema(description = "MQTT client identifier for direct push notifications")
+    private String mqttClientId;
 }

@@ -63,7 +63,7 @@ interface ApiService {
     @GET("siren/history")
     suspend fun getSirenHistory(): Response<List<SirenAction>>
 
-    // FCM
-    @PATCH("users/me/fcm-token")
-    suspend fun updateFcmToken(@Body body: Map<String, String>): Response<Unit>
+    // MQTT client ID
+    @PATCH("users/me/mqtt-client-id")
+    suspend fun updateMqttClientId(@Body body: Map<String, String>): Response<Unit>
 }

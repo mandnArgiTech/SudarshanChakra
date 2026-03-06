@@ -93,7 +93,7 @@ Navigate to **Zones** to manage virtual fence areas:
 
 ### 3.1 Installation
 
-Download the APK from Firebase App Distribution or install from the provided link.
+Download the APK from the provided distribution link or install from the release page.
 
 ### 3.2 Login
 
@@ -230,7 +230,7 @@ NEW → ACKNOWLEDGED → RESOLVED
 | Camera shows "offline" | Check camera power and network cable; restart camera |
 | Worker tag not suppressing alarms | Ensure tag is ON (LED blinking); check battery |
 | Siren not sounding | Check PA system power; check Raspberry Pi is running |
-| App not receiving notifications | Check phone notification settings; re-login to refresh FCM token |
+| App not receiving notifications | Check phone notification settings; ensure MQTT foreground service is running; re-login |
 | False alerts for workers | Ensure worker has tag turned ON before entering zone |
 | "Node offline" alert | Edge Node may have lost power or internet; check physically |
 

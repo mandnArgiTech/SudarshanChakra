@@ -16,7 +16,7 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'manager', 'viewer')),
-    mqtt_client_id VARCHAR(100),  -- MQTT client ID for direct push
+    mqtt_client_id VARCHAR(100),
     last_login TIMESTAMPTZ,
     active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),

@@ -38,12 +38,12 @@ public class UserService {
     }
 
     @Transactional
-    public void updateFcmToken(String username, String fcmToken) {
+    public void updateMqttClientId(String username, String mqttClientId) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
-        user.setFcmToken(fcmToken);
+        user.setMqttClientId(mqttClientId);
         userRepository.save(user);
-        log.info("Updated FCM token for user '{}'", username);
+        log.info("Updated MQTT client ID for user '{}'", username);
     }
 
     private UserResponse toUserResponse(User user) {

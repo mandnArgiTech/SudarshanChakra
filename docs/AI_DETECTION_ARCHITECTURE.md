@@ -951,7 +951,7 @@ PATH 1: Visual Detection (Camera AI)
   CRITICAL alert published immediately
     │
     ▼
-  farm/alerts/critical → VPS MQTT broker → Android MQTTS → notification
+  farm/alerts/critical → VPS → MQTT → Android phone
   Simultaneously: farm/siren/trigger → Edge Node → PA system
 
 
@@ -974,7 +974,7 @@ PATH 2: Fall Detection (ESP32 Wearable)
     │
   CRITICAL alert published immediately
     │
-  farm/alerts/critical → VPS MQTT broker → Android MQTTS → notification
+  farm/alerts/critical → VPS → MQTT → Android phone
 
 
 BOTH PATHS ARE INDEPENDENT:

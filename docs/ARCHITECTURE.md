@@ -27,7 +27,7 @@ SudarshanChakra is a multi-tier IoT + Edge AI + Cloud platform for real-time far
 │  PostgreSQL 16 + RabbitMQ 3 + 5× Spring Boot microservices     │
 │  React Dashboard + Nginx reverse proxy                          │
 └────────────────────────────────┬────────────────────────────────┘
-                                 │ HTTPS + FCM + MQTTS
+                                 │ HTTPS + MQTTS
 ┌────────────────────────────────▼────────────────────────────────┐
 │  TIER 4: USER INTERFACE LAYER                                    │
 │  React web dashboard + Android app (Kotlin/Compose)             │
@@ -88,7 +88,7 @@ Camera RTSP → CameraGrabber threads → Frame Queue → YOLO Inference
 | postgres | postgres:16-alpine | 5432 | Alert/device/user storage |
 | rabbitmq | rabbitmq:3-management | 5672, 1883, 15672 | Message broker (AMQP + MQTT) |
 | api-gateway | Spring Boot | 8080 | Route API requests |
-| alert-service | Spring Boot | 8081 | Consume alerts, store, push FCM |
+| alert-service | Spring Boot | 8081 | Consume alerts, store, push via MQTT |
 | device-service | Spring Boot | 8082 | Edge node/camera/zone CRUD |
 | auth-service | Spring Boot | 8083 | JWT auth, user management |
 | siren-service | Spring Boot | 8084 | Siren commands → RabbitMQ |
@@ -141,7 +141,7 @@ Farm Site (Sanga Reddy)              Cloud VPS (vivasvan-tech.in)
 │ PA System (siren)   │                        │ HTTPS/MQTTS
 │ Local MQTT :1883    │              ┌─────────▼───────────┐
 └─────────────────────┘              │ Android App         │
-                                     │ REST + FCM + MQTT   │
+                                     │ REST + MQTT          │
                                      └─────────────────────┘
 ```
 
@@ -200,7 +200,7 @@ Auth:     POST /auth/login, /auth/register
 Alerts:   GET /alerts, GET /alerts/:id, PATCH /alerts/:id/acknowledge
 Devices:  GET /nodes, GET /cameras, GET/POST/DELETE /zones, GET/POST /tags
 Siren:    POST /siren/trigger, POST /siren/stop, GET /siren/history
-Users:    GET /users, PATCH /users/me/fcm-token
+Users:    GET /users, PATCH /users/me/mqtt-client-id
 
 WebSocket: ws://.../ws/alerts (STOMP over SockJS)
   → /topic/alerts (real-time new alerts)

@@ -24,10 +24,6 @@ server:
 jwt:
   secret: ${JWT_SECRET:default-dev-secret-change-in-production}
 
-# Push notifications: MQTT direct via RabbitMQ MQTT plugin
-# Android app subscribes to farm/alerts/# over MQTTS (port 8883)
-# No Firebase dependency — zero third-party push infrastructure
-
 management:
   endpoints:
     web:
