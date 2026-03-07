@@ -12,7 +12,7 @@ object Constants {
     const val USER_ID_KEY = "user_id"
 
     const val MQTT_CLIENT_ID_PREFIX = "sc-android-"
-    const val MQTT_ALERT_TOPIC = "alerts/#"
+    const val MQTT_ALERT_TOPIC = "farm/alerts/#"
     const val MQTT_SIREN_TOPIC = "siren/#"
 
     const val ALERT_CACHE_MAX_AGE_HOURS = 24L

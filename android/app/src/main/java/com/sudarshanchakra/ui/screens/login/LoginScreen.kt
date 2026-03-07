@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -36,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.sudarshanchakra.service.MqttForegroundService
 import com.sudarshanchakra.ui.theme.CreamBackground
 import com.sudarshanchakra.ui.theme.CriticalRed
 import com.sudarshanchakra.ui.theme.DividerColor
@@ -52,9 +54,11 @@ fun LoginScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
 
     LaunchedEffect(uiState.isLoggedIn) {
         if (uiState.isLoggedIn) {
+            MqttForegroundService.start(context)
             onLoginSuccess()
         }
     }
