@@ -97,7 +97,9 @@ Download the APK from the provided distribution link or install from the release
 
 ### 3.2 Login
 
-Enter your username and password. The app will register for push notifications automatically.
+Enter your username and password. The app will register for push notifications automatically and start a background alert monitor service.
+
+After login, Android may show a persistent notification such as **"SudarshanChakra alert monitor"**. This is expected and keeps real-time alerts active while the app is backgrounded.
 
 ### 3.3 Alert Feed
 
@@ -132,6 +134,11 @@ Critical alerts will wake your phone even in Do Not Disturb mode. You'll see:
 - Zone name
 - Camera ID
 - Tap to open the alert detail
+
+Notification requirements on Android:
+- Allow **Notifications** permission for the app
+- Do not force-stop the app from system settings
+- Disable aggressive battery optimization for the app on devices that kill foreground services
 
 ---
 
@@ -230,7 +237,7 @@ NEW → ACKNOWLEDGED → RESOLVED
 | Camera shows "offline" | Check camera power and network cable; restart camera |
 | Worker tag not suppressing alarms | Ensure tag is ON (LED blinking); check battery |
 | Siren not sounding | Check PA system power; check Raspberry Pi is running |
-| App not receiving notifications | Check phone notification settings; ensure MQTT foreground service is running; re-login |
+| App not receiving notifications | Check notification permission, confirm "SudarshanChakra alert monitor" notification is visible, then re-login |
 | False alerts for workers | Ensure worker has tag turned ON before entering zone |
 | "Node offline" alert | Edge Node may have lost power or internet; check physically |
 

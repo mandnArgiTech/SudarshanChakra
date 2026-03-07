@@ -266,6 +266,13 @@ Update MQTT client ID for direct push notifications via the RabbitMQ broker.
 }
 ```
 
+**Response:** `204 No Content`
+
+**Notes:**
+- Called by the Android app after login when `MqttForegroundService` starts.
+- Recommended format: `sc-android-<uuid>`.
+- The value is used for direct push notification routing and client tracking.
+
 ---
 
 ## 6. WebSocket API
@@ -306,6 +313,13 @@ ws://vivasvan-tech.in/ws/alerts (STOMP over SockJS)
 | `farm/siren/trigger` | 1 | `{command, targetNode, sirenUrl}` | Activate siren |
 | `farm/siren/stop` | 1 | `{command, targetNode}` | Stop siren |
 | `farm/admin/update` | 1 | `{model, version}` | OTA update command |
+
+### Mobile Subscriptions (Android App)
+
+| Topic Filter | QoS | Description |
+|-------------|-----|-------------|
+| `farm/alerts/#` | 1 | Primary alert topic for Android foreground MQTT service |
+| `alerts/#` | 1 | Legacy fallback topic for backward compatibility |
 
 ### Alert Payload Schema
 

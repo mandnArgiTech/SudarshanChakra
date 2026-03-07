@@ -17,6 +17,41 @@
 
 ---
 
+## Phase 0: Local GPU Workstation (Single Command)
+
+Use this when you want to set up and build the complete monorepo on a local development box.
+
+```bash
+git clone https://github.com/mandnArgiTech/SudarshanChakra.git
+cd SudarshanChakra
+chmod +x setup_and_build_all.sh
+./setup_and_build_all.sh
+```
+
+Optional flags:
+
+```bash
+# If Android SDK is not installed yet
+SKIP_ANDROID=1 ./setup_and_build_all.sh
+
+# If firmware toolchain is not installed yet
+SKIP_FIRMWARE=1 ./setup_and_build_all.sh
+
+# Custom Android SDK path
+ANDROID_HOME=/path/to/android-sdk ./setup_and_build_all.sh
+```
+
+What this script handles:
+- Docker infra bootstrap (PostgreSQL + RabbitMQ + queue/exchange initialization)
+- Backend full build
+- Dashboard lint/build/test
+- Edge syntax/lint/test validation
+- Android debug build + unit tests
+- AlertManagement script syntax checks
+- Firmware compile when `arduino-cli` is available
+
+---
+
 ## Phase 1: Cloud VPS Setup
 
 ### 1.1 Initial Server Hardening

@@ -4,6 +4,67 @@
 
 ---
 
+## 0. One-Command Setup Script Issues (`setup_and_build_all.sh`)
+
+### 0.1 Script Stops Early
+
+**Symptom:** setup exits before backend/dashboard/android build steps.
+
+**Diagnosis:**
+```bash
+# Run with shell trace
+bash -x ./setup_and_build_all.sh
+```
+
+**Common Causes:**
+
+| Cause | Fix |
+|-------|-----|
+| Docker daemon not running | Start Docker service, then rerun script |
+| Missing command (`java`, `node`, `npm`, `python3`) | Install required toolchain and rerun |
+| Wrong directory | Run script from repository root |
+
+### 0.2 `python -m venv` Fails on Ubuntu
+
+**Symptom:** `ensurepip is not available`.
+
+**Fix:**
+```bash
+sudo apt update
+sudo apt install -y python3.12-venv
+```
+
+Re-run script; it also has fallback to system Python/pip if venv creation fails.
+
+### 0.3 RabbitMQ Init Fails Intermittently
+
+**Symptom:** topology init fails with connection reset/incompatible protocol.
+
+**Fix:** Re-run the script. It already retries RabbitMQ initialization multiple times while broker startup stabilizes.
+
+### 0.4 Edge Lint/Test Report Warnings
+
+**Symptom:** script prints `flake8` or `pytest` warnings for edge module but continues.
+
+**Explanation:** Edge lint/test baseline has known pre-existing issues in the current repository. The script keeps these checks visible but non-blocking so full-platform builds can still complete.
+
+### 0.5 Android Build Fails in Script
+
+**Symptom:** `ANDROID_HOME is not set` or SDK path missing.
+
+**Fix:**
+```bash
+export ANDROID_HOME=/path/to/android-sdk
+./setup_and_build_all.sh
+```
+
+Or temporarily skip Android:
+```bash
+SKIP_ANDROID=1 ./setup_and_build_all.sh
+```
+
+---
+
 ## 1. Edge Node Issues
 
 ### 1.1 Edge Node Not Starting

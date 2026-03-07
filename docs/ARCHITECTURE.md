@@ -41,6 +41,7 @@ SudarshanChakra is a multi-tier IoT + Edge AI + Cloud platform for real-time far
 | Single YOLOv8n model (not ensemble) | RTX 3060 budget: 8 cameras × 2.5 FPS requires <8ms/frame |
 | TensorRT FP16 (not INT8) | FP16 gives 2.5× speedup with <0.5% mAP loss; INT8 drops 2-3% (too risky for safety) |
 | MQTT over VPN (not direct internet) | Secure tunnel eliminates public MQTT exposure; auto-reconnects on ISP outage |
+| Android foreground MQTT service (not FCM) | Real-time push delivery while app is backgrounded without vendor push dependency |
 | Bottom-center point-in-polygon (not bbox center) | Feet position accurately represents where a person IS standing |
 | Microservices (not monolith) | Independent deployment of alert, device, auth, siren services |
 | PostgreSQL (not NoSQL) | Strong schema for audit trail; JSONB for flexible metadata |
@@ -225,6 +226,8 @@ Edge → Cloud (acknowledgment):
   farm/siren/ack             Siren command acknowledgment
 ```
 
+Android mobile clients subscribe to `farm/alerts/#` (primary) with `alerts/#` as a legacy fallback filter for backward compatibility.
+
 ---
 
 ## 5. Deployment Architecture
@@ -254,3 +257,22 @@ Edge → Cloud (acknowledgment):
 | MQTT broker down | Client auto-reconnect with Last Will for offline detection |
 | LoRa serial disconnect | 5s retry loop with error logging |
 | PostgreSQL overload | Connection pooling + 2G memory limit + healthcheck |
+
+---
+
+## 7. Local Development Bootstrap (GPU Workstation)
+
+For full local setup/build on a developer GPU machine, use the repository root orchestrator:
+
+```bash
+./setup_and_build_all.sh
+```
+
+This script performs:
+- toolchain and Docker checks
+- PostgreSQL + RabbitMQ bootstrap and topology initialization
+- backend build (`./gradlew clean build`)
+- dashboard lint/build/test
+- edge syntax/lint/test validation (lint/test are reported as warnings when baseline issues already exist)
+- Android build + unit tests
+- optional firmware compilation when `arduino-cli` is installed
