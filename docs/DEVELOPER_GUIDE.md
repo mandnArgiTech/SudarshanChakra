@@ -17,12 +17,43 @@
 | Gradle | 8.7 (via wrapper) | Java build tool |
 | npm | 10+ | Node package manager |
 
-### 1.2 Repository Clone & First Setup
+### 1.2 Single-Command Setup + Build (Recommended)
 
 ```bash
 git clone https://github.com/mandnArgiTech/SudarshanChakra.git
 cd SudarshanChakra
+chmod +x setup_and_build_all.sh
+./setup_and_build_all.sh
+```
 
+This script performs end-to-end local setup and build for the full monorepo:
+- Checks toolchain + GPU visibility (`nvidia-smi`) + Docker daemon
+- Creates `.venv` and installs Python deps (`edge/requirements.txt`, `pytest`, `flake8`, `pika`)
+- Installs dashboard dependencies (`npm install`)
+- Starts PostgreSQL + RabbitMQ containers and initializes RabbitMQ topology
+- Builds backend microservices (`./gradlew clean build`)
+- Builds/tests dashboard (`lint`, `build`, `vitest --run`)
+- Validates Edge AI code (`py_compile`) and reports `flake8`/`pytest` results as warnings when baseline issues exist
+- Builds Android app (`assembleDebug`, `testDebugUnitTest`)
+- Syntax-checks `AlertManagement` scripts
+- Compiles firmware sketches if `arduino-cli` is installed
+
+Optional flags:
+
+```bash
+# Skip Android build when SDK is not installed yet
+SKIP_ANDROID=1 ./setup_and_build_all.sh
+
+# Skip firmware compile when arduino-cli/toolchain is not present
+SKIP_FIRMWARE=1 ./setup_and_build_all.sh
+
+# Use custom Android SDK location
+ANDROID_HOME=/path/to/android-sdk ./setup_and_build_all.sh
+```
+
+### 1.3 Repository Clone & Manual First Setup
+
+```bash
 # Backend: download Gradle dependencies
 cd backend && ./gradlew :alert-service:dependencies && cd ..
 
@@ -34,7 +65,7 @@ pip install -r edge/requirements.txt
 pip install flake8  # for linting
 ```
 
-### 1.3 Infrastructure Services (Docker)
+### 1.4 Infrastructure Services (Docker)
 
 ```bash
 # Start PostgreSQL and RabbitMQ for local development
@@ -143,6 +174,12 @@ Follow the 8 phases defined in `AGENT_INSTRUCTIONS.md`:
 ---
 
 ## 4. Build & Run Commands
+
+### One-command full setup + build
+
+```bash
+./setup_and_build_all.sh
+```
 
 ### Backend (Java)
 
