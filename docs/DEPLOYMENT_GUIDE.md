@@ -52,6 +52,8 @@ cp .env.example .env
 #   MQTT_EDGE_PASS=<edge_password>
 ```
 
+**Quick HTTP-only deploy (no TLS/OpenVPN):** From repo root run `./cloud/deploy.sh`. It builds all images, starts the stack with `docker-compose.vps.yml`, and initializes RabbitMQ. Dashboard and API are at `http://<vps-ip>:9080` (or port 80 if you change nginx ports in the compose file). See [DEPLOY_AFTER_BUILD.md](DEPLOY_AFTER_BUILD.md) for options (`--no-build`, `--build-only`).
+
 ### 1.3 OpenVPN Server
 
 ```bash
@@ -83,20 +85,27 @@ cp /etc/letsencrypt/live/vivasvan-tech.in/privkey.pem certs/
 
 ### 1.5 Start Services
 
+**Option A — Full stack (TLS, OpenVPN) with pre-built images:**
+
 ```bash
 docker compose up -d
 
 # Wait for RabbitMQ to be healthy (~30s)
 docker compose exec rabbitmq rabbitmq-diagnostics check_running
 
-# Initialize RabbitMQ topology
+# Initialize RabbitMQ topology (from cloud/ with pika installed)
 pip install pika
 RABBITMQ_PASS=<your_pass> python scripts/rabbitmq_init.py
+
+# Or without host pika — one-off container (same as deploy.sh):
+# docker run --rm --network cloud_default -e RABBITMQ_HOST=rabbitmq -e RABBITMQ_USER=admin -e RABBITMQ_PASS=$RABBITMQ_PASS -v $(pwd)/scripts/rabbitmq_init.py:/script.py:ro python:3.12-slim bash -c "pip install -q pika && python /script.py"
 
 # Verify
 docker compose ps
 curl -k https://localhost/health
 ```
+
+**Option B — HTTP-only stack (build on VPS):** From repo root run `./cloud/deploy.sh`. Uses `docker-compose.vps.yml`; dashboard and API at `http://<vps-ip>:9080`. See [VPS_HEALTH_AND_USAGE.md](VPS_HEALTH_AND_USAGE.md) for health checks.
 
 ---
 

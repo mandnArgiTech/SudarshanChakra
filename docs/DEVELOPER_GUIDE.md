@@ -67,6 +67,8 @@ pip install flake8  # for linting
 
 ### 1.4 Infrastructure Services (Docker)
 
+For **local development**, start PostgreSQL and RabbitMQ (or use `./setup_and_build_all.sh`, which does this and sets `RABBITMQ_ERLANG_COOKIE` and a named volume):
+
 ```bash
 # Start PostgreSQL and RabbitMQ for local development
 docker network create sc-net
@@ -78,7 +80,9 @@ docker run -d --name postgres --network sc-net \
 
 docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
   -e RABBITMQ_DEFAULT_USER=admin -e RABBITMQ_DEFAULT_PASS=devpassword123 \
+  -e RABBITMQ_ERLANG_COOKIE=sudarshanchakra-dev-cookie \
   -p 5672:5672 -p 1883:1883 -p 15672:15672 \
+  -v rabbitmq_data:/var/lib/rabbitmq \
   -v $(pwd)/cloud/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro \
   rabbitmq:3-management
 
@@ -86,6 +90,8 @@ docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
 pip install pika
 RABBITMQ_PASS=devpassword123 python cloud/scripts/rabbitmq_init.py
 ```
+
+For **VPS deployment** (full stack in Docker), use the deploy script from repo root: `./cloud/deploy.sh`. It builds backend and dashboard images and runs `cloud/docker-compose.vps.yml` (HTTP-only; dashboard on port 9080 by default). See [DEPLOY_AFTER_BUILD.md](DEPLOY_AFTER_BUILD.md).
 
 **Dev credentials:**
 - PostgreSQL: `scadmin / devpassword123` on `localhost:5432`
@@ -125,11 +131,13 @@ SudarshanChakra/
 │   └── package.json           # Dependencies defined
 │
 ├── cloud/                     # Cloud infrastructure
-│   ├── docker-compose.yml     # All VPS services
+│   ├── docker-compose.yml     # Full VPS (GHCR images, OpenVPN, TLS)
+│   ├── docker-compose.vps.yml # VPS HTTP-only (local images, use with deploy.sh)
+│   ├── deploy.sh             # Build images + start stack + RabbitMQ init
 │   ├── .env.example
 │   ├── db/init.sql            # PostgreSQL schema (10 tables)
-│   ├── rabbitmq/              # Broker config
-│   ├── nginx/nginx.conf
+│   ├── rabbitmq/              # Broker config (enabled_plugins)
+│   ├── nginx/                 # nginx.conf (TLS), nginx-vps.conf (HTTP-only)
 │   └── scripts/               # Health monitor, RabbitMQ init
 │
 ├── firmware/                  # ESP32 Arduino code
@@ -347,7 +355,11 @@ curl http://localhost:5000/api/zones  # Edge GUI API
 ### Cloud Debug
 
 ```bash
-# Check all service logs
+# When using deploy.sh / docker-compose.vps.yml (from cloud/):
+docker compose -f docker-compose.vps.yml logs -f
+# Dashboard and API: http://localhost:9080 (or http://<vps-ip>:9080)
+
+# Check all service logs (full compose)
 docker compose logs -f
 
 # Query database directly

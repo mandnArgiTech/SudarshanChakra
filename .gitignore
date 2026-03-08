@@ -35,6 +35,7 @@ Thumbs.db
 docker-compose.override.yml
 
 # Models (too large for git)
+android-sdk/
 *.engine
 *.pt
 *.onnx

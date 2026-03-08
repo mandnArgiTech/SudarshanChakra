@@ -2,6 +2,44 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_NAME="$(basename "$0")"
+INSTALL_DEPS=0
+
+# Parse --help / --install-deps before rest of config
+for arg in "$@"; do
+  case "${arg}" in
+    --help|-h)
+      echo "SudarshanChakra — Setup and build all components"
+      echo "Ready for bare-metal Ubuntu 24.04 (with or without GPU)."
+      echo ""
+      echo "USAGE:"
+      echo "  ${SCRIPT_NAME} [OPTIONS]"
+      echo ""
+      echo "OPTIONS:"
+      echo "  -h, --help          Show this help and exit."
+      echo "  -i, --install-deps  On Ubuntu/Debian, install required system packages and optionally Android SDK (uses sudo)."
+      echo ""
+      echo "ENVIRONMENT:"
+      echo "  SKIP_ANDROID=1      Skip Android app build (default: 0)."
+      echo "  SKIP_FIRMWARE=1     Skip ESP32 firmware build (default: 0)."
+      echo "  ANDROID_HOME        Path to Android SDK. If unset, script uses ${ROOT_DIR}/android-sdk when present."
+      echo "  JAVA_HOME           Optional. Backend requires Java 21; script auto-detects if not set."
+      echo ""
+      echo "UBUNTU 24.04 (BARE METAL) — Required packages (or run with --install-deps once):"
+      echo "  git curl unzip openjdk-21-jdk nodejs npm ripgrep python3.12-venv docker.io"
+      echo "  For Android APK: use --install-deps (downloads SDK to android-sdk/) or set ANDROID_HOME."
+      echo "  For Edge AI GPU: nvidia-driver-535, nvidia-container-toolkit (optional)."
+      echo ""
+      echo "EXAMPLES:"
+      echo "  ./${SCRIPT_NAME} --install-deps    # Install deps + build all (including Android APK)"
+      echo "  SKIP_ANDROID=1 ./${SCRIPT_NAME}     # Build without Android"
+      echo "  ./${SCRIPT_NAME}                    # Build only (deps must already be installed)"
+      exit 0
+      ;;
+    --install-deps|-i) INSTALL_DEPS=1 ;;
+  esac
+done
+
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 VENV_DIR="${VENV_DIR:-${ROOT_DIR}/.venv}"
@@ -16,11 +54,11 @@ DB_USER="${DB_USER:-scadmin}"
 DB_PASS="${DB_PASS:-devpassword123}"
 RABBITMQ_USER="${RABBITMQ_USER:-admin}"
 RABBITMQ_PASS="${RABBITMQ_PASS:-devpassword123}"
+RABBITMQ_ERLANG_COOKIE="${RABBITMQ_ERLANG_COOKIE:-sudarshanchakra-dev-cookie}"
 
 SKIP_ANDROID="${SKIP_ANDROID:-0}"
 SKIP_FIRMWARE="${SKIP_FIRMWARE:-0}"
 
-SCRIPT_NAME="$(basename "$0")"
 STEP_COUNTER=0
 SKIPPED_COMPONENTS=()
 
@@ -54,6 +92,57 @@ ensure_repo_root() {
   [[ -d "${ROOT_DIR}/cloud" ]] || die "Run this script from repo root."
 }
 
+install_system_deps() {
+  log "Installing system dependencies (Ubuntu/Debian; uses sudo)"
+  if ! command -v apt-get >/dev/null 2>&1; then
+    die "apt-get not found. This script supports Ubuntu/Debian. Install required packages manually (see --help)."
+  fi
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq \
+    git curl unzip \
+    openjdk-21-jdk \
+    nodejs npm \
+    ripgrep \
+    python3.12-venv \
+    docker.io \
+    || die "apt-get install failed. Fix errors above and retry."
+  # Add current user to docker group so Docker runs without sudo
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    sudo usermod -aG docker "${SUDO_USER}" 2>/dev/null || true
+  fi
+  log "System packages installed. You may need to log out and back in for Docker group to apply."
+  # Optional: download Android SDK into android-sdk/ if building Android
+  if [[ "${SKIP_ANDROID}" != "1" ]]; then
+    local sdk_root="${ROOT_DIR}/android-sdk"
+    if [[ -z "${ANDROID_HOME:-}" && ! -d "${sdk_root}/cmdline-tools/latest/bin" ]]; then
+      log "Downloading Android command-line tools into android-sdk/"
+      mkdir -p "${sdk_root}"
+      curl -sL -o /tmp/cmdline-tools.zip \
+        "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" \
+        || { warn "Android SDK download failed. Set ANDROID_HOME manually or run with SKIP_ANDROID=1."; return; }
+      unzip -q -o /tmp/cmdline-tools.zip -d "${sdk_root}"
+      rm -f /tmp/cmdline-tools.zip
+      if [[ -d "${sdk_root}/cmdline-tools" && ! -d "${sdk_root}/cmdline-tools/latest" ]]; then
+        mkdir -p "${sdk_root}/cmdline-tools/latest"
+        mv "${sdk_root}"/cmdline-tools/bin "${sdk_root}"/cmdline-tools/lib \
+           "${sdk_root}"/cmdline-tools/NOTICE.txt "${sdk_root}"/cmdline-tools/source.properties \
+           "${sdk_root}/cmdline-tools/latest/" 2>/dev/null || true
+      fi
+      if [[ -x "${sdk_root}/cmdline-tools/latest/bin/sdkmanager" ]]; then
+        yes | "${sdk_root}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${sdk_root}" --licenses 2>/dev/null | tail -1 || true
+        "${sdk_root}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${sdk_root}" \
+          "platform-tools" "platforms;android-34" "build-tools;34.0.0" 2>/dev/null || true
+        export ANDROID_HOME="${sdk_root}"
+        log "Android SDK installed at ${sdk_root}. Set ANDROID_HOME=${sdk_root} in your shell to reuse."
+      else
+        warn "Android SDK structure incomplete. Set ANDROID_HOME manually or use SKIP_ANDROID=1."
+      fi
+    elif [[ -d "${sdk_root}/cmdline-tools/latest/bin" ]]; then
+      export ANDROID_HOME="${sdk_root}"
+    fi
+  fi
+}
+
 check_gpu_runtime() {
   next_step "Checking GPU and Docker runtime"
   if command -v nvidia-smi >/dev/null 2>&1; then
@@ -79,6 +168,26 @@ check_base_toolchain() {
   require_cmd pip3
   require_cmd "${DOCKER_BIN}"
   require_cmd java
+  # Backend requires Java 21; prefer JAVA_HOME if set, else check default java
+  if [[ -n "${JAVA_HOME:-}" && -x "${JAVA_HOME}/bin/java" ]]; then
+    java_ver=$("${JAVA_HOME}/bin/java" -version 2>&1 | head -1) || true
+  else
+    java_ver=$(java -version 2>&1 | head -1) || true
+  fi
+  if ! echo "${java_ver}" | grep -qE '"21\.'; then
+    # Try to find Java 21 in common locations (e.g. after apt install openjdk-21-jdk)
+    local j21
+    for j21 in /usr/lib/jvm/java-21-openjdk-amd64/bin/java /usr/lib/jvm/java-21-openjdk/bin/java; do
+      if [[ -x "${j21}" ]]; then
+        export JAVA_HOME="${j21%/bin/java}"
+        java_ver=$("${j21}" -version 2>&1 | head -1) || true
+        break
+      fi
+    done
+  fi
+  if ! echo "${java_ver}" | grep -qE '"21\.'; then
+    die "Backend requires Java 21. Found: ${java_ver:-unknown}. Install: sudo apt install openjdk-21-jdk, or run with --install-deps"
+  fi
   require_cmd node
   require_cmd npm
   require_cmd rg
@@ -146,6 +255,8 @@ start_infra() {
     --hostname farm-broker \
     -e "RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}" \
     -e "RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}" \
+    -e "RABBITMQ_ERLANG_COOKIE=${RABBITMQ_ERLANG_COOKIE}" \
+    -v "rabbitmq_data:/var/lib/rabbitmq" \
     -p 5672:5672 \
     -p 1883:1883 \
     -p 15672:15672 \
@@ -236,11 +347,17 @@ build_android() {
 
   next_step "Building Android app"
 
-  if [[ -z "${ANDROID_HOME:-}" && -d "/opt/android-sdk" ]]; then
-    export ANDROID_HOME="/opt/android-sdk"
+  [[ -d "${ROOT_DIR}/android" ]] || die "Android project not found at ${ROOT_DIR}/android."
+
+  if [[ -z "${ANDROID_HOME:-}" ]]; then
+    if [[ -d "${ROOT_DIR}/android-sdk/cmdline-tools/latest/bin" ]]; then
+      export ANDROID_HOME="${ROOT_DIR}/android-sdk"
+    elif [[ -d "/opt/android-sdk" ]]; then
+      export ANDROID_HOME="/opt/android-sdk"
+    fi
   fi
 
-  [[ -n "${ANDROID_HOME:-}" ]] || die "ANDROID_HOME is not set. Set ANDROID_HOME before running."
+  [[ -n "${ANDROID_HOME:-}" ]] || die "ANDROID_HOME is not set. Set ANDROID_HOME or run with --install-deps, or use SKIP_ANDROID=1."
   [[ -d "${ANDROID_HOME}" ]] || die "ANDROID_HOME path does not exist: ${ANDROID_HOME}"
 
   (
@@ -289,6 +406,9 @@ print_summary() {
 
 main() {
   ensure_repo_root
+  if [[ "${INSTALL_DEPS}" == "1" ]]; then
+    install_system_deps
+  fi
   check_base_toolchain
   check_gpu_runtime
   setup_python_env

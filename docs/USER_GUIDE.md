@@ -33,7 +33,9 @@ SudarshanChakra is an AI-powered security system for your farm. It uses cameras 
 
 ### 2.1 Accessing the Dashboard
 
-Open your browser and go to: `https://vivasvan-tech.in`
+Open your browser and go to: **`https://vivasvan-tech.in`** (production with TLS).
+
+If you deployed with the **VPS deploy script** (HTTP-only stack), use **`http://vivasvan-tech.in:9080`** or **`http://<your-server-ip>:9080`** (or `http://localhost:9080` when on the server). The main site vivasvan-tech.in (port 80/443) is used by another app (e.g. Portainer); SudarshanChakra is on port **9080**. To use a different port, change the nginx port mapping in `cloud/docker-compose.vps.yml` (e.g. `"9080:80"`).
 
 Log in with your username and password provided by the farm administrator.
 

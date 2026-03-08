@@ -153,6 +153,8 @@ docker exec edge-ai nc -zv 10.8.0.1 1883
 
 ## 3. Cloud / VPS Issues
 
+When using the **VPS deploy script** (`./cloud/deploy.sh`), the stack runs with `docker-compose.vps.yml` from the `cloud/` directory. Nginx serves the dashboard and API on **port 9080** by default (so SudarshanChakra does not conflict with other apps on the VPS, e.g. Portainer on vivasvan-tech.in). Use `docker compose -f docker-compose.vps.yml <command>` when running compose from `cloud/`.
+
 ### 3.1 PostgreSQL Connection Refused
 
 ```bash
@@ -191,18 +193,25 @@ curl -u admin:password http://localhost:15672/api/overview
 
 | Cause | Fix |
 |-------|-----|
-| No queues created | Run `python rabbitmq_init.py` |
-| TLS cert missing | Start without custom rabbitmq.conf for dev |
+| No queues created | Run RabbitMQ init: from `cloud/` with `RABBITMQ_PASS` set run `python3 scripts/rabbitmq_init.py` (requires pika), or use the one-off Docker method as in `deploy.sh`: `docker run --rm --network cloud_default -e RABBITMQ_HOST=rabbitmq -e RABBITMQ_USER=admin -e RABBITMQ_PASS=$RABBITMQ_PASS -v $(pwd)/cloud/scripts/rabbitmq_init.py:/script.py:ro python:3.12-slim bash -c "pip install -q pika && python /script.py"` from repo root |
+| TLS cert missing | Start without custom rabbitmq.conf for dev; VPS compose uses only `enabled_plugins` and `RABBITMQ_ERLANG_COOKIE` |
 | Memory alarm | Increase `vm_memory_high_watermark` or add RAM |
 
 ### 3.3 Nginx / TLS Issues
 
 ```bash
-# Check Nginx
+# When using full compose (TLS)
 docker compose logs nginx-proxy
 
-# Test TLS
+# When using deploy.sh / docker-compose.vps.yml (HTTP-only)
+docker compose -f docker-compose.vps.yml logs nginx-proxy
+# Config: cloud/nginx/nginx-vps.conf; default host port 9080
+
+# Test TLS (production)
 curl -v https://vivasvan-tech.in/health
+
+# Test HTTP (VPS script deploy)
+curl -s http://localhost:9080/health
 
 # Check cert expiry
 openssl x509 -in certs/fullchain.pem -noout -dates
@@ -313,6 +322,8 @@ cat /boot/config.txt | grep i2s
 ---
 
 ## 6. Log Locations
+
+When using **deploy.sh** / **docker-compose.vps.yml**, run compose from `cloud/` with `-f docker-compose.vps.yml` (e.g. `docker compose -f docker-compose.vps.yml logs -f`).
 
 | Component | Log Command |
 |-----------|-------------|

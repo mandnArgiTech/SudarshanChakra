@@ -1,0 +1,147 @@
+# ==============================================================================
+# SudarshanChakra — VPS Docker Compose (local images, HTTP-only)
+# ==============================================================================
+# Use with: ./deploy.sh  (builds images then runs this compose)
+# Requires: cloud/.env (copy from .env.example), Docker, docker compose
+# No TLS: nginx serves HTTP (container port 80; default host port 9080 so SudarshanChakra
+# does not conflict with other apps on the VPS, e.g. Portainer on vivasvan-tech.in). Change 9080 if needed.
+# No OpenVPN/VPN health in this profile.
+# ==============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    environment:
+      POSTGRES_DB: sudarshanchakra
+      POSTGRES_USER: ${DB_USER:-scadmin}
+      POSTGRES_PASSWORD: ${DB_PASS:?Set DB_PASS in cloud/.env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-scadmin} -d sudarshanchakra"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    hostname: farm-broker
+    ports:
+      - "5672:5672"
+      - "1883:1883"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:?Set RABBITMQ_PASS in cloud/.env}
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE:-sudarshanchakra-dev-cookie}
+    restart: always
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  api-gateway:
+    image: sudarshanchakra/api-gateway:latest
+    container_name: api-gateway
+    # Port 8080 not exposed on host; access via nginx on port 80 (e.g. /api/...)
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - ALERT_SERVICE_URL=http://alert-service:8081
+      - DEVICE_SERVICE_URL=http://device-service:8082
+      - AUTH_SERVICE_URL=http://auth-service:8083
+      - SIREN_SERVICE_URL=http://siren-service:8084
+    depends_on:
+      - alert-service
+      - device-service
+      - auth-service
+      - siren-service
+    restart: always
+
+  alert-service:
+    image: sudarshanchakra/alert-service:latest
+    container_name: alert-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sudarshanchakra
+      - SPRING_DATASOURCE_USERNAME=${DB_USER:-scadmin}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASS}
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_USERNAME=${RABBITMQ_USER:-admin}
+      - SPRING_RABBITMQ_PASSWORD=${RABBITMQ_PASS}
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    restart: always
+
+  device-service:
+    image: sudarshanchakra/device-service:latest
+    container_name: device-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sudarshanchakra
+      - SPRING_DATASOURCE_USERNAME=${DB_USER:-scadmin}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASS}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: always
+
+  auth-service:
+    image: sudarshanchakra/auth-service:latest
+    container_name: auth-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sudarshanchakra
+      - SPRING_DATASOURCE_USERNAME=${DB_USER:-scadmin}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASS}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in cloud/.env}
+      - JWT_EXPIRATION_MS=86400000
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: always
+
+  siren-service:
+    image: sudarshanchakra/siren-service:latest
+    container_name: siren-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sudarshanchakra
+      - SPRING_DATASOURCE_USERNAME=${DB_USER:-scadmin}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASS}
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_USERNAME=${RABBITMQ_USER:-admin}
+      - SPRING_RABBITMQ_PASSWORD=${RABBITMQ_PASS}
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    restart: always
+
+  react-dashboard:
+    image: sudarshanchakra/dashboard:latest
+    container_name: react-dashboard
+    restart: always
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    ports:
+      - "9080:80"   # SudarshanChakra dashboard/API (vivasvan-tech.in is used by Portainer/other app)
+    volumes:
+      - ./nginx/nginx-vps.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-gateway
+      - react-dashboard
+    restart: always
+
+volumes:
+  pg_data:
+  rabbitmq_data:
