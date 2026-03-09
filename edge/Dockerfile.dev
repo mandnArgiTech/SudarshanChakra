@@ -1,0 +1,37 @@
+# ==============================================================================
+# SudarshanChakra — Edge AI Container (DEV MODE — No GPU Required)
+# ==============================================================================
+# This Dockerfile builds the edge AI system for development/testing on
+# any machine (laptop, CI server, VPS) without NVIDIA GPU.
+#
+# Differences from production Dockerfile:
+#   - Uses python:3.11-slim instead of ultralytics/ultralytics (no CUDA)
+#   - YOLO runs on CPU (slower but functional for testing)
+#   - No TensorRT export — uses .pt weights directly
+#   - Supports mock camera feeds (video files or generated frames)
+#   - Supports mock LoRa (simulated tag beacons)
+#   - Supports mock siren (logs instead of MQTT to PA controller)
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up
+# ==============================================================================
+
+FROM python:3.11-slim
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+COPY . .
+EXPOSE 5000
+ENV DEV_MODE=true
+ENV MOCK_CAMERAS=true
+ENV MOCK_LORA=true
+ENV MOCK_SIREN=true
+CMD ["python", "farm_edge_node.py"]

@@ -20,9 +20,26 @@ import time
 
 import paho.mqtt.client as mqtt
 
-from pipeline import InferencePipeline, CameraConfig, load_model
+# ── Dev Mode Detection ──
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+MOCK_CAMERAS = os.getenv("MOCK_CAMERAS", "false").lower() == "true"
+MOCK_LORA = os.getenv("MOCK_LORA", "false").lower() == "true"
+MOCK_SIREN = os.getenv("MOCK_SIREN", "false").lower() == "true"
+
+if DEV_MODE or MOCK_CAMERAS:
+    from mock_camera import MockInferencePipeline
+if DEV_MODE or MOCK_LORA:
+    from mock_lora import MockLoRaReceiver
+if DEV_MODE or MOCK_SIREN:
+    from mock_siren import MockSirenHandler
+
+from pipeline import CameraConfig
+if not (DEV_MODE or MOCK_CAMERAS):
+    from pipeline import InferencePipeline, load_model
+
 from zone_engine import ZoneEngine
-from lora_receiver import LoRaReceiver
+if not (DEV_MODE or MOCK_LORA):
+    from lora_receiver import LoRaReceiver
 from alert_engine import AlertDecisionEngine
 from edge_gui import create_app
 
@@ -257,16 +274,22 @@ def start_heartbeat(mqtt_client, pipeline=None, alert_engine=None):
 def main():
     log.info("=" * 70)
     log.info("  SudarshanChakra Edge Node: %s", NODE_ID)
+    if DEV_MODE:
+        log.info("  *** DEV MODE — No GPU, Mock Cameras, Mock LoRa, Mock Siren ***")
     log.info("  VPN Broker: %s:%d", VPN_BROKER_IP, MQTT_PORT)
     log.info("  Config Dir: %s", CONFIG_DIR)
     log.info("  Model Dir:  %s", MODEL_DIR)
-    log.info("  LoRa:       %s", "Enabled" if LORA_ENABLED else "Disabled")
+    log.info("  LoRa:       %s", "Mock" if MOCK_LORA else ("Enabled" if LORA_ENABLED else "Disabled"))
     log.info("=" * 70)
     
-    # ── Step 1: Load YOLO model (builds TensorRT engine on first run) ──
-    log.info("Loading YOLO model (first run will build TensorRT engine)...")
-    model = load_model()
-    log.info("Model loaded successfully.")
+    # ── Step 1: Load YOLO model (skip in dev mode) ──
+    model = None
+    if not (DEV_MODE or MOCK_CAMERAS):
+        log.info("Loading YOLO model (first run will build TensorRT engine)...")
+        model = load_model()
+        log.info("Model loaded successfully.")
+    else:
+        log.info("DEV MODE: Skipping YOLO model load — using mock detections")
     
     # ── Step 2: Load camera configs ──
     cameras = load_camera_configs()
@@ -275,28 +298,73 @@ def main():
     zone_engine = ZoneEngine(os.path.join(CONFIG_DIR, "zones.json"))
     log.info("Zone engine loaded with %d zone definitions.", len(zone_engine.polygons))
     
-    # ── Step 4: Initialize LoRa receiver ──
-    lora = LoRaReceiver(port=LORA_PORT) if LORA_ENABLED else None
-    if lora:
+    # ── Step 4: Initialize LoRa receiver (mock in dev mode) ──
+    if MOCK_LORA or DEV_MODE:
+        lora = MockLoRaReceiver(
+            authorized_tags_path=os.path.join(CONFIG_DIR, "authorized_tags.json"),
+            worker_present=True,  # Set False to test intruder alerts
+        )
+        lora.start()
+        log.info("MOCK LoRa receiver started (worker_present=True)")
+    elif LORA_ENABLED:
+        lora = LoRaReceiver(port=LORA_PORT)
         lora.start()
         log.info("LoRa receiver started on %s", LORA_PORT)
+    else:
+        lora = None
     
-    # ── Step 5: Connect to VPS MQTT broker ──
+    # ── Step 5: Connect to MQTT broker ──
     mqtt_client = create_mqtt_client()
-    setup_siren_listener(mqtt_client)
-    
+
+    # Siren handler (mock in dev mode)
+    if MOCK_SIREN or DEV_MODE:
+        mock_siren = MockSirenHandler(mqtt_client, NODE_ID)
+        mqtt_client.on_message = mock_siren.handle_command
+        log.info("MOCK siren handler installed (logs instead of PA system)")
+    else:
+        setup_siren_listener(mqtt_client)
+
+    # Dev mode: subscribe to simulation commands
+    if DEV_MODE:
+        def on_dev_command(client, userdata, msg):
+            """Handle dev simulation commands."""
+            topic = msg.topic
+            try:
+                payload = json.loads(msg.payload.decode())
+            except Exception:
+                payload = {}
+
+            if "simulate/fall" in topic and lora and hasattr(lora, 'simulate_fall'):
+                tag_id = payload.get("tag_id", "TAG-C001")
+                lora.simulate_fall(tag_id)
+                log.info("DEV: Simulated fall event for %s", tag_id)
+
+            elif "simulate/worker_toggle" in topic and lora and hasattr(lora, 'set_worker_present'):
+                present = payload.get("present", True)
+                lora.set_worker_present(present)
+                log.info("DEV: Worker presence set to %s", present)
+
+        # Will be subscribed after connect
+
     while True:
         try:
             mqtt_client.connect(VPN_BROKER_IP, MQTT_PORT, keepalive=60)
             break
         except (ConnectionRefusedError, OSError) as e:
-            log.error("Cannot reach VPS broker at %s: %s. Retrying in 5s...", VPN_BROKER_IP, e)
+            log.error("Cannot reach broker at %s: %s. Retrying in 5s...", VPN_BROKER_IP, e)
             time.sleep(5)
     
     mqtt_client.loop_start()
+
+    # Subscribe to dev simulation topics
+    if DEV_MODE:
+        mqtt_client.subscribe("dev/simulate/#", qos=1)
+        mqtt_client.message_callback_add("dev/simulate/#", on_dev_command)
+        log.info("DEV: Listening for simulation commands on dev/simulate/#")
+        log.info("DEV: Trigger fall:   mosquitto_pub -t dev/simulate/fall -m '{\"tag_id\":\"TAG-C001\"}'")
+        log.info("DEV: Toggle worker:  mosquitto_pub -t dev/simulate/worker_toggle -m '{\"present\":false}'")
     
-    # ── Step 6 & 7: Initialize alert decision engine (heartbeat started after) ──
-    # Create a placeholder LoRa for the engine if LoRa is disabled
+    # ── Step 6 & 7: Initialize alert decision engine ──
     class DummyLoRa:
         def is_worker_nearby(self, max_age_seconds=15.0): return False
         def get_nearby_workers(self, max_age_seconds=15.0): return []
@@ -308,15 +376,12 @@ def main():
         node_id=NODE_ID,
     )
     
-    # ── Step 7b: Wire ESP32 fall detector to alert engine ──
-    if lora:
+    # ── Step 7b: Wire fall detector to alert engine ──
+    if lora and hasattr(lora, 'fall_callbacks'):
         lora.fall_callbacks.append(alert_engine.process_fall_event)
         log.info("Fall detector callback wired: LoRa → AlertEngine")
     
-    # ── Step 8: Start heartbeat with engine/pipeline references ──
-    # (pipeline object created below, heartbeat will access stats via closure)
-
-    # ── Step 9: Start Flask GUI in background thread ──
+    # ── Step 8: Start Flask GUI in background thread ──
     flask_app = create_app(zone_engine, cameras, CONFIG_DIR)
     flask_thread = threading.Thread(
         target=lambda: flask_app.run(host="0.0.0.0", port=FLASK_PORT, debug=False),
@@ -325,9 +390,15 @@ def main():
     flask_thread.start()
     log.info("Flask Edge GUI started on port %d", FLASK_PORT)
     
-    # ── Step 10: Start inference pipeline (blocking) ──
-    log.info("Starting inference pipeline with %d cameras...", len(cameras))
-    pipeline = InferencePipeline(model, cameras)
+    # ── Step 9: Start inference pipeline (mock or real) ──
+    if DEV_MODE or MOCK_CAMERAS:
+        detection_interval = float(os.getenv("MOCK_DETECTION_INTERVAL", "5"))
+        log.info("Starting MOCK inference pipeline (detection every %.0fs)...", detection_interval)
+        pipeline = MockInferencePipeline(cameras, detection_interval=detection_interval)
+    else:
+        log.info("Starting inference pipeline with %d cameras...", len(cameras))
+        pipeline = InferencePipeline(model, cameras)
+
     pipeline.results_callbacks.append(alert_engine.process_detection)
     start_heartbeat(mqtt_client, pipeline=pipeline, alert_engine=alert_engine)
     

@@ -1,0 +1,70 @@
+# ==============================================================================
+# SudarshanChakra — Edge Node DEV MODE (No GPU, No Cameras, No LoRa, No Siren)
+# ==============================================================================
+# Runs the complete edge AI pipeline on any machine for development and testing.
+# Uses: CPU inference, mock camera feeds, mock LoRa tags, mock siren output.
+#
+# Usage:
+#   cd edge
+#   docker compose -f docker-compose.dev.yml up
+#
+# Test end-to-end:
+#   # In another terminal:
+#   python test_e2e.py --broker localhost --scenario full
+# ==============================================================================
+
+services:
+  # ── Local MQTT Broker (dev-only, replaces VPS RabbitMQ) ──
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    container_name: mqtt-dev-broker
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./dev/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+
+  # ── Edge AI (CPU mode, mock cameras) ──
+  edge-ai-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: edge-ai-dev
+    environment:
+      # Dev mode flags
+      - DEV_MODE=true
+      - MOCK_CAMERAS=true
+      - MOCK_LORA=true
+      - MOCK_SIREN=true
+      # Node identity
+      - NODE_ID=edge-node-dev
+      # MQTT broker (local mosquitto)
+      - VPN_BROKER_IP=mqtt-broker
+      - MQTT_PORT=1883
+      - MQTT_USER=
+      - MQTT_PASS=
+      # Paths
+      - CONFIG_DIR=/app/config
+      - MODEL_DIR=/app/models
+      - FLASK_PORT=5000
+      # LoRa disabled in dev (mock provides simulated tags)
+      - LORA_ENABLED=false
+      # YOLO CPU mode
+      - YOLO_DEVICE=cpu
+      - CONFIDENCE_THRESHOLD=0.40
+      - INPUT_SIZE=640
+      - LOG_LEVEL=DEBUG
+      # Mock camera config
+      - MOCK_CAMERA_FPS=1.0
+      - MOCK_DETECTION_INTERVAL=5
+      # Mock siren (just logs, no PA controller)
+      - PA_MQTT_BROKER=
+    volumes:
+      - ./config:/app/config
+      - ./models:/app/models
+      - ./dev/mock_videos:/app/mock_videos
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mqtt-broker
+    restart: unless-stopped
