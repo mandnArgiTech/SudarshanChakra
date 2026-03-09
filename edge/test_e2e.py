@@ -108,30 +108,35 @@ def test_worker_suppression(client):
                    json.dumps({"present": False}), qos=1)
     time.sleep(2)
 
-    print("  Step 2: Waiting for intruder alert (worker tag absent)...")
+    print("  Step 2: Waiting for person intruder alert (worker tag absent)...")
+    print("          (cam-01 person aligns every ~200s in the mock cycle; patience needed)")
     clear_messages()
-    result = wait_for_topic("farm/alerts/", timeout=60)
 
-    if result:
-        p = result["payload"]
-        if p.get("detection_class") == "person" and not p.get("worker_suppressed"):
-            print(f"  {GREEN}✓ Intruder alert fired (worker absent)!{RESET}")
-            # Re-enable worker
-            client.publish("dev/simulate/worker_toggle",
-                           json.dumps({"present": True}), qos=1)
-            return True
+    # The mock pipeline cycles 10 scenarios across 8 cameras (5s each).
+    # cam-01 + person scenario aligns at index 0, 40, 80... = every 200s.
+    # We need enough time for at least one full cycle after toggle.
+    start = time.time()
+    timeout = 250
+    while time.time() - start < timeout:
+        with lock:
+            for topic, msgs in received_messages.items():
+                if topic.startswith("farm/alerts/"):
+                    for msg in msgs:
+                        p = msg["payload"]
+                        if isinstance(p, dict) and p.get("detection_class") == "person" \
+                                and not p.get("worker_suppressed"):
+                            elapsed = time.time() - start
+                            print(f"  {GREEN}✓ Intruder alert fired (worker absent) after {elapsed:.0f}s!{RESET}")
+                            client.publish("dev/simulate/worker_toggle",
+                                           json.dumps({"present": True}), qos=1)
+                            return True
+        time.sleep(1)
 
-    print(f"  {YELLOW}? Alert received but may not be person/intruder. Checking suppression log...{RESET}")
     # Re-enable worker
     client.publish("dev/simulate/worker_toggle",
                    json.dumps({"present": True}), qos=1)
 
-    suppression = wait_for_topic("farm/events/worker_identified", timeout=10)
-    if suppression:
-        print(f"  {GREEN}✓ Worker suppression event found (suppression working){RESET}")
-        return True
-
-    print(f"  {RED}✗ Could not verify worker suppression logic{RESET}")
+    print(f"  {RED}✗ No person intruder alert received within {timeout}s{RESET}")
     return False
 
 
