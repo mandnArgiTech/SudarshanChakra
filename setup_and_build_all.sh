@@ -45,7 +45,14 @@ if [[ -t 1 ]] && [[ "${NO_COLOR}" -eq 0 ]]; then
   readonly DIM='\033[2m'
   readonly RESET='\033[0m'
 else
-  readonly RED='' GREEN='' YELLOW='' BLUE='' CYAN='' BOLD='' DIM='' RESET=''
+  readonly RED=''
+  readonly GREEN=''
+  readonly YELLOW=''
+  readonly BLUE=''
+  readonly CYAN=''
+  readonly BOLD=''
+  readonly DIM=''
+  readonly RESET=''
 fi
 
 # ============================================================================
@@ -318,10 +325,12 @@ ensure_pip() {
 }
 
 run_pip() {
+  # PIP_BREAK_SYSTEM_PACKAGES: on Ubuntu 24.04+ (PEP 668), pip refuses to
+  # install into system Python without this. Older pip versions ignore it.
   if [[ "${PIP_CMD}" == *" -m pip"* ]]; then
-    "${PYTHON_BIN}" -m pip "$@"
+    PIP_BREAK_SYSTEM_PACKAGES=1 "${PYTHON_BIN}" -m pip "$@"
   else
-    ${PIP_CMD} "$@"
+    PIP_BREAK_SYSTEM_PACKAGES=1 ${PIP_CMD} "$@"
   fi
 }
 
@@ -359,7 +368,12 @@ check_port_free() {
 wait_for_port() {
   local port=$1 timeout=${2:-60} elapsed=0
   while [[ ${elapsed} -lt ${timeout} ]]; do
+    # Try bash /dev/tcp first, fall back to nc or ss for portability
     if (echo > "/dev/tcp/localhost/${port}") 2>/dev/null; then
+      return 0
+    elif command -v nc >/dev/null 2>&1 && nc -z localhost "${port}" 2>/dev/null; then
+      return 0
+    elif command -v ss >/dev/null 2>&1 && ss -tlnp 2>/dev/null | grep -q ":${port} "; then
       return 0
     fi
     sleep 2
@@ -427,10 +441,17 @@ cmd_install_deps() {
 
   # Core packages (without Docker to avoid containerd conflicts)
   local pkgs="git curl unzip openjdk-21-jdk ripgrep python3-pip"
-  local venv_pkg="python3.12-venv"
+
+  # Detect correct python3-venv package: python3.10-venv on 22.04, python3.12-venv on 24.04
+  local py_minor
+  py_minor=$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "")
+  local venv_pkg="python3-venv"
+  if [[ -n "${py_minor}" ]]; then
+    venv_pkg="python${py_minor}-venv"
+  fi
 
   if ! sudo apt-get install -y -qq ${pkgs} ${venv_pkg} 2>/dev/null; then
-    log_warn "python3.12-venv unavailable — trying python3-venv..."
+    log_warn "${venv_pkg} unavailable — trying python3-venv..."
     venv_pkg="python3-venv"
     sudo apt-get install -y -qq ${pkgs} ${venv_pkg} \
       || { log_error "Base package install failed. See output above."; return 1; }
@@ -452,8 +473,10 @@ cmd_install_deps() {
   fi
 
   # Node.js 22 LTS if system node is too old or missing
-  local node_major
-  node_major=$(node --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/' || echo "0")
+  local node_major="0"
+  if command -v node >/dev/null 2>&1; then
+    node_major=$(node --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/' || echo "0")
+  fi
   if [[ "${node_major}" -lt 18 ]]; then
     log_info "Installing Node.js 22 LTS via NodeSource..."
     if curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -; then
@@ -592,10 +615,14 @@ _start_infra() {
   "${DOCKER_BIN}" exec "${RABBITMQ_CONTAINER}" \
     rabbitmq-plugins enable rabbitmq_mqtt rabbitmq_web_mqtt 2>/dev/null || true
 
-  # ── Initialize topology (exchanges, queues, bindings) ──
+  # ── Initialize topology ──
+  _init_topology
+}
+
+# Shared helper: install pika if needed, then create RabbitMQ exchanges/queues/bindings
+_init_topology() {
   log_info "Initializing RabbitMQ topology..."
 
-  # Ensure pika is available for the init script
   if ! "${PYTHON_EXEC}" -c "import pika" 2>/dev/null; then
     log_info "Installing pika for topology initialization..."
     ensure_pip || return 1
@@ -825,14 +852,22 @@ cmd_test_android() {
 cmd_test_all() {
   local fail=0
 
-  track_run "TEST BACKEND"   cmd_test_backend   || fail=1
-  track_run "TEST DASHBOARD" cmd_test_dashboard || fail=1
-  track_run "TEST EDGE"      cmd_test_edge      || fail=1
+  track_run "TEST BACKEND" cmd_test_backend || fail=1
+
+  if [[ "${SKIP_DASHBOARD}" == "1" ]]; then
+    track_skip "TEST DASHBOARD" "SKIP_DASHBOARD=1"
+  elif ! command -v node >/dev/null 2>&1; then
+    track_skip "TEST DASHBOARD" "node not found"
+  else
+    track_run "TEST DASHBOARD" cmd_test_dashboard || fail=1
+  fi
+
+  track_run "TEST EDGE" cmd_test_edge || fail=1
 
   if [[ "${SKIP_ANDROID}" == "1" ]]; then
     track_skip "TEST ANDROID" "SKIP_ANDROID=1"
   else
-    track_run "TEST ANDROID" cmd_test_android   || fail=1
+    track_run "TEST ANDROID" cmd_test_android || fail=1
   fi
 
   return ${fail}
@@ -852,10 +887,16 @@ cmd_deploy_backend() {
   mkdir -p "${LOG_DIR}"
   : > "${LOG_DIR}/service.pids"
 
-  log_info "Starting 5 backend services via Gradle bootRun..."
+  # Pre-build all services first to avoid Gradle lock contention when
+  # multiple bootRun processes compile simultaneously.
+  log_info "Pre-building backend services..."
+  (cd "${ROOT_DIR}/backend" && ./gradlew build -x test --no-daemon) \
+    || { log_error "Backend pre-build failed."; return 1; }
+
+  log_info "Starting 5 backend services sequentially..."
   log_info "Logs directory: ${LOG_DIR}/"
 
-  local svc port pid
+  local svc port pid all_ok=1
   for svc in "${BACKEND_SERVICES[@]}"; do
     port="${SERVICE_PORT[${svc}]}"
 
@@ -870,17 +911,10 @@ cmd_deploy_backend() {
        >> "${LOG_DIR}/${svc}.log" 2>&1 &
     pid=$!
     echo "${pid} ${svc} ${port}" >> "${LOG_DIR}/service.pids"
-    log_debug "${svc}: PID ${pid}, log at ${LOG_DIR}/${svc}.log"
-  done
 
-  # Wait for each service's port to become available
-  log_info "Waiting for services to become healthy..."
-  local all_ok=1
-  for svc in "${BACKEND_SERVICES[@]}"; do
-    port="${SERVICE_PORT[${svc}]}"
-
+    # Wait for this service before starting the next to avoid resource contention
     if wait_for_port "${port}" 120; then
-      log_success "${svc} is up on port ${port}."
+      log_success "${svc} is up on port ${port} (PID ${pid})."
     else
       log_error "${svc} did not start on port ${port}. Check ${LOG_DIR}/${svc}.log"
       all_ok=0
@@ -1041,20 +1075,8 @@ cmd_deploy_docker() {
   wait_for_port 5672 120 || { log_error "RabbitMQ not ready."; return 1; }
   log_success "RabbitMQ is ready."
 
-  # Initialize RabbitMQ topology
-  if ! "${PYTHON_EXEC}" -c "import pika" 2>/dev/null; then
-    ensure_pip || return 1
-    run_pip install pika -q || true
-  fi
-  log_info "Initializing RabbitMQ topology..."
-  local attempt
-  for attempt in $(seq 1 10); do
-    if (cd "${ROOT_DIR}" && RABBITMQ_PASS="${RABBITMQ_PASS}" \
-         "${PYTHON_EXEC}" "${ROOT_DIR}/cloud/scripts/rabbitmq_init.py" 2>&1); then
-      break
-    fi
-    sleep 3
-  done
+  # Initialize RabbitMQ topology (shared helper handles pika install + retries)
+  _init_topology || log_warn "Topology init failed — services may start without queues."
 
   # Wait for nginx / API gateway
   log_info "Waiting for services to come online..."
