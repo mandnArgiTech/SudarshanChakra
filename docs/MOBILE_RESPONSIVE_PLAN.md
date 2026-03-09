@@ -189,6 +189,11 @@ Note: `p-6` → `p-4 sm:p-6` gives tighter padding on mobile.
 // Charts stack on mobile, side-by-side on desktop
 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
+// Stat cards inside analytics ALSO need responsive treatment
+// CURRENT:  grid-cols-4
+// CHANGE:   grid-cols-2 lg:grid-cols-4
+<div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
 // Make Recharts responsive
 <ResponsiveContainer width="100%" height={250}>
   <BarChart data={data}>...</BarChart>
@@ -212,29 +217,9 @@ Recharts `ResponsiveContainer` already handles width — just ensure the parent 
 
 ---
 
-### Task 9: Other Pages — Responsive Grids
+### Task 9: Skip — Pages Already Responsive
 
-Apply the same pattern to remaining pages:
-
-**DevicesPage:**
-```
-grid-cols-2 → grid-cols-1 sm:grid-cols-2
-```
-
-**WorkersPage:**
-```
-grid-cols-2 → grid-cols-1 sm:grid-cols-2
-Tag list table → card view on mobile (same pattern as AlertTable)
-```
-
-**ZonesPage:**
-```
-grid-cols-3 → grid-cols-1 sm:grid-cols-2 lg:grid-cols-3
-```
-
-**SettingsPage:** Already mostly form-based, likely OK. Verify inputs are `w-full`.
-
-**LoginPage:** Already centered, likely OK. Verify max-width on form container.
+DevicesPage, WorkersPage, ZonesPage, SettingsPage, and LoginPage already have responsive breakpoints. **No changes needed for these 5 pages.**
 
 ---
 
@@ -314,21 +299,49 @@ For each screen, verify:
 
 ---
 
-## File Change Summary
+## Non-Breaking Guarantee
 
-| File | Type | Change |
-|:-----|:-----|:-------|
-| `dashboard/src/components/Layout/Sidebar.tsx` | MODIFY | Collapsible drawer on mobile, props for open/close |
-| `dashboard/src/components/Layout/Header.tsx` | MODIFY | Hamburger menu button, responsive search |
-| `dashboard/src/components/Layout/Layout.tsx` | MODIFY | Sidebar state management, responsive padding |
-| `dashboard/src/components/AlertTable.tsx` | MODIFY | Dual-mode: table on desktop, cards on mobile |
-| `dashboard/src/pages/DashboardPage.tsx` | MODIFY | Responsive grid breakpoints |
-| `dashboard/src/pages/CamerasPage.tsx` | MODIFY | Responsive grid breakpoints |
-| `dashboard/src/pages/AnalyticsPage.tsx` | MODIFY | Responsive chart containers |
-| `dashboard/src/pages/SirenPage.tsx` | MODIFY | Touch-friendly buttons |
-| `dashboard/src/pages/DevicesPage.tsx` | MODIFY | Responsive grid |
-| `dashboard/src/pages/WorkersPage.tsx` | MODIFY | Responsive grid + mobile cards |
-| `dashboard/src/pages/ZonesPage.tsx` | MODIFY | Responsive grid |
-| `dashboard/src/index.css` | MODIFY | Safe areas, touch, zoom prevention |
+Every change uses Tailwind's mobile-first responsive prefixes (`sm:`, `md:`, `lg:`, `xl:`). The existing desktop layout is preserved because responsive classes only ADD behavior at larger breakpoints — they never remove it.
 
-**No new files needed.** All changes are Tailwind class modifications and one mobile card component inside AlertTable.
+**Proof for each change:**
+
+| Change | Desktop (≥1024px) | Why It's Safe |
+|:-------|:-------------------|:-------------|
+| Sidebar: `hidden lg:flex` | `lg:flex` shows sidebar | `lg:` activates at 1024px, same as current |
+| Hamburger: `lg:hidden` | `lg:hidden` hides button | Desktop never sees the hamburger |
+| Stats: `grid-cols-2 lg:grid-cols-4` | `lg:grid-cols-4` = 4 columns | Identical to current `grid-cols-4` |
+| AlertTable: `hidden lg:block` | `lg:block` shows table | Desktop renders existing table unchanged |
+| Mobile cards: `lg:hidden` | `lg:hidden` hides cards | Desktop never renders card view |
+| Padding: `p-4 sm:p-6` | `sm:p-6` at 640px+ | Same as current `p-6` |
+| CSS: `env(safe-area-inset-bottom)` | Evaluates to 0px on desktop | No visual change |
+| CSS: `touch-action: manipulation` | No effect on mouse | Only affects touchscreens |
+
+**One intentional minor change:** CamerasPage shows 3 columns between 1024-1279px instead of 4. This is actually better (wider cards with more readable text). At 1280px+ (`xl:`), it returns to 4 columns.
+
+## Pages Already Responsive (No Changes Needed)
+
+The agent already added responsive breakpoints to these pages:
+
+| Page | Current Classes | Status |
+|:-----|:---------------|:-------|
+| DevicesPage | `grid-cols-2 lg:grid-cols-4` | ✅ Already responsive |
+| WorkersPage | `grid-cols-1 md:grid-cols-2` | ✅ Already responsive |
+| ZonesPage | `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` | ✅ Already responsive |
+| SettingsPage | No fixed widths | ✅ Already responsive |
+| LoginPage | `max-w-md` centered | ✅ Already responsive |
+
+**These 5 pages need NO changes.** Only DashboardPage, CamerasPage, AnalyticsPage, AlertTable, and the Layout/Sidebar/Header need work.
+
+## Updated File Change Summary
+
+| File | Type | Change | Desktop Impact |
+|:-----|:-----|:-------|:---------------|
+| `Layout/Sidebar.tsx` | MODIFY | Add `open`/`onClose` props, mobile drawer | None — `lg:flex` preserves desktop |
+| `Layout/Header.tsx` | MODIFY | Add `onMenuToggle` prop, hamburger button | None — `lg:hidden` hides hamburger |
+| `Layout/Layout.tsx` | MODIFY | Add sidebar state, pass props, responsive padding | None — `sm:p-6` = same as `p-6` |
+| `AlertTable.tsx` | MODIFY | Add mobile card view alongside existing table | None — `hidden lg:block` preserves table |
+| `DashboardPage.tsx` | MODIFY | `grid-cols-4` → `grid-cols-2 lg:grid-cols-4` | None — `lg:` restores 4 cols |
+| `CamerasPage.tsx` | MODIFY | `grid-cols-4` → responsive breakpoints | Minor — 3 cols at 1024-1279px |
+| `AnalyticsPage.tsx` | MODIFY | Both grids get responsive breakpoints | None — `lg:` restores desktop layout |
+| `SirenPage.tsx` | MODIFY | `min-h-[48px]`, `active:scale-95` | Cosmetic only |
+| `index.css` | MODIFY | Safe areas, zoom prevention, touch | None on desktop browsers |
