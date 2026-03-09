@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
+ORIG_ARGS=("$@")
 INSTALL_DEPS=0
 
 # Parse --help / --install-deps before rest of config
@@ -10,30 +11,32 @@ for arg in "$@"; do
   case "${arg}" in
     --help|-h)
       echo "SudarshanChakra — Setup and build all components"
-      echo "Ready for bare-metal Ubuntu 24.04 (with or without GPU)."
       echo ""
       echo "USAGE:"
       echo "  ${SCRIPT_NAME} [OPTIONS]"
       echo ""
       echo "OPTIONS:"
-      echo "  -h, --help          Show this help and exit."
-      echo "  -i, --install-deps  On Ubuntu/Debian, install required system packages and optionally Android SDK (uses sudo)."
+      echo "  -h, --help          Show this help."
+      echo "  -i, --install-deps  Install system packages (Ubuntu/Debian; uses sudo)."
+      echo ""
+      echo "PREREQUISITES (install once, then run script without --install-deps):"
+      echo "  • Docker running: sudo systemctl start docker"
+      echo "  • Ubuntu/Debian packages:"
+      echo "    sudo apt-get update && sudo apt-get install -y \\"
+      echo "      git curl unzip openjdk-21-jdk nodejs npm ripgrep python3-pip python3-venv docker.io"
+      echo "  • If docker.io fails (Conflict: containerd), use Docker CE instead:"
+      echo "    sudo apt-get install -y docker-ce docker-ce-cli containerd.io"
       echo ""
       echo "ENVIRONMENT:"
-      echo "  SKIP_ANDROID=1      Skip Android app build (default: 0)."
-      echo "  SKIP_FIRMWARE=1     Skip ESP32 firmware build (default: 0)."
-      echo "  ANDROID_HOME        Path to Android SDK. If unset, script uses ${ROOT_DIR}/android-sdk when present."
-      echo "  JAVA_HOME           Optional. Backend requires Java 21; script auto-detects if not set."
-      echo ""
-      echo "UBUNTU 24.04 (BARE METAL) — Required packages (or run with --install-deps once):"
-      echo "  git curl unzip openjdk-21-jdk nodejs npm ripgrep python3.12-venv docker.io"
-      echo "  For Android APK: use --install-deps (downloads SDK to android-sdk/) or set ANDROID_HOME."
-      echo "  For Edge AI GPU: nvidia-driver-535, nvidia-container-toolkit (optional)."
+      echo "  SKIP_ANDROID=1      Skip Android build."
+      echo "  SKIP_FIRMWARE=1     Skip ESP32 firmware build."
+      echo "  SKIP_DASHBOARD=1    Skip dashboard build (auto if node/npm missing)."
+      echo "  ANDROID_HOME        Path to Android SDK."
       echo ""
       echo "EXAMPLES:"
-      echo "  ./${SCRIPT_NAME} --install-deps    # Install deps + build all (including Android APK)"
-      echo "  SKIP_ANDROID=1 ./${SCRIPT_NAME}     # Build without Android"
-      echo "  ./${SCRIPT_NAME}                    # Build only (deps must already be installed)"
+      echo "  ./${SCRIPT_NAME} --install-deps   # Install deps + build all"
+      echo "  ./${SCRIPT_NAME}                 # Build only (deps must be installed)"
+      echo "  SKIP_ANDROID=1 ./${SCRIPT_NAME}  # Build without Android"
       exit 0
       ;;
     --install-deps|-i) INSTALL_DEPS=1 ;;
@@ -44,7 +47,12 @@ DOCKER_BIN="${DOCKER_BIN:-docker}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 VENV_DIR="${VENV_DIR:-${ROOT_DIR}/.venv}"
 PYTHON_EXEC="${PYTHON_BIN}"
-PIP_EXEC="pip3"
+# Prefer pip3 if available; otherwise use python3 -m pip
+if command -v pip3 >/dev/null 2>&1; then
+  PIP_EXEC="pip3"
+else
+  PIP_EXEC="${PYTHON_BIN} -m pip"
+fi
 
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-postgres}"
 RABBITMQ_CONTAINER="${RABBITMQ_CONTAINER:-rabbitmq}"
@@ -54,10 +62,10 @@ DB_USER="${DB_USER:-scadmin}"
 DB_PASS="${DB_PASS:-devpassword123}"
 RABBITMQ_USER="${RABBITMQ_USER:-admin}"
 RABBITMQ_PASS="${RABBITMQ_PASS:-devpassword123}"
-RABBITMQ_ERLANG_COOKIE="${RABBITMQ_ERLANG_COOKIE:-sudarshanchakra-dev-cookie}"
 
 SKIP_ANDROID="${SKIP_ANDROID:-0}"
 SKIP_FIRMWARE="${SKIP_FIRMWARE:-0}"
+SKIP_DASHBOARD="${SKIP_DASHBOARD:-}"
 
 STEP_COUNTER=0
 SKIPPED_COMPONENTS=()
@@ -73,6 +81,14 @@ warn() {
 die() {
   printf '\n[%s] ERROR: %s\n' "${SCRIPT_NAME}" "$1" >&2
   exit 1
+}
+
+run_pip() {
+  if [[ "${PIP_EXEC}" == *" -m pip"* ]]; then
+    "${PYTHON_BIN}" -m pip "$@"
+  else
+    "${PIP_EXEC}" "$@"
+  fi
 }
 
 next_step() {
@@ -98,19 +114,58 @@ install_system_deps() {
     die "apt-get not found. This script supports Ubuntu/Debian. Install required packages manually (see --help)."
   fi
   sudo apt-get update -qq
-  sudo apt-get install -y -qq \
-    git curl unzip \
-    openjdk-21-jdk \
-    nodejs npm \
-    ripgrep \
-    python3.12-venv \
-    docker.io \
-    || die "apt-get install failed. Fix errors above and retry."
+  # Fix any broken dependencies before installing new packages
+  log "Checking for broken dependencies..."
+  sudo apt-get -f install -y -qq 2>/dev/null || true
+
+  # Install everything except Docker first (avoids containerd.io vs containerd conflict when Docker repo is added)
+  local pkgs_base="git curl unzip openjdk-21-jdk nodejs npm ripgrep python3-pip python3.12-venv"
+  if ! sudo apt-get install -y -qq $pkgs_base; then
+    warn "Install failed (often due to python3.12-venv). Retrying with python3-venv..."
+    pkgs_base="git curl unzip openjdk-21-jdk nodejs npm ripgrep python3-pip python3-venv"
+    if ! sudo apt-get install -y $pkgs_base; then
+      die "Install failed. Run: sudo apt-get update && sudo apt-get -f install -y && sudo apt-get install -y git curl unzip openjdk-21-jdk nodejs npm ripgrep python3-pip python3-venv"
+    fi
+  fi
+
+  # Install Docker: prefer docker.io (Ubuntu); if conflict with containerd.io, use Docker CE (official repo)
+  if ! sudo apt-get install -y -qq docker.io; then
+    warn "docker.io failed (often Conflicts: containerd when Docker official repo is added). Trying docker-ce..."
+    if ! sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io; then
+      die "Docker install failed. Install Docker manually: https://docs.docker.com/engine/install/"
+    fi
+  fi
+
   # Add current user to docker group so Docker runs without sudo
   if [[ -n "${SUDO_USER:-}" ]]; then
     sudo usermod -aG docker "${SUDO_USER}" 2>/dev/null || true
   fi
   log "System packages installed. You may need to log out and back in for Docker group to apply."
+
+  # Install Node.js 22 LTS via NodeSource if system node is too old (<18)
+  local node_major
+  node_major=$(node --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/' || echo "0")
+  if [[ "${node_major}" -lt 18 ]]; then
+    log "Node.js v${node_major} is too old. Installing Node.js 22 LTS via NodeSource..."
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - \
+      && sudo apt-get install -y nodejs \
+      || warn "NodeSource install failed. Install Node.js 18+ manually: https://nodejs.org/"
+    # Update npm to latest
+    sudo npm install -g npm@latest 2>/dev/null || true
+  fi
+
+  # Install arduino-cli for firmware builds
+  if ! command -v arduino-cli >/dev/null 2>&1; then
+    log "Installing arduino-cli..."
+    local acli_url="https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz"
+    local acli_tmp="/tmp/arduino-cli.tar.gz"
+    curl -fsSL -o "${acli_tmp}" "${acli_url}" \
+      && sudo tar -xzf "${acli_tmp}" -C /usr/local/bin arduino-cli \
+      && rm -f "${acli_tmp}" \
+      && log "arduino-cli installed." \
+      || warn "arduino-cli install failed. Firmware build will be skipped."
+  fi
+
   # Optional: download Android SDK into android-sdk/ if building Android
   if [[ "${SKIP_ANDROID}" != "1" ]]; then
     local sdk_root="${ROOT_DIR}/android-sdk"
@@ -152,20 +207,55 @@ check_gpu_runtime() {
   fi
 
   if ! "${DOCKER_BIN}" info >/dev/null 2>&1; then
+    # User may be in docker group but current session hasn't picked it up; use sg docker to re-exec
+    if id -nG | grep -qw docker && sg docker -c "${DOCKER_BIN} info" >/dev/null 2>&1; then
+      log "Docker requires group activation. Restarting script under 'sg docker'..."
+      exec sg docker -c "\"$0\" ${ORIG_ARGS[*]}"
+    fi
     warn "Docker daemon is not ready. Attempting to start it."
     if command -v systemctl >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then
-      sudo systemctl start docker || true
+      sudo systemctl start docker 2>/dev/null || true
     fi
   fi
 
-  "${DOCKER_BIN}" info >/dev/null 2>&1 || die "Docker daemon is not running."
+  "${DOCKER_BIN}" info >/dev/null 2>&1 || die "Docker daemon is not running or current user lacks permission. Run: sudo usermod -aG docker \$USER && newgrp docker"
 }
 
 check_base_toolchain() {
   next_step "Checking required tooling"
+  # If node/npm missing and SKIP_DASHBOARD not set, skip dashboard later
+  if [[ -z "${SKIP_DASHBOARD}" ]]; then
+    command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 || SKIP_DASHBOARD=1
+  fi
   require_cmd git
   require_cmd "${PYTHON_BIN}"
-  require_cmd pip3
+  # pip: require pip3, python3 -m pip, or bootstrap with get-pip.py --user
+  if command -v pip3 >/dev/null 2>&1; then
+    PIP_EXEC="pip3"
+  elif "${PYTHON_BIN}" -m pip --version >/dev/null 2>&1; then
+    PIP_EXEC="${PYTHON_BIN} -m pip"
+  else
+    log "pip not found; attempting to bootstrap with get-pip.py --user"
+    local get_pip="${ROOT_DIR}/.get-pip.py"
+    if [[ ! -f "${get_pip}" ]]; then
+      if command -v curl >/dev/null 2>&1; then
+        curl -sSL -o "${get_pip}" "https://bootstrap.pypa.io/get-pip.py"
+      elif command -v wget >/dev/null 2>&1; then
+        wget -q -O "${get_pip}" "https://bootstrap.pypa.io/get-pip.py"
+      else
+        die "Neither curl nor wget found. Install python3-pip or run with --install-deps."
+      fi
+      [[ -f "${get_pip}" ]] || die "Could not download get-pip.py."
+    fi
+    "${PYTHON_BIN}" "${get_pip}" --user \
+      || die "get-pip.py --user failed. Install python3-pip or run with --install-deps."
+    export PATH="${HOME}/.local/bin:${PATH}"
+    if "${PYTHON_BIN}" -m pip --version >/dev/null 2>&1; then
+      PIP_EXEC="${PYTHON_BIN} -m pip"
+    else
+      die "pip bootstrap completed but python3 -m pip still not available."
+    fi
+  fi
   require_cmd "${DOCKER_BIN}"
   require_cmd java
   # Backend requires Java 21; prefer JAVA_HOME if set, else check default java
@@ -188,9 +278,17 @@ check_base_toolchain() {
   if ! echo "${java_ver}" | grep -qE '"21\.'; then
     die "Backend requires Java 21. Found: ${java_ver:-unknown}. Install: sudo apt install openjdk-21-jdk, or run with --install-deps"
   fi
-  require_cmd node
-  require_cmd npm
-  require_cmd rg
+  if [[ "${SKIP_DASHBOARD}" != "1" ]]; then
+    require_cmd node
+    require_cmd npm
+    local node_major
+    node_major=$(node --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/')
+    if [[ -n "${node_major}" && "${node_major}" -lt 18 ]]; then
+      warn "Node.js v${node_major} is too old. Dashboard requires Node 18+. Skipping dashboard. Upgrade: https://nodejs.org/"
+      SKIP_DASHBOARD=1
+      SKIPPED_COMPONENTS+=("dashboard")
+    fi
+  fi
 }
 
 setup_python_env() {
@@ -206,11 +304,11 @@ setup_python_env() {
     PIP_EXEC="${VENV_DIR}/bin/pip"
   else
     PYTHON_EXEC="${PYTHON_BIN}"
-    PIP_EXEC="pip3"
+    # Keep PIP_EXEC as set in check_base_toolchain (may be python3 -m pip if bootstrapped)
   fi
 
-  "${PIP_EXEC}" install --upgrade pip wheel
-  "${PIP_EXEC}" install -r "${ROOT_DIR}/edge/requirements.txt" flake8 pytest pika
+  run_pip install --upgrade pip wheel
+  run_pip install -r "${ROOT_DIR}/edge/requirements.txt" flake8 pytest pika opencv-python-headless
 }
 
 setup_dashboard_deps() {
@@ -225,16 +323,16 @@ ensure_container_running() {
   local name="$1"
   shift
 
-  if "${DOCKER_BIN}" ps --format '{{.Names}}' | rg -x "${name}" >/dev/null 2>&1; then
+  if "${DOCKER_BIN}" ps --format '{{.Names}}' | grep -Ex "${name}" >/dev/null 2>&1; then
     return
   fi
 
-  if "${DOCKER_BIN}" ps -a --format '{{.Names}}' | rg -x "${name}" >/dev/null 2>&1; then
-    "${DOCKER_BIN}" start "${name}" >/dev/null
+  if "${DOCKER_BIN}" ps -a --format '{{.Names}}' | grep -Ex "${name}" >/dev/null 2>&1; then
+    "${DOCKER_BIN}" start "${name}" || die "Failed to start container: ${name}. Run: docker logs ${name}"
     return
   fi
 
-  "${DOCKER_BIN}" run -d --name "${name}" "$@" >/dev/null
+  "${DOCKER_BIN}" run -d --name "${name}" "$@" || die "Failed to run container: ${name}. Check Docker and image pull."
 }
 
 start_infra() {
@@ -250,18 +348,22 @@ start_infra() {
     -v "${ROOT_DIR}/cloud/db/init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro" \
     postgres:16-alpine
 
-  ensure_container_running "${RABBITMQ_CONTAINER}" \
+  # RabbitMQ: always recreate to avoid stale .erlang.cookie permission issues
+  log "Recreating RabbitMQ container..."
+  "${DOCKER_BIN}" rm -fv "${RABBITMQ_CONTAINER}" 2>/dev/null || true
+  "${DOCKER_BIN}" volume rm rabbitmq_data 2>/dev/null || true
+
+  "${DOCKER_BIN}" run -d --name "${RABBITMQ_CONTAINER}" \
+    --user 999:999 \
     --network "${DOCKER_NETWORK}" \
     --hostname farm-broker \
     -e "RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}" \
     -e "RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}" \
-    -e "RABBITMQ_ERLANG_COOKIE=${RABBITMQ_ERLANG_COOKIE}" \
-    -v "rabbitmq_data:/var/lib/rabbitmq" \
     -p 5672:5672 \
     -p 1883:1883 \
     -p 15672:15672 \
-    -v "${ROOT_DIR}/cloud/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro" \
-    rabbitmq:3-management
+    rabbitmq:3-management \
+    || die "Failed to start RabbitMQ container."
 }
 
 wait_for_infra() {
@@ -277,15 +379,24 @@ wait_for_infra() {
   "${DOCKER_BIN}" exec "${POSTGRES_CONTAINER}" pg_isready -U "${DB_USER}" -d "${DB_NAME}" >/dev/null 2>&1 \
     || die "PostgreSQL did not become ready."
 
-  for _ in {1..60}; do
+  # RabbitMQ can take 60–90s to start with management + MQTT plugins; allow up to 3.5 minutes
+  log "Waiting for RabbitMQ (may take 1–2 minutes)..."
+  for _ in {1..105}; do
     if "${DOCKER_BIN}" exec "${RABBITMQ_CONTAINER}" rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
       break
     fi
     sleep 2
   done
 
-  "${DOCKER_BIN}" exec "${RABBITMQ_CONTAINER}" rabbitmq-diagnostics -q ping >/dev/null 2>&1 \
-    || die "RabbitMQ did not become ready."
+  if ! "${DOCKER_BIN}" exec "${RABBITMQ_CONTAINER}" rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
+    warn "RabbitMQ did not become ready. Last 40 lines of container log:"
+    "${DOCKER_BIN}" logs "${RABBITMQ_CONTAINER}" 2>&1 | tail -40
+    die "RabbitMQ did not become ready. Run: docker rm -f rabbitmq; docker volume rm rabbitmq_data; then re-run this script."
+  fi
+
+  # Enable MQTT plugin (for Android / edge); image has management enabled by default
+  log "Enabling RabbitMQ MQTT plugin..."
+  "${DOCKER_BIN}" exec "${RABBITMQ_CONTAINER}" rabbitmq-plugins enable rabbitmq_mqtt rabbitmq_web_mqtt 2>/dev/null || true
 }
 
 init_rabbitmq_topology() {
@@ -303,7 +414,7 @@ init_rabbitmq_topology() {
     sleep 3
   done
 
-  die "RabbitMQ topology initialization failed after multiple attempts."
+  die "RabbitMQ topology initialization failed. Check: docker logs rabbitmq; ensure broker is up: docker exec rabbitmq rabbitmq-diagnostics -q ping"
 }
 
 build_backend() {
@@ -391,9 +502,10 @@ build_firmware() {
 
   arduino-cli core update-index
   arduino-cli core install esp32:esp32
+  arduino-cli lib install "LoRa"
 
-  arduino-cli compile --fqbn esp32:esp32:esp32 "${ROOT_DIR}/firmware/lora_bridge/esp32_lora_bridge_receiver.ino"
-  arduino-cli compile --fqbn esp32:esp32:esp32 "${ROOT_DIR}/firmware/worker_beacon/esp32_lora_tag.ino"
+  arduino-cli compile --fqbn esp32:esp32:esp32 "${ROOT_DIR}/firmware/esp32_lora_bridge_receiver"
+  arduino-cli compile --fqbn esp32:esp32:esp32 "${ROOT_DIR}/firmware/esp32_lora_tag"
 }
 
 print_summary() {
@@ -412,12 +524,19 @@ main() {
   check_base_toolchain
   check_gpu_runtime
   setup_python_env
-  setup_dashboard_deps
+  if [[ "${SKIP_DASHBOARD}" != "1" ]]; then
+    setup_dashboard_deps
+  else
+    warn "Skipping dashboard (node/npm unavailable or SKIP_DASHBOARD=1)."
+    SKIPPED_COMPONENTS+=("dashboard")
+  fi
   start_infra
   wait_for_infra
   init_rabbitmq_topology
   build_backend
-  build_dashboard
+  if [[ "${SKIP_DASHBOARD}" != "1" ]]; then
+    build_dashboard
+  fi
   build_edge
   build_android
   build_alert_management
