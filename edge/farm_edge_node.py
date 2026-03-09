@@ -33,15 +33,15 @@ if DEV_MODE or MOCK_LORA:
 if DEV_MODE or MOCK_SIREN:
     from mock_siren import MockSirenHandler
 
-from pipeline import CameraConfig
+from pipeline import CameraConfig  # noqa: E402
 if not (DEV_MODE or MOCK_CAMERAS):
-    from pipeline import InferencePipeline, load_model
+    from pipeline import InferencePipeline, load_model  # noqa: E402
 
-from zone_engine import ZoneEngine
+from zone_engine import ZoneEngine  # noqa: E402
 if not (DEV_MODE or MOCK_LORA):
-    from lora_receiver import LoRaReceiver
-from alert_engine import AlertDecisionEngine
-from edge_gui import create_app
+    from lora_receiver import LoRaReceiver  # noqa: E402
+from alert_engine import AlertDecisionEngine  # noqa: E402
+from edge_gui import create_app  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -68,18 +68,18 @@ log = logging.getLogger("farm_edge_node")
 def load_camera_configs() -> list:
     """
     Load camera configurations from JSON.
-    
+
     TP-Link RTSP URL formats:
       VIGI C540-W:  rtsp://<user>:<pass>@<ip>:554/stream1  (main)
                     rtsp://<user>:<pass>@<ip>:554/stream2  (sub)
       Tapo C210:    rtsp://<user>:<pass>@<ip>:554/stream1  (main, H.264)
                     rtsp://<user>:<pass>@<ip>:554/stream2  (sub, lower res)
       Tapo Outdoor: rtsp://<user>:<pass>@<ip>:554/stream1
-    
+
     NOTE: Tapo cameras require enabling RTSP in the Tapo app under
     Camera Settings → Advanced → Device Account (set username/password).
     VIGI cameras use the NVR or standalone RTSP with admin credentials.
-    
+
     For frame-skipping at 2-3 FPS, always use stream2 (sub-stream, 640x480)
     to reduce bandwidth and decoding load on the RTX 3060.
     """
@@ -128,17 +128,17 @@ def load_camera_configs() -> list:
 def create_mqtt_client() -> mqtt.Client:
     """Create MQTT client for publishing alerts to VPS broker over VPN."""
     client = mqtt.Client(client_id=f"{NODE_ID}-publisher", protocol=mqtt.MQTTv311)
-    
+
     if MQTT_USER:
         client.username_pw_set(MQTT_USER, MQTT_PASS)
-    
+
     # Last Will — broker publishes if edge node disconnects
     client.will_set(
         f"farm/nodes/{NODE_ID}/status",
         json.dumps({"node_id": NODE_ID, "status": "offline", "timestamp": time.time()}),
         qos=1, retain=True,
     )
-    
+
     def on_connect(client, userdata, flags, rc):
         if rc == 0:
             log.info("Connected to VPS MQTT broker at %s:%d via VPN", VPN_BROKER_IP, MQTT_PORT)
@@ -149,21 +149,21 @@ def create_mqtt_client() -> mqtt.Client:
                 qos=1, retain=True,
             )
             # Subscribe to siren commands and admin commands
-            client.subscribe(f"farm/siren/trigger", qos=1)
-            client.subscribe(f"farm/siren/stop", qos=1)
-            client.subscribe(f"farm/admin/update", qos=1)
+            client.subscribe("farm/siren/trigger", qos=1)
+            client.subscribe("farm/siren/stop", qos=1)
+            client.subscribe("farm/admin/update", qos=1)
             log.info("Subscribed to siren and admin command topics")
         else:
             log.error("MQTT connection failed with rc=%d", rc)
-    
+
     def on_disconnect(client, userdata, rc):
         if rc != 0:
             log.warning("Unexpected MQTT disconnect (rc=%d). Auto-reconnecting...", rc)
-    
+
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.reconnect_delay_set(min_delay=1, max_delay=30)
-    
+
     return client
 
 
@@ -175,7 +175,7 @@ def setup_siren_listener(mqtt_client):
     # Local MQTT client for PA controller (if Pi is on same network)
     pa_client = None
     PA_BROKER = os.getenv("PA_MQTT_BROKER", "")
-    
+
     if PA_BROKER:
         pa_client = mqtt.Client(client_id=f"{NODE_ID}-pa-bridge")
         try:
@@ -185,7 +185,7 @@ def setup_siren_listener(mqtt_client):
         except Exception as e:
             log.warning("Cannot connect to PA controller: %s", e)
             pa_client = None
-    
+
     def on_siren_message(client, userdata, msg):
         topic = msg.topic
         try:
@@ -193,9 +193,9 @@ def setup_siren_listener(mqtt_client):
         except (json.JSONDecodeError, UnicodeDecodeError):
             log.error("Invalid siren command payload")
             return
-        
+
         log.info("SIREN COMMAND received: %s on %s", payload, topic)
-        
+
         if "trigger" in topic:
             # Forward to PA controller
             if pa_client:
@@ -203,24 +203,24 @@ def setup_siren_listener(mqtt_client):
                     "command": "play_siren",
                     "url": payload.get("siren_url", "http://localhost/audio/siren.mp3"),
                 }), qos=1)
-            
+
             # Acknowledge back to cloud
             client.publish("farm/siren/ack", json.dumps({
                 "node_id": NODE_ID,
                 "status": "siren_activated",
                 "timestamp": time.time(),
             }), qos=1)
-            
+
         elif "stop" in topic:
             if pa_client:
                 pa_client.publish("pa/command", json.dumps({"command": "stop"}), qos=1)
-            
+
             client.publish("farm/siren/ack", json.dumps({
                 "node_id": NODE_ID,
                 "status": "siren_stopped",
                 "timestamp": time.time(),
             }), qos=1)
-    
+
     mqtt_client.on_message = on_siren_message
 
 
@@ -281,7 +281,7 @@ def main():
     log.info("  Model Dir:  %s", MODEL_DIR)
     log.info("  LoRa:       %s", "Mock" if MOCK_LORA else ("Enabled" if LORA_ENABLED else "Disabled"))
     log.info("=" * 70)
-    
+
     # ── Step 1: Load YOLO model (skip in dev mode) ──
     model = None
     if not (DEV_MODE or MOCK_CAMERAS):
@@ -290,14 +290,14 @@ def main():
         log.info("Model loaded successfully.")
     else:
         log.info("DEV MODE: Skipping YOLO model load — using mock detections")
-    
+
     # ── Step 2: Load camera configs ──
     cameras = load_camera_configs()
-    
+
     # ── Step 3: Initialize zone engine ──
     zone_engine = ZoneEngine(os.path.join(CONFIG_DIR, "zones.json"))
     log.info("Zone engine loaded with %d zone definitions.", len(zone_engine.polygons))
-    
+
     # ── Step 4: Initialize LoRa receiver (mock in dev mode) ──
     if MOCK_LORA or DEV_MODE:
         lora = MockLoRaReceiver(
@@ -312,7 +312,7 @@ def main():
         log.info("LoRa receiver started on %s", LORA_PORT)
     else:
         lora = None
-    
+
     # ── Step 5: Connect to MQTT broker ──
     mqtt_client = create_mqtt_client()
 
@@ -353,7 +353,7 @@ def main():
         except (ConnectionRefusedError, OSError) as e:
             log.error("Cannot reach broker at %s: %s. Retrying in 5s...", VPN_BROKER_IP, e)
             time.sleep(5)
-    
+
     mqtt_client.loop_start()
 
     # Subscribe to dev simulation topics
@@ -363,24 +363,24 @@ def main():
         log.info("DEV: Listening for simulation commands on dev/simulate/#")
         log.info("DEV: Trigger fall:   mosquitto_pub -t dev/simulate/fall -m '{\"tag_id\":\"TAG-C001\"}'")
         log.info("DEV: Toggle worker:  mosquitto_pub -t dev/simulate/worker_toggle -m '{\"present\":false}'")
-    
+
     # ── Step 6 & 7: Initialize alert decision engine ──
     class DummyLoRa:
         def is_worker_nearby(self, max_age_seconds=15.0): return False
         def get_nearby_workers(self, max_age_seconds=15.0): return []
-    
+
     alert_engine = AlertDecisionEngine(
         zone_engine=zone_engine,
         lora_receiver=lora if lora else DummyLoRa(),
         mqtt_client=mqtt_client,
         node_id=NODE_ID,
     )
-    
+
     # ── Step 7b: Wire fall detector to alert engine ──
     if lora and hasattr(lora, 'fall_callbacks'):
         lora.fall_callbacks.append(alert_engine.process_fall_event)
         log.info("Fall detector callback wired: LoRa → AlertEngine")
-    
+
     # ── Step 8: Start Flask GUI in background thread ──
     flask_app = create_app(zone_engine, cameras, CONFIG_DIR)
     flask_thread = threading.Thread(
@@ -389,7 +389,7 @@ def main():
     )
     flask_thread.start()
     log.info("Flask Edge GUI started on port %d", FLASK_PORT)
-    
+
     # ── Step 9: Start inference pipeline (mock or real) ──
     if DEV_MODE or MOCK_CAMERAS:
         detection_interval = float(os.getenv("MOCK_DETECTION_INTERVAL", "5"))
@@ -401,17 +401,17 @@ def main():
 
     pipeline.results_callbacks.append(alert_engine.process_detection)
     start_heartbeat(mqtt_client, pipeline=pipeline, alert_engine=alert_engine)
-    
+
     # Graceful shutdown
     def shutdown(signum, frame):
         log.info("Shutting down edge node...")
         mqtt_client.loop_stop()
         mqtt_client.disconnect()
         sys.exit(0)
-    
+
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
-    
+
     try:
         pipeline.start()  # Blocking — runs inference loop
     except KeyboardInterrupt:

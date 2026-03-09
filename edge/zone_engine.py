@@ -25,7 +25,7 @@ log = logging.getLogger("zone_engine")
 class ZoneEngine:
     """
     Manages virtual fence zones and performs point-in-polygon checks.
-    
+
     Thread-safe: reload() can be called from Flask GUI thread while
     check_detection() is called from inference thread.
     """
@@ -87,16 +87,16 @@ class ZoneEngine:
     def check_detection(self, detection: dict) -> Optional[dict]:
         """
         Check if a detection's bottom-center point falls inside any zone.
-        
+
         For 'intrusion', 'zero_tolerance', 'hazard': triggers when INSIDE polygon.
         For 'livestock_containment': triggers when OUTSIDE polygon.
-        
+
         When a detection violates multiple overlapping zones, the violation
         with the HIGHEST priority is returned (critical > high > warning > info).
-        
+
         Args:
             detection: dict with keys: camera_id, class, bottom_center, confidence, bbox
-            
+
         Returns:
             Zone violation dict if triggered, None otherwise.
         """

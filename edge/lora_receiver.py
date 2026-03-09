@@ -8,7 +8,7 @@ alert decision engine.
 
 Packet format from ESP32 (see esp32_lora_tag.ino):
   TAG:<id>,TYPE:<type>,SEQ:<n>,ACCEL:<g>,BAT:<v>
-  
+
 Types:
   WORKER_PING  — Periodic worker beacon (suppresses intrusion alarms)
   CHILD_PING   — Periodic child safety beacon
@@ -23,8 +23,7 @@ import json
 import logging
 import threading
 import time
-from collections import defaultdict
-from typing import List, Optional
+from typing import List
 
 try:
     import serial
@@ -37,7 +36,7 @@ log = logging.getLogger("lora_receiver")
 class LoRaReceiver(threading.Thread):
     """
     Receives ESP32 LoRa beacon packets via USB-Serial.
-    
+
     Thread-safe: is_worker_nearby() can be called from the inference
     thread while run() processes serial data in its own thread.
     """
@@ -94,7 +93,7 @@ class LoRaReceiver(threading.Thread):
     def _parse_packet(self, line: str):
         """
         Parse a LoRa beacon packet.
-        
+
         Format: TAG:<id>,TYPE:<type>,SEQ:<n>[,ACCEL:<g>][,BAT:<v>][,PRIORITY:<p>]
         """
         try:
@@ -108,7 +107,6 @@ class LoRaReceiver(threading.Thread):
             pkt_type = parts.get("TYPE", "UNKNOWN")
             accel = float(parts.get("ACCEL", "0"))
             battery = float(parts.get("BAT", "0"))
-            priority = parts.get("PRIORITY", "")
 
             if not tag_id:
                 return
@@ -119,7 +117,7 @@ class LoRaReceiver(threading.Thread):
                     "type": pkt_type,
                     "accel": accel,
                     "battery": battery,
-                    "rssi": -1,  # RSSI would come from receiver module
+                    "rssi": -1,
                 }
 
             # Handle FALL detection — CRITICAL priority
@@ -140,7 +138,7 @@ class LoRaReceiver(threading.Thread):
     def is_worker_nearby(self, max_age_seconds: float = 15.0) -> bool:
         """
         Check if any authorized worker tag was seen recently.
-        
+
         Used by alert decision engine to suppress intrusion alarms
         when known workers are on-site.
         """

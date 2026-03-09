@@ -14,8 +14,8 @@ import threading
 import time
 import logging
 from queue import Queue
-from dataclasses import dataclass, field
-from typing import List, Callable, Optional
+from dataclasses import dataclass
+from typing import List, Callable
 import numpy as np
 
 from ultralytics import YOLO
@@ -75,7 +75,7 @@ class FramePacket:
 class CameraGrabber(threading.Thread):
     """
     Grabs frames from a single RTSP camera at the configured FPS.
-    
+
     Design decisions:
     - Runs in its own thread (GIL is released during cv2.read())
     - Non-blocking queue put — drops oldest frame if queue is full
@@ -156,10 +156,10 @@ class CameraGrabber(threading.Thread):
 class InferencePipeline:
     """
     Consumes FramePackets from all cameras and runs YOLO inference.
-    
+
     Detection results are passed to registered callbacks (zone engine,
     alert engine, etc.) for downstream processing.
-    
+
     Resource budget on RTX 3060 12GB:
     - YOLOv8n TensorRT FP16: ~200 MB VRAM
     - 8 cameras × 2.5 FPS = 20 inferences/sec

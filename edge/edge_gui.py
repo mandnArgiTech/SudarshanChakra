@@ -12,7 +12,6 @@ Access: http://<edge-node-ip>:5000
 import json
 import os
 import cv2
-import base64
 import time
 import threading
 from flask import Flask, render_template_string, request, jsonify
@@ -32,9 +31,9 @@ def update_snapshot(camera_id: str, frame):
 def create_app(zone_engine, cameras, config_dir):
     """Factory function — creates and returns Flask app."""
     app = Flask(__name__)
-    
+
     ZONES_PATH = os.path.join(config_dir, "zones.json")
-    
+
     # ── HTML Template with embedded JS polygon editor ──
     EDITOR_HTML = """
     <!DOCTYPE html>
@@ -437,7 +436,7 @@ def create_app(zone_engine, cameras, config_dir):
     </body>
     </html>
     """
-    
+
     @app.route("/")
     def index():
         cameras_json = json.dumps([
@@ -448,12 +447,12 @@ def create_app(zone_engine, cameras, config_dir):
             cameras_json=cameras_json,
             node_id=os.getenv("NODE_ID", "edge-node-a"),
         )
-    
+
     @app.route("/api/snapshot/<camera_id>")
     def get_snapshot(camera_id):
         with _snapshot_lock:
             entry = _snapshot_cache.get(camera_id)
-        
+
         if entry:
             ts, jpeg_bytes = entry
             from flask import Response
@@ -467,7 +466,7 @@ def create_app(zone_engine, cameras, config_dir):
             _, jpeg = cv2.imencode(".jpg", placeholder)
             from flask import Response
             return Response(jpeg.tobytes(), mimetype="image/jpeg")
-    
+
     @app.route("/api/zones")
     def get_all_zones():
         """Return all zones grouped by camera_id."""
@@ -484,48 +483,48 @@ def create_app(zone_engine, cameras, config_dir):
             return jsonify(result)
         except FileNotFoundError:
             return jsonify({})
-    
+
     @app.route("/api/zones/<camera_id>", methods=["POST"])
     def add_zone(camera_id):
         """Add a new zone for a camera."""
         zone = request.json
-        
+
         try:
             with open(ZONES_PATH) as f:
                 data = json.load(f)
         except FileNotFoundError:
             data = {"cameras": []}
-        
+
         # Ensure structure
         if "cameras" not in data:
             data = {"cameras": [{"camera_id": camera_id, "zones": []}]}
-        
+
         # Find or create camera entry
         cam_entry = None
         for cam in data["cameras"]:
             if cam["camera_id"] == camera_id:
                 cam_entry = cam
                 break
-        
+
         if not cam_entry:
             cam_entry = {"camera_id": camera_id, "zones": []}
             data["cameras"].append(cam_entry)
-        
+
         # Check for duplicate zone ID
         existing_ids = [z["id"] for z in cam_entry.get("zones", [])]
         if zone["id"] in existing_ids:
             return jsonify({"success": False, "error": "Zone ID already exists"})
-        
+
         cam_entry.setdefault("zones", []).append(zone)
-        
+
         with open(ZONES_PATH, "w") as f:
             json.dump(data, f, indent=2)
-        
+
         # Reload zone engine
         zone_engine.reload()
-        
+
         return jsonify({"success": True, "zone_id": zone["id"]})
-    
+
     @app.route("/api/zones/<camera_id>/<zone_id>", methods=["DELETE"])
     def delete_zone(camera_id, zone_id):
         """Delete a zone."""
@@ -534,15 +533,15 @@ def create_app(zone_engine, cameras, config_dir):
                 data = json.load(f)
         except FileNotFoundError:
             return jsonify({"success": False, "error": "No zones file"})
-        
+
         for cam in data.get("cameras", []):
             if cam["camera_id"] == camera_id:
                 cam["zones"] = [z for z in cam.get("zones", []) if z["id"] != zone_id]
-        
+
         with open(ZONES_PATH, "w") as f:
             json.dump(data, f, indent=2)
-        
+
         zone_engine.reload()
         return jsonify({"success": True})
-    
+
     return app

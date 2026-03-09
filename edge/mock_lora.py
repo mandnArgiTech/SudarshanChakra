@@ -15,7 +15,6 @@ In dev mode, you can trigger a simulated fall event by publishing:
 
 import json
 import logging
-import os
 import threading
 import time
 from typing import List

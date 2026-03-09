@@ -94,8 +94,8 @@ def test_alert_flow(client):
         return True
     else:
         print(f"  {RED}✗ No alert received within 60s{RESET}")
-        print(f"    Check: is edge-ai-dev container running?")
-        print(f"    Check: does zones.json have zones matching mock detection bboxes?")
+        print("    Check: is edge-ai-dev container running?")
+        print("    Check: does zones.json have zones matching mock detection bboxes?")
         return False
 
 
@@ -236,7 +236,7 @@ def main():
     args = parser.parse_args()
 
     print(f"{BOLD}{'=' * 60}")
-    print(f"  SudarshanChakra — End-to-End Test Suite (Dev Mode)")
+    print("  SudarshanChakra — End-to-End Test Suite (Dev Mode)")
     print(f"  Broker: {args.broker}:{args.port}")
     print(f"{'=' * 60}{RESET}")
 
@@ -245,9 +245,9 @@ def main():
 
     try:
         client.connect(args.broker, args.port, keepalive=60)
-    except Exception as e:
+    except Exception:
         print(f"\n{RED}Cannot connect to MQTT broker at {args.broker}:{args.port}{RESET}")
-        print(f"Start the dev stack first: docker compose -f docker-compose.dev.yml up")
+        print("Start the dev stack first: docker compose -f docker-compose.dev.yml up")
         sys.exit(1)
 
     client.subscribe("farm/#", qos=1)
@@ -272,7 +272,7 @@ def main():
 
         # Summary
         print(f"\n{BOLD}{'=' * 60}")
-        print(f"  RESULTS")
+        print("  RESULTS")
         print(f"{'=' * 60}{RESET}")
 
         passed = sum(1 for v in results.values() if v)

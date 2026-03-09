@@ -19,10 +19,7 @@ import numpy as np
 import os
 import time
 import logging
-import random
-from dataclasses import dataclass
-from typing import List, Optional
-from queue import Queue
+from typing import Optional
 
 log = logging.getLogger("mock_camera")
 

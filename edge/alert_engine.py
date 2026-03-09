@@ -19,8 +19,6 @@ import os
 import threading
 import time
 import uuid
-from typing import Optional
-
 import cv2
 import numpy as np
 import paho.mqtt.client as mqtt
@@ -36,10 +34,10 @@ log = logging.getLogger("alert_engine")
 class AlertDecisionEngine:
     """
     Central brain: detection + zone + LoRa → alert decision.
-    
+
     Thread safety: process_detection() is called from the inference
     thread. All mutable state (_recent_alerts) is protected via lock.
-    
+
     State transitions per detection:
       detection → filter → zone_check → dedup_check → lora_fusion → publish/suppress
     """
@@ -72,10 +70,10 @@ class AlertDecisionEngine:
     def process_detection(self, detection: dict, frame: np.ndarray = None):
         """
         Main decision pipeline for a single detection.
-        
+
         Called by InferencePipeline for every detected object in every frame.
         Must be fast — target <1ms per call.
-        
+
         Args:
             detection: Detection dict from YOLO inference.
             frame: Original camera frame (optional). When provided, enables

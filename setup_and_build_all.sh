@@ -36,14 +36,14 @@ unset _arg
 # ============================================================================
 
 if [[ -t 1 ]] && [[ "${NO_COLOR}" -eq 0 ]]; then
-  readonly RED='\033[0;31m'
-  readonly GREEN='\033[0;32m'
-  readonly YELLOW='\033[1;33m'
-  readonly BLUE='\033[0;34m'
-  readonly CYAN='\033[0;36m'
-  readonly BOLD='\033[1m'
-  readonly DIM='\033[2m'
-  readonly RESET='\033[0m'
+  readonly RED=$'\033[0;31m'
+  readonly GREEN=$'\033[0;32m'
+  readonly YELLOW=$'\033[1;33m'
+  readonly BLUE=$'\033[0;34m'
+  readonly CYAN=$'\033[0;36m'
+  readonly BOLD=$'\033[1m'
+  readonly DIM=$'\033[2m'
+  readonly RESET=$'\033[0m'
 else
   readonly RED=''
   readonly GREEN=''
@@ -230,7 +230,12 @@ ensure_docker() {
     if id -nG 2>/dev/null | grep -qw docker \
        && sg docker -c "${DOCKER_BIN} info" >/dev/null 2>&1; then
       log_info "Docker requires group activation. Restarting under 'sg docker'..."
-      exec sg docker -c "\"$0\" ${ORIG_ARGS[*]}"
+      local quoted_args=""
+      local a
+      for a in "${ORIG_ARGS[@]}"; do
+        quoted_args+=" '${a//\'/\'\\\'\'}'"
+      done
+      exec sg docker -c "\"$0\"${quoted_args}"
     fi
 
     log_info "Docker daemon not running. Attempting to start..."
@@ -284,6 +289,7 @@ ensure_node18() {
 
   local node_major
   node_major=$(node --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/')
+  [[ "${node_major}" =~ ^[0-9]+$ ]] || node_major="0"
   [[ "${node_major}" -ge 18 ]] || {
     log_error "Node.js 18+ required. Found: v${node_major}"
     log_error "Install via https://nodejs.org/ or run: install-deps"
@@ -312,7 +318,7 @@ ensure_pip() {
         log_error "Neither curl nor wget found. Install python3-pip."; return 1
       fi
     fi
-    "${PYTHON_BIN}" "${get_pip}" --user \
+    PIP_BREAK_SYSTEM_PACKAGES=1 "${PYTHON_BIN}" "${get_pip}" --user \
       || { log_error "get-pip.py bootstrap failed."; return 1; }
     export PATH="${HOME}/.local/bin:${PATH}"
 
@@ -433,80 +439,262 @@ cmd_install_deps() {
   command -v apt-get >/dev/null 2>&1 \
     || { log_error "apt-get not found. This script supports Ubuntu/Debian only."; return 1; }
 
-  sudo apt-get update -qq
-
-  # Fix broken packages before attempting new installs
-  log_info "Checking for broken packages..."
-  sudo apt-get -f install -y -qq 2>/dev/null || true
-
-  # Core packages (without Docker to avoid containerd conflicts)
-  local pkgs="git curl unzip openjdk-21-jdk ripgrep python3-pip"
-
-  # Detect correct python3-venv package: python3.10-venv on 22.04, python3.12-venv on 24.04
-  local py_minor
-  py_minor=$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "")
-  local venv_pkg="python3-venv"
-  if [[ -n "${py_minor}" ]]; then
-    venv_pkg="python${py_minor}-venv"
+  # Verify sudo access early
+  if ! sudo -n true 2>/dev/null; then
+    log_info "sudo access required. You may be prompted for your password."
+    sudo true || { log_error "Cannot obtain sudo. Run with a user that has sudo privileges."; return 1; }
   fi
 
-  if ! sudo apt-get install -y -qq ${pkgs} ${venv_pkg} 2>/dev/null; then
-    log_warn "${venv_pkg} unavailable — trying python3-venv..."
-    venv_pkg="python3-venv"
-    sudo apt-get install -y -qq ${pkgs} ${venv_pkg} \
-      || { log_error "Base package install failed. See output above."; return 1; }
+  # Detect Ubuntu version for version-specific handling
+  local ubuntu_ver=""
+  if [[ -f /etc/os-release ]]; then
+    ubuntu_ver=$(. /etc/os-release && echo "${VERSION_ID}")
+  fi
+  log_info "Detected OS: Ubuntu ${ubuntu_ver:-unknown}"
+
+  # APT options: wait up to 120s for dpkg lock (another apt may be running)
+  local APT="sudo apt-get -o DPkg::Lock::Timeout=120"
+
+  # ── Phase 1: Repair any broken dpkg/apt state ──
+  log_info "[1/8] Repairing package manager state..."
+  sudo dpkg --configure -a 2>/dev/null || true
+  ${APT} -f install -y -qq 2>/dev/null || true
+
+  # ── Phase 2: Update package index (with retry) ──
+  log_info "[2/8] Updating package index..."
+  local attempt
+  for attempt in 1 2 3; do
+    if ${APT} update -qq 2>&1; then
+      break
+    fi
+    log_warn "apt-get update failed (attempt ${attempt}/3). Retrying in 5s..."
+    sleep 5
+  done
+
+  # ── Phase 3: Core tools (these almost never fail) ──
+  log_info "[3/8] Installing core tools (git, curl, unzip, ripgrep)..."
+  ${APT} install -y -qq git curl unzip 2>&1 \
+    || { log_error "Failed to install git/curl/unzip. Check apt output above."; return 1; }
+  ${APT} install -y -qq ripgrep 2>/dev/null \
+    || log_warn "ripgrep not available — non-essential, continuing."
+
+  # ── Phase 4: Python + venv + pip ──
+  log_info "[4/8] Installing Python, venv, and pip..."
+  local py_ver=""
+  if command -v python3 >/dev/null 2>&1; then
+    py_ver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "")
   fi
 
-  # Docker: prefer docker.io (Ubuntu), fall back to Docker CE (official repo)
-  if ! command -v docker >/dev/null 2>&1; then
-    log_info "Installing Docker..."
-    if ! sudo apt-get install -y -qq docker.io 2>/dev/null; then
-      log_warn "docker.io failed (containerd conflict?). Trying docker-ce..."
-      sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io \
-        || { log_error "Docker install failed. See https://docs.docker.com/engine/install/"; return 1; }
+  # Install python3 if somehow missing
+  ${APT} install -y -qq python3 2>&1 || true
+
+  if [[ -z "${py_ver}" ]]; then
+    py_ver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "3")
+  fi
+
+  # Try version-specific venv package first, then generic fallback
+  local venv_installed=0
+  for venv_pkg in "python${py_ver}-venv" "python3-venv"; do
+    if ${APT} install -y -qq "${venv_pkg}" 2>/dev/null; then
+      venv_installed=1
+      log_debug "Installed ${venv_pkg}"
+      break
+    fi
+  done
+  [[ ${venv_installed} -eq 1 ]] || log_warn "python3-venv install failed — venv creation may not work."
+
+  # pip: try package install, then bootstrap fallback
+  if ! python3 -m pip --version >/dev/null 2>&1; then
+    ${APT} install -y -qq python3-pip 2>/dev/null || true
+  fi
+  if ! python3 -m pip --version >/dev/null 2>&1; then
+    log_info "pip not available via apt — bootstrapping with get-pip.py..."
+    local get_pip="/tmp/get-pip.py"
+    curl -sSL -o "${get_pip}" "https://bootstrap.pypa.io/get-pip.py" 2>/dev/null \
+      && PIP_BREAK_SYSTEM_PACKAGES=1 python3 "${get_pip}" --user 2>/dev/null \
+      && export PATH="${HOME}/.local/bin:${PATH}" \
+      || log_warn "pip bootstrap failed — build-edge may not work."
+    rm -f "${get_pip}"
+  fi
+
+  # ── Phase 5: Java 21 ──
+  log_info "[5/8] Installing Java 21..."
+  if java -version 2>&1 | grep -qE '"21\.'; then
+    log_info "Java 21 already installed."
+  else
+    # On 22.04, openjdk-21-jdk may need universe/updates repos
+    if [[ "${ubuntu_ver}" == "22.04" ]]; then
+      ${APT} install -y -qq software-properties-common 2>/dev/null || true
+      sudo add-apt-repository -y universe 2>/dev/null || true
+      ${APT} update -qq 2>/dev/null || true
+    fi
+    if ! ${APT} install -y -qq openjdk-21-jdk 2>&1; then
+      # On some minimal 22.04 installs, try backport PPA as last resort
+      log_warn "openjdk-21-jdk not in repos — trying openjdk-r PPA..."
+      sudo add-apt-repository -y ppa:openjdk-r/ppa 2>/dev/null || true
+      ${APT} update -qq 2>/dev/null || true
+      ${APT} install -y -qq openjdk-21-jdk 2>&1 \
+        || { log_error "Java 21 install failed. Install manually: sudo apt install openjdk-21-jdk"; return 1; }
+    fi
+    # Ensure Java 21 is the default if multiple JDKs are installed
+    local java21_bin
+    java21_bin=$(find /usr/lib/jvm -path '*/java-21-openjdk*/bin/java' -type f 2>/dev/null | head -1)
+    if [[ -n "${java21_bin}" ]]; then
+      sudo update-alternatives --set java "${java21_bin}" 2>/dev/null || true
+      local javac21_bin="${java21_bin%/*}/javac"
+      if [[ -x "${javac21_bin}" ]]; then
+        sudo update-alternatives --set javac "${javac21_bin}" 2>/dev/null || true
+      fi
     fi
   fi
 
-  # Add current user to docker group
-  if [[ -n "${SUDO_USER:-}" ]]; then
-    sudo usermod -aG docker "${SUDO_USER}" 2>/dev/null || true
+  # ── Phase 6: Docker ──
+  log_info "[6/8] Installing Docker..."
+  if command -v docker >/dev/null 2>&1 && docker --version >/dev/null 2>&1; then
+    log_info "Docker already installed: $(docker --version 2>/dev/null)"
+  else
+    # Determine which Docker packages are available / already partially installed
+    local has_docker_ce has_docker_io
+    has_docker_ce=$(dpkg -l docker-ce 2>/dev/null | grep -c '^ii' || echo 0)
+    has_docker_io=$(dpkg -l docker.io 2>/dev/null | grep -c '^ii' || echo 0)
+
+    if [[ "${has_docker_ce}" -gt 0 ]]; then
+      # Docker CE partially installed — complete the install
+      log_info "Completing Docker CE installation..."
+      ${APT} install -y -qq docker-ce docker-ce-cli containerd.io 2>&1 \
+        || log_warn "Docker CE completion failed."
+    elif [[ "${has_docker_io}" -gt 0 ]]; then
+      # docker.io partially installed — complete it
+      log_info "Completing docker.io installation..."
+      ${APT} install -y -qq docker.io 2>&1 || log_warn "docker.io completion failed."
+    else
+      # Fresh install: try docker.io first (no repo setup needed)
+      # Remove potential conflicts first
+      ${APT} remove -y containerd 2>/dev/null || true
+      if ! ${APT} install -y -qq docker.io 2>&1; then
+        log_warn "docker.io failed — trying Docker CE..."
+        # Docker CE needs containerd.io which can conflict with Ubuntu's containerd
+        ${APT} remove -y containerd runc 2>/dev/null || true
+        ${APT} install -y -qq docker-ce docker-ce-cli containerd.io 2>&1 \
+          || log_warn "Docker install failed. Install manually: https://docs.docker.com/engine/install/"
+      fi
+    fi
   fi
 
-  # Node.js 22 LTS if system node is too old or missing
+  # Add user to docker group (both sudo user and current user)
+  if getent group docker >/dev/null 2>&1; then
+    local target_user="${SUDO_USER:-${USER}}"
+    if [[ -n "${target_user}" ]] && ! id -nG "${target_user}" 2>/dev/null | grep -qw docker; then
+      sudo usermod -aG docker "${target_user}" 2>/dev/null || true
+      log_info "Added '${target_user}' to docker group. Log out and back in to activate."
+    fi
+  fi
+
+  # Start Docker daemon if not running
+  if command -v docker >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
+    log_info "Starting Docker daemon..."
+    if command -v systemctl >/dev/null 2>&1; then
+      sudo systemctl enable docker 2>/dev/null || true
+      sudo systemctl start docker 2>/dev/null || true
+    fi
+  fi
+
+  # Ensure docker compose plugin is available
+  if command -v docker >/dev/null 2>&1; then
+    if ! docker compose version >/dev/null 2>&1; then
+      log_info "Installing docker-compose-plugin..."
+      ${APT} install -y -qq docker-compose-plugin 2>/dev/null \
+        || log_warn "docker-compose-plugin not available — 'docker compose' may not work."
+    fi
+  fi
+
+  # ── Phase 7: Node.js 22 LTS ──
+  log_info "[7/8] Installing Node.js 22 LTS..."
   local node_major="0"
   if command -v node >/dev/null 2>&1; then
     node_major=$(node --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/' || echo "0")
+    # Ensure numeric
+    [[ "${node_major}" =~ ^[0-9]+$ ]] || node_major="0"
   fi
-  if [[ "${node_major}" -lt 18 ]]; then
-    log_info "Installing Node.js 22 LTS via NodeSource..."
-    if curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -; then
-      sudo apt-get install -y nodejs \
-        || log_warn "Node.js install failed. Install manually: https://nodejs.org/"
-      sudo npm install -g npm@latest 2>/dev/null || true
+
+  if [[ "${node_major}" -ge 18 ]]; then
+    log_info "Node.js $(node --version) already installed (>= 18)."
+  else
+    # Remove old Ubuntu Node.js packages that conflict with NodeSource
+    # libnode72 (22.04), libnode108/libnode109 (24.04), and related dev packages
+    log_info "Removing old Node.js packages to avoid conflicts..."
+    local old_node_pkgs
+    old_node_pkgs=$(dpkg -l 'libnode*' 'nodejs-doc' 2>/dev/null | awk '/^ii/{print $2}' | tr '\n' ' ')
+    if [[ -n "${old_node_pkgs}" ]]; then
+      ${APT} remove -y ${old_node_pkgs} 2>/dev/null || true
+    fi
+    sudo dpkg --configure -a 2>/dev/null || true
+
+    log_info "Setting up NodeSource repository..."
+    local nodesource_ok=0
+    for attempt in 1 2 3; do
+      if curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - 2>&1; then
+        nodesource_ok=1
+        break
+      fi
+      log_warn "NodeSource setup attempt ${attempt}/3 failed. Retrying in 5s..."
+      sleep 5
+    done
+
+    if [[ ${nodesource_ok} -eq 1 ]]; then
+      # Force overwrite in case old files from system nodejs remain
+      ${APT} install -y -qq --allow-downgrades nodejs 2>&1 \
+        || sudo dpkg --force-overwrite -i /var/cache/apt/archives/nodejs_*.deb 2>/dev/null \
+        || log_warn "Node.js install failed after NodeSource setup."
+      # Update npm
+      if command -v npm >/dev/null 2>&1; then
+        sudo npm install -g npm@latest 2>/dev/null || true
+      fi
     else
-      log_warn "NodeSource setup failed. Install Node.js 18+ manually."
+      log_warn "NodeSource unavailable. Install Node.js 18+ manually: https://nodejs.org/"
     fi
   fi
 
-  # arduino-cli for ESP32 firmware
-  if ! command -v arduino-cli >/dev/null 2>&1; then
-    log_info "Installing arduino-cli..."
+  # ── Phase 8: arduino-cli + Android SDK ──
+  log_info "[8/8] Installing optional tools (arduino-cli, Android SDK)..."
+
+  # arduino-cli
+  if command -v arduino-cli >/dev/null 2>&1; then
+    log_info "arduino-cli already installed."
+  else
+    log_info "Downloading arduino-cli..."
     local acli_url="https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz"
-    curl -fsSL "${acli_url}" | sudo tar -xzf - -C /usr/local/bin arduino-cli \
-      && log_success "arduino-cli installed." \
-      || log_warn "arduino-cli install failed. Firmware builds will be skipped."
+    local acli_tmp="/tmp/arduino-cli.tar.gz"
+    for attempt in 1 2 3; do
+      if curl -fsSL -o "${acli_tmp}" "${acli_url}" 2>/dev/null; then
+        if sudo tar -xzf "${acli_tmp}" -C /usr/local/bin arduino-cli 2>/dev/null; then
+          log_success "arduino-cli installed."
+          break
+        fi
+      fi
+      log_warn "arduino-cli download attempt ${attempt}/3 failed."
+      sleep 3
+    done
+    rm -f "${acli_tmp}"
+    command -v arduino-cli >/dev/null 2>&1 \
+      || log_warn "arduino-cli not installed — firmware builds will be skipped."
   fi
 
-  # Android SDK (optional)
+  # Android SDK
   if [[ "${SKIP_ANDROID}" != "1" && -z "${ANDROID_HOME:-}" ]]; then
     local sdk_root="${ROOT_DIR}/android-sdk"
-    if [[ ! -d "${sdk_root}/cmdline-tools/latest/bin" ]]; then
+    if [[ -d "${sdk_root}/cmdline-tools/latest/bin" ]]; then
+      log_info "Android SDK already present at ${sdk_root}."
+      export ANDROID_HOME="${sdk_root}"
+    else
       log_info "Downloading Android command-line tools..."
       mkdir -p "${sdk_root}"
-      if curl -sL -o /tmp/cmdline-tools.zip \
-           "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"; then
-        unzip -q -o /tmp/cmdline-tools.zip -d "${sdk_root}"
-        rm -f /tmp/cmdline-tools.zip
+      local sdk_zip="/tmp/cmdline-tools.zip"
+      if curl -sL -o "${sdk_zip}" \
+           "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" 2>/dev/null; then
+        unzip -q -o "${sdk_zip}" -d "${sdk_root}" 2>/dev/null
+        rm -f "${sdk_zip}"
+        # Reorganize into cmdline-tools/latest/ structure
         if [[ -d "${sdk_root}/cmdline-tools" && ! -d "${sdk_root}/cmdline-tools/latest" ]]; then
           mkdir -p "${sdk_root}/cmdline-tools/latest"
           mv "${sdk_root}"/cmdline-tools/bin "${sdk_root}"/cmdline-tools/lib \
@@ -515,11 +703,13 @@ cmd_install_deps() {
         fi
         if [[ -x "${sdk_root}/cmdline-tools/latest/bin/sdkmanager" ]]; then
           yes | "${sdk_root}/cmdline-tools/latest/bin/sdkmanager" \
-            --sdk_root="${sdk_root}" --licenses 2>/dev/null | tail -1 || true
+            --sdk_root="${sdk_root}" --licenses >/dev/null 2>&1 || true
           "${sdk_root}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${sdk_root}" \
             "platform-tools" "platforms;android-34" "build-tools;34.0.0" 2>/dev/null || true
           export ANDROID_HOME="${sdk_root}"
           log_success "Android SDK installed at ${sdk_root}"
+        else
+          log_warn "Android SDK structure incomplete. Set ANDROID_HOME manually or use SKIP_ANDROID=1."
         fi
       else
         log_warn "Android SDK download failed. Use SKIP_ANDROID=1 or set ANDROID_HOME."
@@ -527,8 +717,43 @@ cmd_install_deps() {
     fi
   fi
 
-  log_success "System dependency installation complete."
-  log_info "You may need to log out and back in for Docker group changes."
+  # ── Final verification ──
+  printf "\n${BOLD}  Dependency check:${RESET}\n"
+  local dep_ok=0 dep_total=0
+  for dep_cmd in git curl python3 java docker node npm; do
+    dep_total=$((dep_total + 1))
+    if command -v "${dep_cmd}" >/dev/null 2>&1; then
+      local ver=""
+      case "${dep_cmd}" in
+        java)   ver=$(java -version 2>&1 | head -1 | sed 's/.*"\(.*\)".*/\1/') ;;
+        python3) ver=$(python3 --version 2>&1 | sed 's/Python //') ;;
+        node)   ver=$(node --version 2>/dev/null) ;;
+        npm)    ver=$(npm --version 2>/dev/null) ;;
+        docker) ver=$(docker --version 2>/dev/null | sed 's/Docker version \([^,]*\).*/\1/') ;;
+        *)      ver="ok" ;;
+      esac
+      printf "    ${GREEN}%-14s %s${RESET}\n" "${dep_cmd}" "${ver}"
+      dep_ok=$((dep_ok + 1))
+    else
+      printf "    ${RED}%-14s MISSING${RESET}\n" "${dep_cmd}"
+    fi
+  done
+  for dep_cmd in arduino-cli; do
+    dep_total=$((dep_total + 1))
+    if command -v "${dep_cmd}" >/dev/null 2>&1; then
+      printf "    ${GREEN}%-14s installed${RESET}\n" "${dep_cmd}"
+      dep_ok=$((dep_ok + 1))
+    else
+      printf "    ${YELLOW}%-14s not found (optional)${RESET}\n" "${dep_cmd}"
+      dep_ok=$((dep_ok + 1))
+    fi
+  done
+  printf "\n"
+
+  log_success "Dependency installation complete (${dep_ok}/${dep_total} verified)."
+  if ! docker info >/dev/null 2>&1; then
+    log_info "Docker group change requires logout/login. Run: newgrp docker"
+  fi
 }
 
 # ============================================================================
@@ -644,7 +869,41 @@ _init_topology() {
   return 1
 }
 
-cmd_build_cloud() { _start_infra; }
+cmd_build_cloud() {
+  # Validate cloud scripts before starting infra
+  log_info "Validating cloud scripts and configs..."
+
+  # Syntax-check all Python scripts in cloud/scripts/
+  local py_file
+  for py_file in "${ROOT_DIR}"/cloud/scripts/*.py; do
+    [[ -f "${py_file}" ]] || continue
+    "${PYTHON_BIN}" -m py_compile "${py_file}" \
+      || { log_error "Syntax error in ${py_file}"; return 1; }
+  done
+  log_success "Cloud Python scripts validated."
+
+  # Validate nginx configs (if nginx/docker is available)
+  local nginx_ok=1
+  if command -v nginx >/dev/null 2>&1; then
+    for conf in "${ROOT_DIR}"/cloud/nginx/*.conf; do
+      [[ -f "${conf}" ]] || continue
+      nginx -t -c "${conf}" 2>/dev/null \
+        || { log_warn "nginx config issue: ${conf##*/} (may need Docker context)"; nginx_ok=0; }
+    done
+  elif command -v "${DOCKER_BIN}" >/dev/null 2>&1 && "${DOCKER_BIN}" info >/dev/null 2>&1; then
+    for conf in "${ROOT_DIR}"/cloud/nginx/*.conf; do
+      [[ -f "${conf}" ]] || continue
+      "${DOCKER_BIN}" run --rm -v "${conf}:/etc/nginx/nginx.conf:ro" \
+        nginx:alpine nginx -t 2>&1 \
+        || { log_warn "nginx config issue: ${conf##*/}"; nginx_ok=0; }
+    done
+  else
+    log_debug "Neither nginx nor docker available — skipping nginx config validation."
+  fi
+  [[ ${nginx_ok} -eq 1 ]] && log_success "Nginx configs validated." || true
+
+  _start_infra
+}
 
 # -- Backend (Java / Spring Boot / Gradle) -----------------------------------
 
@@ -730,7 +989,7 @@ cmd_build_firmware() {
   }
 
   log_info "Updating ESP32 board index and installing dependencies..."
-  arduino-cli core update-index
+  arduino-cli core update-index || { log_error "ESP32 board index update failed."; return 1; }
   arduino-cli core install esp32:esp32 || { log_error "ESP32 core install failed."; return 1; }
   arduino-cli lib install "LoRa"       || { log_error "LoRa library install failed."; return 1; }
 
@@ -1120,12 +1379,95 @@ cmd_deploy_docker_logs() {
 }
 
 # ============================================================================
+# INTERACTIVE MENU (whiptail / dialog TUI)
+# ============================================================================
+
+cmd_menu() {
+  # Fix TERM if dumb/empty (Cursor IDE, some SSH sessions)
+  if [[ "${TERM:-dumb}" == "dumb" || -z "${TERM:-}" ]]; then
+    for _t in xterm-256color xterm ansi vt100; do
+      if TERM="${_t}" tput clear >/dev/null 2>&1; then
+        export TERM="${_t}"
+        break
+      fi
+    done
+  fi
+
+  local tui=""
+  if command -v whiptail >/dev/null 2>&1; then
+    tui="whiptail"
+  elif command -v dialog >/dev/null 2>&1; then
+    tui="dialog"
+  else
+    die "Interactive menu requires 'whiptail' or 'dialog'. Install: sudo apt install whiptail"
+  fi
+
+  local term_h term_w
+  term_h=$(tput lines 2>/dev/null || echo 30)
+  term_w=$(tput cols  2>/dev/null || echo 80)
+  local dlg_h=$((term_h - 4))
+  local dlg_w=$((term_w - 6))
+  [[ ${dlg_h} -gt 40 ]] && dlg_h=40
+  [[ ${dlg_w} -gt 90 ]] && dlg_w=90
+  [[ ${dlg_h} -lt 20 ]] && dlg_h=20
+  [[ ${dlg_w} -lt 60 ]] && dlg_w=60
+  local list_h=$((dlg_h - 9))
+
+  local choices
+  choices=$("${tui}" \
+    --title " SudarshanChakra — Setup, Build, Test & Deploy " \
+    --checklist \
+    "Arrow keys to navigate, Space to toggle, Enter to confirm.\nSelected commands run in the order shown below." \
+    ${dlg_h} ${dlg_w} ${list_h} \
+    "install-deps"      "[SETUP]  Install system packages (sudo)"           OFF \
+    "build-cloud"       "[BUILD]  Validate scripts/nginx + start infra"    OFF \
+    "build-backend"     "[BUILD]  5 Spring Boot microservices (Gradle)"     OFF \
+    "build-dashboard"   "[BUILD]  Lint + build React dashboard (Vite)"      OFF \
+    "build-edge"        "[BUILD]  Validate Edge AI Python code (flake8)"    OFF \
+    "build-android"     "[BUILD]  Android app (Gradle assembleDebug)"       OFF \
+    "build-firmware"    "[BUILD]  ESP32 firmware (arduino-cli)"             OFF \
+    "build-alertmgmt"   "[BUILD]  Validate AlertManagement scripts"         OFF \
+    "build-all"         "[BUILD]  >> ALL builds in dependency order <<"     OFF \
+    "test-backend"      "[TEST]   Backend unit tests (JUnit 5, H2)"        OFF \
+    "test-dashboard"    "[TEST]   Dashboard tests (Vitest)"                 OFF \
+    "test-edge"         "[TEST]   Edge AI tests (pytest)"                   OFF \
+    "test-android"      "[TEST]   Android unit tests (Gradle)"              OFF \
+    "test-all"          "[TEST]   >> ALL test suites <<"                    OFF \
+    "deploy-infra"      "[LOCAL]  Start PostgreSQL + RabbitMQ containers"   OFF \
+    "deploy-backend"    "[LOCAL]  Start 5 backend services (bootRun)"       OFF \
+    "deploy-dashboard"  "[LOCAL]  Start Vite dev server (port 3000)"        OFF \
+    "deploy-edge"       "[LOCAL]  Start edge Flask server (port 5000)"      OFF \
+    "deploy-all"        "[LOCAL]  >> Full local dev stack <<"               OFF \
+    "deploy-docker"     "[DOCKER] Build images + docker-compose up"         OFF \
+    "deploy-docker-stop" "[DOCKER] Stop Docker Compose stack"               OFF \
+    "deploy-docker-logs" "[DOCKER] Tail Docker Compose logs"                OFF \
+    3>&1 1>&2 2>&3) || true
+
+  local cmds=()
+  local item
+  for item in ${choices}; do
+    item="${item%\"}"
+    item="${item#\"}"
+    [[ -n "${item}" ]] && cmds+=("${item}")
+  done
+
+  if [[ ${#cmds[@]} -eq 0 ]]; then
+    log_info "No commands selected. Exiting."
+    exit 0
+  fi
+
+  log_info "Running: ${cmds[*]}"
+  exec "$0" "${cmds[@]}"
+}
+
+# ============================================================================
 # HELP TEXT
 # ============================================================================
 
 show_help() {
   cat <<EOF
 ${BOLD}SudarshanChakra — Unified Setup, Build, Test & Deploy${RESET}
+Enterprise Smart Farm Hazard Detection & Security System (IoT + Edge AI + Cloud)
 
 ${BOLD}USAGE:${RESET}
   ./${SCRIPT_NAME} [commands...] [options]
@@ -1133,40 +1475,67 @@ ${BOLD}USAGE:${RESET}
   When no command is given, ${CYAN}build-all${RESET} is assumed.
   Multiple commands can be chained: ${DIM}./${SCRIPT_NAME} build-backend test-backend${RESET}
 
+${BOLD}PREREQUISITES:${RESET}
+  Ubuntu 22.04 / 24.04 (or Debian-based). Run ${CYAN}install-deps${RESET} to auto-install, or manually:
+    Java 21          sudo apt install openjdk-21-jdk
+    Node.js 22+      curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+    Python 3.10+     (pre-installed on Ubuntu 22.04/24.04)
+    Docker           sudo apt install docker.io && sudo usermod -aG docker \$USER
+    arduino-cli      curl -fsSL https://downloads.arduino.cc/arduino-cli/... | sudo tar -xzf -
+    Android SDK      Set ANDROID_HOME or use install-deps to download
+
+${BOLD}COMPONENT STACK:${RESET}
+  backend        Java 21, Spring Boot 3.2, Gradle 8.7 (5 microservices)
+  dashboard      React 18, Vite 5, TypeScript, Tailwind CSS 3
+  edge           Python 3.10+, YOLO, Flask, OpenCV
+  android        Kotlin 1.9, Jetpack Compose, Gradle 8.5
+  firmware       C++ / Arduino, ESP32, LoRa SX1276
+  cloud          Docker Compose, PostgreSQL 16, RabbitMQ 3
+  alertmgmt      Python (Raspberry Pi PA system)
+
+${BOLD}SERVICE PORTS:${RESET}
+  PostgreSQL       5432        RabbitMQ AMQP    5672
+  RabbitMQ Mgmt    15672       RabbitMQ MQTT    1883
+  API Gateway      8080        Alert Service    8081
+  Device Service   8082        Auth Service     8083
+  Siren Service    8084        Dashboard (dev)  3000
+  Edge GUI         5000        Nginx (Docker)   9080
+
 ${BOLD}SETUP:${RESET}
-  ${CYAN}install-deps${RESET}            Install system packages (Ubuntu/Debian; uses sudo)
+  ${CYAN}install-deps${RESET}            Install all system packages (Ubuntu/Debian; uses sudo)
 
 ${BOLD}BUILD:${RESET}
-  ${CYAN}build-backend${RESET}           Build 5 Spring Boot microservices (Gradle)
-  ${CYAN}build-dashboard${RESET}         Lint and build React dashboard (Vite)
-  ${CYAN}build-edge${RESET}              Validate Edge AI Python code (venv + flake8)
-  ${CYAN}build-android${RESET}           Build Android app (Gradle assembleDebug)
-  ${CYAN}build-firmware${RESET}          Compile ESP32 firmware (arduino-cli)
-  ${CYAN}build-alertmgmt${RESET}         Validate AlertManagement Python scripts
-  ${CYAN}build-cloud${RESET}             Start PostgreSQL + RabbitMQ + init topology
+  ${CYAN}build-backend${RESET}           Gradle build (compile + package, skip tests)
+  ${CYAN}build-dashboard${RESET}         npm install + ESLint + tsc + Vite build -> dist/
+  ${CYAN}build-edge${RESET}              Python venv + pip deps + py_compile + flake8
+  ${CYAN}build-android${RESET}           Gradle assembleDebug -> app-debug.apk
+  ${CYAN}build-firmware${RESET}          arduino-cli compile (bridge receiver + LoRa tag)
+  ${CYAN}build-alertmgmt${RESET}         py_compile AlertManagement/scripts/*.py
+  ${CYAN}build-cloud${RESET}             Validate cloud scripts/nginx + start PostgreSQL/RabbitMQ
   ${CYAN}build-all${RESET}               Run all build commands in dependency order
 
 ${BOLD}TEST:${RESET}
-  ${CYAN}test-backend${RESET}            Run backend unit tests (JUnit 5)
-  ${CYAN}test-dashboard${RESET}          Run dashboard tests (Vitest)
-  ${CYAN}test-edge${RESET}               Run edge tests (pytest)
-  ${CYAN}test-android${RESET}            Run Android unit tests
-  ${CYAN}test-all${RESET}                Run all tests
+  ${CYAN}test-backend${RESET}            Gradle test (JUnit 5, H2 in-memory DB)
+  ${CYAN}test-dashboard${RESET}          Vitest (--run --passWithNoTests)
+  ${CYAN}test-edge${RESET}               pytest edge/tests/ -v
+  ${CYAN}test-android${RESET}            Gradle testDebugUnitTest
+  ${CYAN}test-all${RESET}                Run all test commands
 
 ${BOLD}DEPLOY (Local / Non-Docker):${RESET}
-  ${CYAN}deploy-infra${RESET}            Start PostgreSQL + RabbitMQ containers
-  ${CYAN}deploy-backend${RESET}          Start backend services via bootRun (background)
-  ${CYAN}deploy-dashboard${RESET}        Start Vite dev server (port 3000)
-  ${CYAN}deploy-edge${RESET}             Start edge Flask server (port 5000)
-  ${CYAN}deploy-all${RESET}              Start full local dev stack
+  ${CYAN}deploy-infra${RESET}            Start PostgreSQL + RabbitMQ containers + topology
+  ${CYAN}deploy-backend${RESET}          Pre-build, then bootRun 5 services (background, PID tracked)
+  ${CYAN}deploy-dashboard${RESET}        Vite dev server on :3000 (background)
+  ${CYAN}deploy-edge${RESET}             Flask server on :5000 (background)
+  ${CYAN}deploy-all${RESET}              Start full local dev stack (infra + backend + dashboard + edge)
 
 ${BOLD}DEPLOY (Docker / Production):${RESET}
-  ${CYAN}deploy-docker${RESET}           Build images and deploy via docker-compose
-  ${CYAN}deploy-docker-stop${RESET}      Stop Docker Compose stack
-  ${CYAN}deploy-docker-logs${RESET}      Tail Docker Compose logs
+  ${CYAN}deploy-docker${RESET}           Build Docker images + docker-compose.vps.yml up
+  ${CYAN}deploy-docker-stop${RESET}      docker compose down
+  ${CYAN}deploy-docker-logs${RESET}      docker compose logs -f --tail=100
 
 ${BOLD}OPTIONS:${RESET}
   ${CYAN}-h, --help${RESET}              Show this help
+  ${CYAN}-m, --menu${RESET}              Interactive TUI checklist (whiptail/dialog)
   ${CYAN}-v, --verbose${RESET}           Show extra debug output
   ${CYAN}--no-color${RESET}              Disable colored output
 
@@ -1174,17 +1543,37 @@ ${BOLD}ENVIRONMENT VARIABLES:${RESET}
   SKIP_ANDROID=1          Skip Android in build-all / test-all
   SKIP_FIRMWARE=1         Skip firmware in build-all
   SKIP_DASHBOARD=1        Skip dashboard in build-all / test-all / deploy-all
-  ANDROID_HOME            Path to Android SDK
-  DB_PASS                 PostgreSQL password   (default: devpassword123)
-  RABBITMQ_PASS           RabbitMQ password     (default: devpassword123)
+  ANDROID_HOME            Path to Android SDK (default: ./android-sdk or /opt/android-sdk)
+  DB_PASS                 PostgreSQL password     (default: devpassword123)
+  RABBITMQ_PASS           RabbitMQ password       (default: devpassword123)
+  DOCKER_BIN              Docker binary           (default: docker)
+  PYTHON_BIN              Python binary           (default: python3)
 
 ${BOLD}EXAMPLES:${RESET}
-  ./${SCRIPT_NAME}                                  # Build everything
-  ./${SCRIPT_NAME} install-deps build-all           # Install deps + build
-  ./${SCRIPT_NAME} build-backend test-backend       # Build and test backend only
-  ./${SCRIPT_NAME} deploy-all                       # Start local dev stack
-  ./${SCRIPT_NAME} deploy-docker                    # Docker production deploy
-  ./${SCRIPT_NAME} build-all test-all deploy-docker # Full CI/CD pipeline
+  ${DIM}# First-time setup: install everything and build${RESET}
+  ./${SCRIPT_NAME} install-deps build-all
+
+  ${DIM}# Build everything (default when no command given)${RESET}
+  ./${SCRIPT_NAME}
+
+  ${DIM}# Work on a single component${RESET}
+  ./${SCRIPT_NAME} build-backend test-backend
+  ./${SCRIPT_NAME} build-dashboard test-dashboard
+
+  ${DIM}# Start local development environment${RESET}
+  ./${SCRIPT_NAME} deploy-all
+
+  ${DIM}# Start only infra + backend (no frontend/edge)${RESET}
+  ./${SCRIPT_NAME} deploy-infra deploy-backend
+
+  ${DIM}# Production Docker deployment${RESET}
+  ./${SCRIPT_NAME} deploy-docker
+
+  ${DIM}# Full CI/CD pipeline: build, test, deploy${RESET}
+  ./${SCRIPT_NAME} build-all test-all deploy-docker
+
+  ${DIM}# Skip optional components${RESET}
+  SKIP_ANDROID=1 SKIP_FIRMWARE=1 ./${SCRIPT_NAME} build-all test-all
 
 EOF
 }
@@ -1204,6 +1593,9 @@ main() {
       -h|--help)
         show_help
         exit 0
+        ;;
+      -m|--menu)
+        cmd_menu
         ;;
       -v|--verbose|--no-color)
         # Already parsed in pre-scan
