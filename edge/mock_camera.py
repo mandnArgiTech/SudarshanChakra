@@ -203,6 +203,11 @@ class MockInferencePipeline:
         """Run the mock detection loop (blocking, like the real pipeline)."""
         self._running = True
 
+        try:
+            from edge_gui import update_snapshot
+        except ImportError:
+            update_snapshot = None
+
         log.info("Mock pipeline running. Will cycle through %d detection scenarios.",
                  len(MOCK_SCENARIOS))
 
@@ -214,11 +219,8 @@ class MockInferencePipeline:
 
             # Grab frame (for GUI snapshot)
             frame = mock_cam.grab_frame()
-            try:
-                from edge_gui import update_snapshot
+            if update_snapshot:
                 update_snapshot(cam_id, frame)
-            except ImportError:
-                pass
 
             # Get mock detection
             scenario = MOCK_SCENARIOS[self._scenario_index % len(MOCK_SCENARIOS)]
@@ -252,6 +254,9 @@ class MockInferencePipeline:
 
     def stop(self):
         self._running = False
+        for cam in self.mock_cameras.values():
+            if cam._cap and cam._cap.isOpened():
+                cam._cap.release()
 
     def get_stats(self) -> dict:
         return {

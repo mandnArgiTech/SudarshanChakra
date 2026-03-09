@@ -117,6 +117,7 @@ def test_worker_suppression(client):
     # We need enough time for at least one full cycle after toggle.
     start = time.time()
     timeout = 250
+    found = False
     while time.time() - start < timeout:
         with lock:
             for topic, msgs in received_messages.items():
@@ -125,14 +126,18 @@ def test_worker_suppression(client):
                         p = msg["payload"]
                         if isinstance(p, dict) and p.get("detection_class") == "person" \
                                 and not p.get("worker_suppressed"):
-                            elapsed = time.time() - start
-                            print(f"  {GREEN}✓ Intruder alert fired (worker absent) after {elapsed:.0f}s!{RESET}")
-                            client.publish("dev/simulate/worker_toggle",
-                                           json.dumps({"present": True}), qos=1)
-                            return True
+                            found = True
+                            break
+                if found:
+                    break
+        if found:
+            elapsed = time.time() - start
+            print(f"  {GREEN}✓ Intruder alert fired (worker absent) after {elapsed:.0f}s!{RESET}")
+            client.publish("dev/simulate/worker_toggle",
+                           json.dumps({"present": True}), qos=1)
+            return True
         time.sleep(1)
 
-    # Re-enable worker
     client.publish("dev/simulate/worker_toggle",
                    json.dumps({"present": True}), qos=1)
 
@@ -251,35 +256,36 @@ def main():
 
     time.sleep(1)  # Let subscriptions settle
 
-    if args.test == "full":
-        tests_to_run = list(TESTS.items())
-    else:
-        tests_to_run = [(args.test, TESTS[args.test])]
+    try:
+        if args.test == "full":
+            tests_to_run = list(TESTS.items())
+        else:
+            tests_to_run = [(args.test, TESTS[args.test])]
 
-    results = {}
-    for name, test_fn in tests_to_run:
-        try:
-            results[name] = test_fn(client)
-        except Exception as e:
-            print(f"  {RED}✗ Test crashed: {e}{RESET}")
-            results[name] = False
+        results = {}
+        for name, test_fn in tests_to_run:
+            try:
+                results[name] = test_fn(client)
+            except Exception as e:
+                print(f"  {RED}✗ Test crashed: {e}{RESET}")
+                results[name] = False
 
-    # Summary
-    print(f"\n{BOLD}{'=' * 60}")
-    print(f"  RESULTS")
-    print(f"{'=' * 60}{RESET}")
+        # Summary
+        print(f"\n{BOLD}{'=' * 60}")
+        print(f"  RESULTS")
+        print(f"{'=' * 60}{RESET}")
 
-    passed = sum(1 for v in results.values() if v)
-    total = len(results)
+        passed = sum(1 for v in results.values() if v)
+        total = len(results)
 
-    for name, result in results.items():
-        icon = f"{GREEN}PASS{RESET}" if result else f"{RED}FAIL{RESET}"
-        print(f"  {icon}  {name}")
+        for name, result in results.items():
+            icon = f"{GREEN}PASS{RESET}" if result else f"{RED}FAIL{RESET}"
+            print(f"  {icon}  {name}")
 
-    print(f"\n  {passed}/{total} tests passed")
-
-    client.loop_stop()
-    client.disconnect()
+        print(f"\n  {passed}/{total} tests passed")
+    finally:
+        client.loop_stop()
+        client.disconnect()
 
     sys.exit(0 if passed == total else 1)
 
