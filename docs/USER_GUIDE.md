@@ -4,6 +4,51 @@
 
 ---
 
+## 0. For administrators — setup and deployment
+
+This section is for anyone who installs or deploys SudarshanChakra (farm IT, DevOps). End users can skip to [Section 1](#1-introduction).
+
+### Unified setup and build script
+
+From the repository root, use the main script for all setup, build, and deploy tasks:
+
+```bash
+./setup_and_build_all.sh --help
+```
+
+**Common commands:**
+
+| Command | Purpose |
+|--------|--------|
+| `install-deps` | Install system packages (Java 21, Node.js 22+, Docker, Python venv, etc.) on Ubuntu 22.04/24.04 |
+| `build-all` | Build backend, dashboard, edge, Android, firmware, alertmgmt, and validate cloud configs |
+| `build-cloud` | Validate cloud Python scripts and nginx configs, then start PostgreSQL + RabbitMQ containers and init RabbitMQ topology |
+| `deploy-all` | Full local dev stack: infra + backend (5 services) + dashboard + edge (background processes) |
+| `deploy-docker` | Build Docker images and start the full stack with `docker-compose.vps.yml` (production-style) |
+
+**Options:** `--menu` for an interactive TUI checklist (whiptail/dialog), `--verbose`, `--no-color`.
+
+**Docker deployment (`deploy-docker`):**
+
+- Run from **repo root**: `./setup_and_build_all.sh deploy-docker`.
+- If `cloud/.env` is missing, it is **created automatically** from `cloud/.env.example` with dev defaults (`DB_PASS`, `RABBITMQ_PASS`, `JWT_SECRET`). No manual copy needed for first-time local or dev runs.
+- For production, create or edit `cloud/.env` with strong passwords and a secure `JWT_SECRET` (e.g. `openssl rand -hex 32`).
+- Compose runs from `cloud/` so `cloud/.env` is always used. Dashboard and API are behind Nginx on **port 9080** by default (configurable in `cloud/docker-compose.vps.yml`).
+
+**Ports (reference):**
+
+| Service | Port | Notes |
+|--------|------|--------|
+| Dashboard (Vite dev) | 3000 | Local dev only |
+| API Gateway | 8080 | Local dev; in Docker, reached via Nginx |
+| Nginx (Docker stack) | 9080 | Dashboard + API at `http://host:9080` and `http://host:9080/api/` |
+| RabbitMQ Management | 15672 | Admin UI |
+| PostgreSQL | 5432 | Internal / localhost |
+
+For detailed steps and alternatives, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) and [DEPLOY_AFTER_BUILD.md](DEPLOY_AFTER_BUILD.md).
+
+---
+
 ## 1. Introduction
 
 SudarshanChakra is an AI-powered security system for your farm. It uses cameras and wearable tags to detect hazards (snakes, scorpions, fire) and intruders, monitor livestock, and protect children near the pond — all in real time.
@@ -33,9 +78,9 @@ SudarshanChakra is an AI-powered security system for your farm. It uses cameras 
 
 ### 2.1 Accessing the Dashboard
 
-Open your browser and go to: **`https://vivasvan-tech.in`** (production with TLS).
-
-If you deployed with the **VPS deploy script** (HTTP-only stack), use **`http://vivasvan-tech.in:9080`** or **`http://<your-server-ip>:9080`** (or `http://localhost:9080` when on the server). The main site vivasvan-tech.in (port 80/443) is used by another app (e.g. Portainer); SudarshanChakra is on port **9080**. To use a different port, change the nginx port mapping in `cloud/docker-compose.vps.yml` (e.g. `"9080:80"`).
+- **Production (TLS):** **`https://vivasvan-tech.in`** when the full TLS stack is in use.
+- **Docker / VPS (HTTP):** If the stack was started with **`./setup_and_build_all.sh deploy-docker`** or **`./cloud/deploy.sh`**, use **`http://<server-ip>:9080`** or **`http://localhost:9080`** when on the server. Port **9080** is the default so SudarshanChakra can coexist with other apps (e.g. Portainer on 80/443). To change it, edit the nginx port in `cloud/docker-compose.vps.yml` (e.g. `"9080:80"`).
+- **Local development:** If you ran **`./setup_and_build_all.sh deploy-all`**, the dashboard is at **`http://localhost:3000`** (Vite dev server; API is proxied to 8080).
 
 Log in with your username and password provided by the farm administrator.
 
@@ -235,6 +280,7 @@ NEW → ACKNOWLEDGED → RESOLVED
 | App not receiving notifications | Check phone notification settings; ensure MQTT foreground service is running; re-login |
 | False alerts for workers | Ensure worker has tag turned ON before entering zone |
 | "Node offline" alert | Edge Node may have lost power or internet; check physically |
+| Docker deploy fails: "JWT_SECRET is missing" | Ensure `cloud/.env` exists. Run `./setup_and_build_all.sh deploy-docker` from repo root — it creates `cloud/.env` from `.env.example` with dev defaults if missing. For production, edit `cloud/.env` and set strong values. |
 
 ---
 
@@ -246,3 +292,15 @@ NEW → ACKNOWLEDGED → RESOLVED
 4. **Child safety tag must be worn** — The fall detector only works when the tag is on the child.
 5. **Test the siren monthly** — Use the dashboard or app to trigger a short test.
 6. **Report false positives** — Marking false alerts helps improve the AI over time.
+
+---
+
+## 9. Related documentation
+
+| Document | Audience | Contents |
+|----------|----------|----------|
+| [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | Developers | Prerequisites, repo layout, setup script details, testing, contribution |
+| [DEPLOY_AFTER_BUILD.md](DEPLOY_AFTER_BUILD.md) | Admins / DevOps | Step-by-step local and VPS deploy, manual and script-based |
+| [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | Admins | Deployment options, TLS, VPN, production checklist |
+| [VPS_HEALTH_AND_USAGE.md](VPS_HEALTH_AND_USAGE.md) | Admins | Health checks, monitoring, usage after deploy |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | All | Deeper troubleshooting for build, run, and network issues |

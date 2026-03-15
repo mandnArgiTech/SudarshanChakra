@@ -429,6 +429,25 @@ resolve_compose_cmd() {
   fi
 }
 
+# Ensure cloud/.env exists for docker-compose (DB_PASS, RABBITMQ_PASS, JWT_SECRET)
+ensure_cloud_env() {
+  local env_file="${ROOT_DIR}/cloud/.env"
+  local example_file="${ROOT_DIR}/cloud/.env.example"
+  if [[ -f "${env_file}" ]]; then
+    return 0
+  fi
+  if [[ ! -f "${example_file}" ]]; then
+    log_error "cloud/.env.example not found; cannot create .env."
+    return 1
+  fi
+  log_info "Creating cloud/.env from .env.example (dev defaults)..."
+  sed -e 's/CHANGE_ME_TO_STRONG_PASSWORD/devpassword123/g' \
+      -e 's/CHANGE_ME_64_CHAR_HEX_STRING/devsecret1234567890abcdef1234567890abcdef/g' \
+      -e 's/CHANGE_ME_EDGE_PASSWORD/devedgepassword123/g' \
+      "${example_file}" > "${env_file}"
+  log_success "cloud/.env created. Override values in cloud/.env for production."
+}
+
 # ============================================================================
 # INSTALL DEPENDENCIES
 # ============================================================================
@@ -1285,11 +1304,19 @@ cmd_deploy_all() {
 cmd_deploy_docker() {
   ensure_docker || return 1
 
-  local compose_cmd compose_file="${ROOT_DIR}/cloud/docker-compose.vps.yml"
+  local cloud_dir="${ROOT_DIR}/cloud"
+  local compose_cmd compose_file="${cloud_dir}/docker-compose.vps.yml"
   compose_cmd=$(resolve_compose_cmd) || return 1
 
+  ensure_cloud_env || return 1
   [[ -f "${compose_file}" ]] \
     || { log_error "Compose file not found: ${compose_file}"; return 1; }
+
+  # Load cloud/.env so compose and _init_topology use same credentials
+  set -a
+  # shellcheck source=/dev/null
+  source "${cloud_dir}/.env" 2>/dev/null || true
+  set +a
 
   # Build backend JARs (Dockerfiles are multi-stage but we pre-build for speed)
   log_info "Building backend JARs..."
@@ -1320,9 +1347,9 @@ cmd_deploy_docker() {
       || { log_error "Docker build failed for dashboard"; return 1; }
   fi
 
-  # Start everything via Compose
+  # Start everything via Compose (run from cloud/ so .env is loaded)
   log_info "Starting Docker Compose stack..."
-  ${compose_cmd} -f "${compose_file}" up -d \
+  (cd "${cloud_dir}" && ${compose_cmd} -f docker-compose.vps.yml up -d) \
     || { log_error "docker compose up failed."; return 1; }
 
   # Wait for infrastructure readiness
@@ -1350,19 +1377,20 @@ cmd_deploy_docker() {
   printf "    %-20s %s\n" "PostgreSQL"     "localhost:5432"
   printf "\n"
 
-  log_info "Logs: ${compose_cmd} -f ${compose_file} logs -f"
-  log_info "Stop: ${compose_cmd} -f ${compose_file} down"
+  log_info "Logs: cd cloud && ${compose_cmd} -f docker-compose.vps.yml logs -f"
+  log_info "Stop: cd cloud && ${compose_cmd} -f docker-compose.vps.yml down"
   log_success "Docker deployment complete."
 }
 
 cmd_deploy_docker_stop() {
   ensure_docker || return 1
 
-  local compose_cmd compose_file="${ROOT_DIR}/cloud/docker-compose.vps.yml"
+  local cloud_dir="${ROOT_DIR}/cloud"
+  local compose_cmd compose_file="${cloud_dir}/docker-compose.vps.yml"
   compose_cmd=$(resolve_compose_cmd) || return 1
 
   log_info "Stopping Docker Compose stack..."
-  ${compose_cmd} -f "${compose_file}" down \
+  (cd "${cloud_dir}" && ${compose_cmd} -f docker-compose.vps.yml down) \
     || { log_error "docker compose down failed."; return 1; }
 
   log_success "Docker Compose stack stopped."
@@ -1371,11 +1399,12 @@ cmd_deploy_docker_stop() {
 cmd_deploy_docker_logs() {
   ensure_docker || return 1
 
-  local compose_cmd compose_file="${ROOT_DIR}/cloud/docker-compose.vps.yml"
+  local cloud_dir="${ROOT_DIR}/cloud"
+  local compose_cmd compose_file="${cloud_dir}/docker-compose.vps.yml"
   compose_cmd=$(resolve_compose_cmd) || return 1
 
   log_info "Tailing Docker Compose logs (Ctrl+C to stop)..."
-  ${compose_cmd} -f "${compose_file}" logs -f --tail=100
+  (cd "${cloud_dir}" && ${compose_cmd} -f docker-compose.vps.yml logs -f --tail=100)
 }
 
 # ============================================================================
