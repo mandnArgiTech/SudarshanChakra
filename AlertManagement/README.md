@@ -4,6 +4,48 @@
 
 ---
 
+## Quick: How to Run, Deploy, and How It Connects to the Backend
+
+### How to run AlertManagement (PA controller)
+
+- **On the Pi (production):** Copy the project to the Pi, run `setup.sh`, then run the service:
+  ```bash
+  sudo systemctl start pa-controller
+  sudo systemctl enable pa-controller   # start on boot
+  ```
+  See [Section 4 — Deployment Steps](#4-deployment-steps) for full copy/setup.
+
+- **From the monorepo (syntax check only):** The main setup script only validates Python syntax; it does not run the PA:
+  ```bash
+  ./setup_and_build_all.sh build-alertmgmt   # py_compile AlertManagement/scripts/*.py
+  ```
+
+- **Manual run on Pi (for debugging):**
+  ```bash
+  cd /opt/pa-system
+  source /etc/pa-system/pa.env   # or export PA_MQTT_BROKER=...
+  python3 pa_controller.py
+  ```
+
+### How it connects to the backend
+
+The PA does **not** talk to the Java backend or RabbitMQ directly. The chain is:
+
+1. **Dashboard / Android app** → HTTP to **API Gateway** → **Siren Service** (Java).
+2. **Siren Service** → publishes to **RabbitMQ** (exchange `farm.commands`, routing keys `farm.siren.trigger` / `farm.siren.stop` → queue `siren.commands`).
+3. **Edge node** (e.g. `farm_edge_node.py` on the edge AI server) connects to the **VPS MQTT broker** (RabbitMQ MQTT plugin, port 1883), subscribes to `farm/siren/trigger` and `farm/siren/stop`. When it receives a siren command, it **forwards** it to the **local MQTT broker** (e.g. Mosquitto on the same LAN).
+4. **PA controller** (this project, on the Pi) connects to that **local MQTT broker**, subscribes to topic **`pa/command`**, and plays siren/BGM or stops.
+
+So: **Backend (RabbitMQ) → Edge node (bridge) → Local MQTT → PA controller (Pi).**
+
+Required setup:
+
+- **Backend:** Siren service + RabbitMQ + topology (e.g. `./setup_and_build_all.sh deploy-infra deploy-backend` or Docker stack).
+- **Edge node:** Running `farm_edge_node.py` with **`PA_MQTT_BROKER`** set to the IP/host of the machine where Mosquitto (or the PA’s MQTT broker) is running. Often that’s the same host as the edge AI server, or the Pi’s IP if the Pi runs Mosquitto.
+- **Pi:** `pa_controller.py` with **`PA_MQTT_BROKER`** pointing to the same broker the edge publishes to (e.g. edge server IP), topic `pa/command`.
+
+---
+
 ## System Architecture
 
 ```

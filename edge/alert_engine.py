@@ -16,9 +16,11 @@ Decision pipeline per detection:
 import json
 import logging
 import os
+import subprocess
 import threading
 import time
 import uuid
+from collections import deque
 import cv2
 import numpy as np
 import paho.mqtt.client as mqtt
@@ -65,7 +67,16 @@ class AlertDecisionEngine:
             "worker_suppressed": 0,
             "deduplicated": 0,
             "filtered_out": 0,
+            "throttled": 0,
         }
+        self._alert_history = deque(maxlen=100)
+        self._camera_counts = {}
+        self._throttle_window = float(os.getenv("ALERT_THROTTLE_WINDOW_SEC", "60"))
+        self._throttle_max = int(os.getenv("ALERT_THROTTLE_MAX_PER_CAMERA", "10"))
+        self._cleanup_stop = threading.Event()
+        t = threading.Thread(target=self._snapshot_cleanup_loop, daemon=True,
+                           name="snapshot-cleanup")
+        t.start()
 
     def process_detection(self, detection: dict, frame: np.ndarray = None):
         """
@@ -117,8 +128,20 @@ class AlertDecisionEngine:
                 self._publish_suppression(detection, violation)
                 return
 
+        cam_id = detection["camera_id"]
+        now = time.time()
+        with self._dedup_lock:
+            lst = self._camera_counts.setdefault(cam_id, [])
+            lst[:] = [t for t in lst if now - t < self._throttle_window]
+            if len(lst) >= self._throttle_max:
+                self.stats["throttled"] += 1
+                return
+            lst.append(now)
+
         alert_id = str(uuid.uuid4())
         snapshot_url = ""
+        if frame is None and detection.get("_frame") is not None:
+            frame = detection.pop("_frame", None)
         if frame is not None:
             snapshot_url = self._save_snapshot(alert_id, frame, detection)
 
@@ -149,6 +172,15 @@ class AlertDecisionEngine:
             result = self.mqtt.publish(topic, json.dumps(alert), qos=1)
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
                 self.stats["alerts_published"] += 1
+                self._alert_history.append({
+                    "alert_id": alert_id,
+                    "camera_id": detection["camera_id"],
+                    "class": detection["class"],
+                    "zone": violation["zone_name"],
+                    "priority": violation["priority"],
+                    "timestamp": now,
+                    "snapshot_url": snapshot_url,
+                })
                 log.info("[%s] ALERT [%s] %s: %s in %s (%.0f%% conf)",
                          correlation_id,
                          violation["priority"].upper(),
@@ -156,6 +188,16 @@ class AlertDecisionEngine:
                          violation["zone_name"],
                          detection["camera_id"],
                          detection["confidence"] * 100)
+                if os.getenv("LOCAL_ALERT_SOUND", "").lower() in ("1", "true", "yes"):
+                    try:
+                        wav = os.getenv("LOCAL_ALERT_WAV", "/usr/share/sounds/alsa/Front_Center.wav")
+                        subprocess.Popen(
+                            ["aplay", "-q", wav],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                    except Exception:
+                        pass
             else:
                 log.error("[%s] MQTT publish failed (rc=%d) for alert %s",
                           correlation_id, result.rc, alert_id)
@@ -259,3 +301,26 @@ class AlertDecisionEngine:
     def get_stats(self) -> dict:
         """Return engine statistics for monitoring/heartbeat."""
         return dict(self.stats)
+
+    def get_alert_history(self) -> list:
+        """Last N alerts (newest last)."""
+        return list(self._alert_history)
+
+    def _snapshot_cleanup_loop(self):
+        """Delete snapshot JPEGs older than 24h periodically."""
+        while not self._cleanup_stop.is_set():
+            if self._cleanup_stop.wait(timeout=3600):
+                break
+            try:
+                cutoff = time.time() - 86400
+                for name in os.listdir(self.snapshot_dir):
+                    if not name.endswith(".jpg"):
+                        continue
+                    path = os.path.join(self.snapshot_dir, name)
+                    try:
+                        if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                            os.remove(path)
+                    except OSError:
+                        pass
+            except Exception as e:
+                log.debug("Snapshot cleanup: %s", e)

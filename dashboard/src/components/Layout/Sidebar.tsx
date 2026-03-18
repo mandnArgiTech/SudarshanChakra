@@ -10,6 +10,7 @@ import {
   Users,
   BarChart3,
   Settings,
+  Droplets,
 } from 'lucide-react';
 import { useNodes } from '@/api/devices';
 
@@ -22,6 +23,7 @@ const navItems = [
   { to: '/siren', icon: Siren, label: 'Siren' },
   { to: '/workers', icon: Users, label: 'Workers' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+  { to: '/water', icon: Droplets, label: 'Water' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

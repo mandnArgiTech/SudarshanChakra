@@ -234,6 +234,7 @@ class MockInferencePipeline:
                     "timestamp": time.time(),
                     "frame_number": mock_cam.frame_count,
                     "mock": True,
+                    "_frame": frame,
                 }
 
                 log.info("MOCK DETECTION [%s] %s: %s (%.0f%%) — %s",

@@ -63,6 +63,13 @@ def main():
     )
     print("  ✓ farm.dead-letter (fanout)")
 
+    channel.exchange_declare(
+        exchange="farm.water",
+        exchange_type="topic",
+        durable=True,
+    )
+    print("  ✓ farm.water (topic)")
+
     print("\n=== Creating Queues ===")
 
     dead_letter_args = {
@@ -129,6 +136,20 @@ def main():
     )
     print("  ✓ worker.suppression")
 
+    channel.queue_declare(
+        queue="water.level",
+        durable=True,
+        arguments=dead_letter_args,
+    )
+    print("  ✓ water.level")
+
+    channel.queue_declare(
+        queue="water.status",
+        durable=True,
+        arguments=dead_letter_args,
+    )
+    print("  ✓ water.status")
+
     # Dead-letter queue (catch-all for failed messages)
     channel.queue_declare(
         queue="dead-letter-sink",
@@ -167,6 +188,10 @@ def main():
     channel.queue_bind(queue="worker.suppression", exchange="farm.events",
                        routing_key="farm.events.worker_identified")
     print("  ✓ farm.events.worker_identified → worker.suppression")
+
+    channel.queue_bind(queue="water.level", exchange="farm.water", routing_key="water.level")
+    channel.queue_bind(queue="water.status", exchange="farm.water", routing_key="water.status")
+    print("  ✓ farm.water.* → water.level / water.status")
 
     # Dead-letter binding
     channel.queue_bind(queue="dead-letter-sink", exchange="farm.dead-letter",

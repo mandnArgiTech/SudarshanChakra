@@ -536,6 +536,14 @@ cmd_install_deps() {
     rm -f "${get_pip}"
   fi
 
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    if dpkg -l nvidia-container-toolkit 2>/dev/null | grep -q '^ii'; then
+      log_info "nvidia-container-toolkit installed — GPU edge Docker OK."
+    else
+      log_warn "NVIDIA GPU detected: install nvidia-container-toolkit for GPU edge containers."
+    fi
+  fi
+
   # ── Phase 5: Java 21 ──
   log_info "[5/8] Installing Java 21..."
   if java -version 2>&1 | grep -qE '"21\.'; then
@@ -1151,6 +1159,10 @@ cmd_test_all() {
   return ${fail}
 }
 
+cmd_test_full() {
+  bash "${ROOT_DIR}/run_all_tests.sh"
+}
+
 # ============================================================================
 # DEPLOY COMMANDS — LOCAL (Non-Docker services)
 # ============================================================================
@@ -1631,7 +1643,7 @@ main() {
         ;;
       install-deps|build-backend|build-dashboard|build-edge|build-android|\
       build-firmware|build-alertmgmt|build-cloud|build-all|\
-      test-backend|test-dashboard|test-edge|test-android|test-all|\
+      test-backend|test-dashboard|test-edge|test-android|test-all|test-full|\
       deploy-infra|deploy-backend|deploy-dashboard|deploy-edge|deploy-all|\
       deploy-docker|deploy-docker-stop|deploy-docker-logs)
         commands+=("${arg}")
@@ -1669,6 +1681,7 @@ main() {
       test-edge)         track_run "TEST EDGE"         cmd_test_edge         ;;
       test-android)      track_run "TEST ANDROID"      cmd_test_android      ;;
       test-all)          cmd_test_all                                        ;;
+      test-full)         track_run "TEST FULL" cmd_test_full                 ;;
       deploy-infra)      track_run "DEPLOY INFRA"      cmd_deploy_infra      ;;
       deploy-backend)    track_run "DEPLOY BACKEND"    cmd_deploy_backend    ;;
       deploy-dashboard)  track_run "DEPLOY DASHBOARD"  cmd_deploy_dashboard  ;;

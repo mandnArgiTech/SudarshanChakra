@@ -11,10 +11,11 @@ Access: http://<edge-node-ip>:5000
 
 import json
 import os
+import shutil
 import cv2
 import time
 import threading
-from flask import Flask, render_template_string, request, jsonify
+from flask import Flask, render_template_string, request, jsonify, send_file, abort, Response
 
 # Latest snapshot cache per camera
 _snapshot_cache = {}  # camera_id → (timestamp, jpeg_bytes)
@@ -28,11 +29,15 @@ def update_snapshot(camera_id: str, frame):
         _snapshot_cache[camera_id] = (time.time(), jpeg.tobytes())
 
 
-def create_app(zone_engine, cameras, config_dir):
+def create_app(zone_engine, cameras, config_dir, mqtt_client=None, pipeline=None,
+               model_pt_path=None, node_id=None, alert_engine=None):
     """Factory function — creates and returns Flask app."""
     app = Flask(__name__)
 
     ZONES_PATH = os.path.join(config_dir, "zones.json")
+    SNAPSHOT_DIR = os.getenv("SNAPSHOT_DIR", "/tmp/snapshots")
+    _node_id = node_id or os.getenv("NODE_ID", "edge-node")
+    _model_pt = model_pt_path or os.getenv("PT_PATH", "/app/models/yolov8n_farm.pt")
 
     # ── HTML Template with embedded JS polygon editor ──
     EDITOR_HTML = """
@@ -455,16 +460,13 @@ def create_app(zone_engine, cameras, config_dir):
 
         if entry:
             ts, jpeg_bytes = entry
-            from flask import Response
             return Response(jpeg_bytes, mimetype="image/jpeg")
         else:
-            # Return a placeholder dark image if no snapshot yet
             import numpy as np
             placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
             cv2.putText(placeholder, f"Waiting for {camera_id}...",
                         (120, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 100, 100), 2)
             _, jpeg = cv2.imencode(".jpg", placeholder)
-            from flask import Response
             return Response(jpeg.tobytes(), mimetype="image/jpeg")
 
     @app.route("/api/zones")
@@ -543,5 +545,134 @@ def create_app(zone_engine, cameras, config_dir):
 
         zone_engine.reload()
         return jsonify({"success": True})
+
+    @app.route("/snapshots/<path:filename>")
+    def serve_alert_snapshot(filename):
+        safe = os.path.basename(filename)
+        if not safe or safe != filename.replace("\\", "/").split("/")[-1]:
+            abort(404)
+        base = os.path.abspath(SNAPSHOT_DIR)
+        path = os.path.abspath(os.path.join(base, safe))
+        if not path.startswith(base) or not os.path.isfile(path):
+            abort(404)
+        return send_file(path, mimetype="image/jpeg")
+
+    def _health_payload():
+        mqtt_ok = bool(mqtt_client and mqtt_client.is_connected())
+        stats = pipeline.get_stats() if pipeline and hasattr(pipeline, "get_stats") else {}
+        cams = stats.get("cameras_connected", stats.get("cameras_total", 0))
+        model_ok = os.path.isfile(_model_pt) or os.path.isfile(
+            os.getenv("ENGINE_PATH", "/app/models/yolov8n_farm.engine"))
+        try:
+            zones = sum(len(z) for z in zone_engine.get_all_zones().values())
+        except Exception:
+            zones = 0
+        try:
+            du = shutil.disk_usage(SNAPSHOT_DIR)
+            disk_gb = round(du.free / (1024 ** 3), 2)
+        except Exception:
+            disk_gb = 0.0
+        ok = mqtt_ok and (cams > 0 or stats.get("mode") == "MOCK") and model_ok and disk_gb > 0.05
+        return {
+            "status": "healthy" if ok else "degraded",
+            "node_id": _node_id,
+            "checks": {
+                "mqtt": mqtt_ok,
+                "cameras_connected": cams,
+                "model": model_ok,
+                "zones_configured": zones,
+                "disk_free_gb": disk_gb,
+            },
+        }
+
+    @app.route("/metrics")
+    def prom_metrics():
+        try:
+            from metrics import render_prometheus
+            return Response(render_prometheus(), mimetype="text/plain; version=0.0.4")
+        except ImportError:
+            return Response("# metrics unavailable\n", mimetype="text/plain")
+
+    @app.route("/health")
+    def health():
+        p = _health_payload()
+        code = 200 if p["status"] == "healthy" else 503
+        return jsonify(p), code
+
+    @app.route("/api/status")
+    def api_status():
+        stats = pipeline.get_stats() if pipeline and hasattr(pipeline, "get_stats") else {}
+        return jsonify({
+            "node_id": _node_id,
+            "pipeline": stats,
+            "mqtt_connected": bool(mqtt_client and mqtt_client.is_connected()),
+            "cameras_configured": len(cameras),
+            "zones_by_camera": {k: len(v) for k, v in zone_engine.get_all_zones().items()},
+            "timestamp": time.time(),
+        })
+
+    STATUS_HTML = """
+    <!DOCTYPE html><html><head><meta charset="utf-8"><title>Edge Status</title>
+    <style>body{font-family:system-ui;background:#0f172a;color:#e2e8f0;padding:24px;}
+    pre{background:#1e293b;padding:16px;border-radius:8px;overflow:auto;}</style></head>
+    <body><h1>Node {{ node_id }}</h1><p><a href="/health">/health</a> · <a href="/api/status">/api/status</a></p>
+    <pre id="j">Loading…</pre>
+    <script>fetch('/api/status').then(r=>r.json()).then(d=>{
+      document.getElementById('j').textContent = JSON.stringify(d,null,2);
+    });</script></body></html>
+    """
+
+    @app.route("/status")
+    def status_page():
+        return render_template_string(STATUS_HTML, node_id=_node_id)
+
+    @app.route("/api/alerts")
+    def api_alerts():
+        if alert_engine is None or not hasattr(alert_engine, "get_alert_history"):
+            return jsonify([])
+        return jsonify(alert_engine.get_alert_history())
+
+    CAMERAS_HTML = """
+    <!DOCTYPE html><html><head><meta charset="utf-8"><title>Cameras</title>
+    <style>body{background:#0f172a;color:#e2e8f0;font-family:system-ui;padding:16px;}
+    h1{color:#f59e0b;} .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;max-width:1400px;}
+    .cell{background:#1e293b;border-radius:8px;padding:8px;text-align:center;}
+    img{width:100%;max-height:220px;object-fit:cover;border-radius:4px;}</style></head>
+    <body><h1>Camera grid</h1><div class="grid" id="g"></div>
+    <script>
+    const cams = {{ cams|tojson }};
+    const g = document.getElementById('g');
+    cams.forEach(c => {
+      const d = document.createElement('div'); d.className = 'cell';
+      d.innerHTML = '<div>'+c.name+'</div><img src="/api/snapshot/'+c.id+'?t='+Date.now()+'">';
+      g.appendChild(d);
+    });
+    setInterval(()=>{ document.querySelectorAll('.cell img').forEach((img,i)=>{
+      img.src='/api/snapshot/'+cams[i].id+'?t='+Date.now(); }); }, 3000);
+    </script></body></html>
+    """
+
+    @app.route("/cameras")
+    def cameras_page():
+        cams = [{"id": c.id, "name": c.name} for c in cameras]
+        return render_template_string(CAMERAS_HTML, cams=cams)
+
+    ALERTS_HTML = """
+    <!DOCTYPE html><html><head><meta charset="utf-8"><title>Alert history</title>
+    <style>body{background:#0f172a;color:#e2e8f0;font-family:system-ui;padding:16px;}
+    table{border-collapse:collapse;width:100%;max-width:1000px;} th,td{border:1px solid #334155;padding:8px;text-align:left;}
+    th{background:#1e293b;color:#f59e0b;}</style></head>
+    <body><h1>Recent alerts</h1><table><thead><tr><th>Time</th><th>Camera</th><th>Class</th><th>Zone</th><th>Priority</th></tr></thead><tbody id="t"></tbody></table>
+    <script>
+    async function load(){ const r = await fetch('/api/alerts'); const d = await r.json();
+      document.getElementById('t').innerHTML = d.slice().reverse().map(a =>
+        '<tr><td>'+new Date(a.timestamp*1000).toLocaleString()+'</td><td>'+a.camera_id+'</td><td>'+a.class+'</td><td>'+a.zone+'</td><td>'+a.priority+'</td></tr>').join('') || '<tr><td colspan="5">No alerts yet</td></tr>';
+    } load(); setInterval(load, 5000);
+    </script></body></html>
+    """
+
+    @app.route("/alerts")
+    def alerts_page():
+        return render_template_string(ALERTS_HTML)
 
     return app

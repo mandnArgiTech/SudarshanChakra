@@ -183,6 +183,35 @@ CREATE TABLE suppression_log (
 CREATE INDEX idx_suppression_created ON suppression_log(created_at DESC);
 
 -- ============================================================================
+-- Water tanks & level readings (IoT / ESP8266)
+-- ============================================================================
+CREATE TABLE water_tanks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    farm_id UUID NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    capacity_liters REAL,
+    threshold_low_pct REAL DEFAULT 15.0,
+    mqtt_topic VARCHAR(200),
+    location_description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_water_tanks_farm ON water_tanks(farm_id);
+
+CREATE TABLE water_level_readings (
+    id BIGSERIAL PRIMARY KEY,
+    tank_id UUID NOT NULL REFERENCES water_tanks(id) ON DELETE CASCADE,
+    level_pct REAL NOT NULL,
+    raw_value REAL,
+    node_id VARCHAR(50),
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_water_readings_tank_time ON water_level_readings(tank_id, created_at DESC);
+
+-- ============================================================================
 -- Node Health Log
 -- ============================================================================
 CREATE TABLE node_health_log (

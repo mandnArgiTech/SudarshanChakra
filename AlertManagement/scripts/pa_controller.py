@@ -38,6 +38,7 @@ MQTT_BROKER   = os.getenv("PA_MQTT_BROKER", "192.168.1.100")
 MQTT_PORT     = int(os.getenv("PA_MQTT_PORT", "1883"))
 MQTT_TOPIC    = os.getenv("PA_MQTT_TOPIC", "pa/command")
 MQTT_STATUS   = os.getenv("PA_MQTT_STATUS_TOPIC", "pa/status")
+MQTT_HEALTH   = os.getenv("PA_MQTT_HEALTH_TOPIC", "pa/health")
 MQTT_USER     = os.getenv("PA_MQTT_USER", "")
 MQTT_PASS     = os.getenv("PA_MQTT_PASS", "")
 MQTT_CLIENT   = os.getenv("PA_MQTT_CLIENT_ID", "pi-pa-controller")
@@ -231,8 +232,61 @@ class PAController:
             self._stop()
         elif cmd == "status":
             self._publish_status("status_request")
+        elif cmd == "volume":
+            self._set_alsa_volume(int(payload.get("level", DEFAULT_VOLUME)))
+        elif cmd == "get_volume":
+            self._publish_status("volume:" + self._get_alsa_volume())
+        elif cmd == "play_tone":
+            cache = os.getenv("PA_AUDIO_CACHE", "/tmp/pa-cache")
+            os.makedirs(cache, exist_ok=True)
+            tone_files = {"intrusion": "intrusion.mp3", "fire": "fire.mp3", "livestock": "livestock.mp3"}
+            at = str(payload.get("alert_type", "default"))
+            local = os.path.join(cache, tone_files.get(at, "default.mp3"))
+            target = url if url.startswith("http") else (local if os.path.isfile(local) else url)
+            if target:
+                self._play_siren(target)
+            else:
+                log.warning("play_tone: missing file for %s (place MP3 in %s)", at, cache)
+        elif cmd == "announce":
+            self._tts(str(payload.get("text", "")))
         else:
             log.warning("Unknown command: %s", cmd)
+
+    def _set_alsa_volume(self, level: int) -> None:
+        level = max(0, min(100, level))
+        try:
+            subprocess.run(
+                ["amixer", "-q", "sset", "Master", f"{level}%"],
+                timeout=5, capture_output=True,
+            )
+            log.info("ALSAmixer Master -> %d%%", level)
+        except Exception as e:
+            log.warning("amixer failed: %s", e)
+
+    def _get_alsa_volume(self) -> str:
+        try:
+            p = subprocess.run(
+                ["amixer", "get", "Master"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return (p.stdout or "?")[:200]
+        except Exception:
+            return "?"
+
+    def _tts(self, text: str) -> None:
+        if not text.strip():
+            return
+        try:
+            subprocess.Popen(
+                ["espeak-ng", "-s", "150", text],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            log.info("TTS: %s", text[:80])
+        except FileNotFoundError:
+            log.warning("espeak-ng not installed")
+        except Exception as e:
+            log.warning("TTS failed: %s", e)
 
     def _play_bgm(self, url: str) -> None:
         """Start background music / Suprabatham chant."""
@@ -401,6 +455,31 @@ def create_mqtt_client(controller: PAController) -> mqtt.Client:
     return client
 
 
+def _start_health_heartbeat(client: mqtt.Client, controller: "PAController") -> None:
+    """Publish JSON heartbeat to pa/health every 60s for monitoring."""
+
+    def _loop():
+        while not controller._shutdown.is_set():
+            if controller._shutdown.wait(timeout=60.0):
+                break
+            try:
+                if client.is_connected():
+                    client.publish(
+                        MQTT_HEALTH,
+                        json.dumps({
+                            "status": "ok",
+                            "component": "pa_controller",
+                            "client_id": MQTT_CLIENT,
+                            "timestamp": time.time(),
+                        }),
+                        qos=0,
+                    )
+            except Exception as e:
+                log.debug("PA health heartbeat: %s", e)
+
+    threading.Thread(target=_loop, daemon=True, name="pa-health-heartbeat").start()
+
+
 # ---------------------------------------------------------------------------
 # Main Entry Point
 # ---------------------------------------------------------------------------
@@ -435,6 +514,9 @@ def main():
         except (ConnectionRefusedError, OSError) as e:
             log.error("Cannot reach MQTT broker: %s. Retrying in 5s...", e)
             time.sleep(5)
+
+    _start_health_heartbeat(client, controller)
+    log.info("PA health heartbeat every 60s → %s", MQTT_HEALTH)
 
     # Blocking network loop — handles reconnect automatically
     try:

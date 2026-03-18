@@ -11,6 +11,7 @@ import SirenPage from '@/pages/SirenPage';
 import WorkersPage from '@/pages/WorkersPage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
 import SettingsPage from '@/pages/SettingsPage';
+import WaterPage from '@/pages/WaterPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="workers" element={<WorkersPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="water" element={<WaterPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

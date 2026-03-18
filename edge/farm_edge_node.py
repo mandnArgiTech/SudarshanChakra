@@ -356,6 +356,10 @@ def main():
 
     mqtt_client.loop_start()
 
+    if not (DEV_MODE or MOCK_CAMERAS):
+        from pipeline import set_mqtt_camera_events
+        set_mqtt_camera_events(mqtt_client)
+
     # Subscribe to dev simulation topics
     if DEV_MODE:
         mqtt_client.subscribe("dev/simulate/#", qos=1)
@@ -381,23 +385,28 @@ def main():
         lora.fall_callbacks.append(alert_engine.process_fall_event)
         log.info("Fall detector callback wired: LoRa → AlertEngine")
 
-    # ── Step 8: Start Flask GUI in background thread ──
-    flask_app = create_app(zone_engine, cameras, CONFIG_DIR)
+    # ── Step 8: Build pipeline (before Flask so /health and /api/status see it) ──
+    pt_path = os.getenv("PT_PATH", os.path.join(MODEL_DIR, "yolov8n_farm.pt"))
+    if DEV_MODE or MOCK_CAMERAS:
+        detection_interval = float(os.getenv("MOCK_DETECTION_INTERVAL", "5"))
+        log.info("MOCK inference pipeline (detection every %.0fs)...", detection_interval)
+        pipeline = MockInferencePipeline(cameras, detection_interval=detection_interval)
+    else:
+        log.info("Inference pipeline with %d cameras...", len(cameras))
+        pipeline = InferencePipeline(model, cameras)
+
+    flask_app = create_app(
+        zone_engine, cameras, CONFIG_DIR,
+        mqtt_client=mqtt_client, pipeline=pipeline,
+        model_pt_path=pt_path, node_id=NODE_ID,
+        alert_engine=alert_engine,
+    )
     flask_thread = threading.Thread(
         target=lambda: flask_app.run(host="0.0.0.0", port=FLASK_PORT, debug=False),
         daemon=True, name="flask-gui",
     )
     flask_thread.start()
     log.info("Flask Edge GUI started on port %d", FLASK_PORT)
-
-    # ── Step 9: Start inference pipeline (mock or real) ──
-    if DEV_MODE or MOCK_CAMERAS:
-        detection_interval = float(os.getenv("MOCK_DETECTION_INTERVAL", "5"))
-        log.info("Starting MOCK inference pipeline (detection every %.0fs)...", detection_interval)
-        pipeline = MockInferencePipeline(cameras, detection_interval=detection_interval)
-    else:
-        log.info("Starting inference pipeline with %d cameras...", len(cameras))
-        pipeline = InferencePipeline(model, cameras)
 
     pipeline.results_callbacks.append(alert_engine.process_detection)
     start_heartbeat(mqtt_client, pipeline=pipeline, alert_engine=alert_engine)

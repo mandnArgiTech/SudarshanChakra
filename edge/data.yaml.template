@@ -1,0 +1,18 @@
+# YOLO dataset template — copy to data.yaml and set train/val paths
+path: /datasets/farm_merged
+train: images/train
+val: images/val
+
+names:
+  0: person
+  1: child
+  2: cow
+  3: snake
+  4: scorpion
+  5: fire
+  6: smoke
+  7: dog
+  8: vehicle
+  9: bird
+
+nc: 10

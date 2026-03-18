@@ -22,6 +22,28 @@ from ultralytics import YOLO
 
 log = logging.getLogger("pipeline")
 
+_mqtt_camera_events = None
+
+
+def set_mqtt_camera_events(client):
+    """Optional paho client for camera online/offline events (farm.events)."""
+    global _mqtt_camera_events
+    _mqtt_camera_events = client
+
+
+def _publish_camera_event(camera_id: str, event: str):
+    if _mqtt_camera_events is None:
+        return
+    try:
+        import json as _json
+        _mqtt_camera_events.publish(
+            "farm/events/camera_status",
+            _json.dumps({"camera_id": camera_id, "event": event, "ts": time.time()}),
+            qos=0,
+        )
+    except Exception:
+        pass
+
 # ── Model Paths ──
 ENGINE_PATH = os.getenv("ENGINE_PATH", "/app/models/yolov8n_farm.engine")
 PT_PATH = os.getenv("PT_PATH", "/app/models/yolov8n_farm.pt")
@@ -101,6 +123,8 @@ class CameraGrabber(threading.Thread):
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
             if not cap.isOpened():
+                if self.connected:
+                    _publish_camera_event(self.config.id, "offline")
                 self.connected = False
                 log.warning("[%s] Cannot open RTSP stream. Retrying in %.0fs...",
                             self.config.id, backoff)
@@ -108,16 +132,20 @@ class CameraGrabber(threading.Thread):
                 backoff *= 2
                 continue
 
+            was_connected = self.connected
             self.connected = True
             backoff = 1.0
             log.info("[%s] Connected to %s at %.1f FPS",
                      self.config.id, self.config.name, self.config.fps)
+            if not was_connected:
+                _publish_camera_event(self.config.id, "online")
 
             while not self._stop_event.is_set():
                 ret, frame = cap.read()
                 if not ret:
                     log.warning("[%s] Frame read failed. Reconnecting...", self.config.id)
                     self.connected = False
+                    _publish_camera_event(self.config.id, "offline")
                     break
 
                 self.frame_count += 1
@@ -230,6 +258,7 @@ class InferencePipeline:
                 "bottom_center": [(x1 + x2) / 2, y2],
                 "timestamp": packet.timestamp,
                 "frame_number": packet.frame_number,
+                "_frame": packet.frame,
             }
 
             for callback in self.results_callbacks:

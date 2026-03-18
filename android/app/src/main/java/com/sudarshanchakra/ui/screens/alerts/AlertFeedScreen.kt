@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.sudarshanchakra.domain.model.AlertPriority
 import com.sudarshanchakra.ui.components.AlertCard
+import com.sudarshanchakra.ui.components.WaterTankCard
 import com.sudarshanchakra.ui.theme.CreamBackground
 import com.sudarshanchakra.ui.theme.CriticalRed
 import com.sudarshanchakra.ui.theme.GeorgiaFamily
@@ -96,6 +97,8 @@ fun AlertFeedScreen(
                 }
             }
         }
+
+        WaterTankCard(name = "Water tank", levelPct = 72f)
 
         Row(
             modifier = Modifier
