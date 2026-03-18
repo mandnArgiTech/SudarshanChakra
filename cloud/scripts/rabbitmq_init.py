@@ -194,3 +194,55 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+def setup_water_queues(channel):
+    """Add water level and motor queues — call from main() after existing setup."""
+    print("\n=== Water Level Monitor Queues ===")
+
+    dead_letter_args = {"x-dead-letter-exchange": "farm.dead-letter"}
+
+    # Water level readings from all tank sensor nodes
+    channel.queue_declare(
+        queue="water.level",
+        durable=True,
+        arguments={**dead_letter_args, "x-message-ttl": 86400000},  # 24h
+    )
+    print("  ✓ water.level")
+
+    # Tank online/offline LWT status
+    channel.queue_declare(queue="water.status", durable=True)
+    print("  ✓ water.status")
+
+    # Motor controller status updates ({motorTag}/motor/status)
+    channel.queue_declare(
+        queue="motor.status",
+        durable=True,
+        arguments={**dead_letter_args, "x-message-ttl": 3600000},   # 1h
+    )
+    print("  ✓ motor.status")
+
+    # Motor safety/error events (dry_run_blocked, max_runtime, sms_failed)
+    channel.queue_declare(
+        queue="motor.alert",
+        durable=True,
+        arguments={**dead_letter_args, "x-message-ttl": 86400000},
+    )
+    print("  ✓ motor.alert")
+
+    # Bindings — wildcard matches any device tag
+    # ESP8266 publishes as MQTT topic → RabbitMQ routes via amq.topic exchange
+    channel.queue_bind(queue="water.level",  exchange="amq.topic", routing_key="*.water.level")
+    channel.queue_bind(queue="water.status", exchange="amq.topic", routing_key="*.water.status")
+    channel.queue_bind(queue="motor.status", exchange="amq.topic", routing_key="*.motor.status")
+    channel.queue_bind(queue="motor.alert",  exchange="amq.topic", routing_key="*.motor.alert")
+    print("  ✓ *.water.level   → water.level")
+    print("  ✓ *.water.status  → water.status")
+    print("  ✓ *.motor.status  → motor.status")
+    print("  ✓ *.motor.alert   → motor.alert")
+
+    print("""
+  MQTT user for water/motor ESP8266 nodes:
+    rabbitmqctl add_user water-node <password>
+    rabbitmqctl set_permissions water-node "" ".*" ".*"
+""")
+

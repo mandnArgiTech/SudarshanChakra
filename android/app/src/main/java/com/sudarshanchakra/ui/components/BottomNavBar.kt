@@ -45,6 +45,7 @@ fun BottomNavBar(
         NavItem(Routes.CAMERAS, "Cameras", "📷"),
         NavItem(Routes.SIREN, "Siren", "🚨"),
         NavItem(Routes.DEVICES, "Devices", "📡"),
+        NavItem(Routes.WATER_TANKS, "Water", "💧"),
         NavItem(Routes.PROFILE, "Profile", "👤")
     )
 

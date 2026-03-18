@@ -67,3 +67,35 @@ interface ApiService {
     @PATCH("users/me/mqtt-client-id")
     suspend fun updateMqttClientId(@Body body: Map<String, String>): Response<Unit>
 }
+
+    // ── Water Tanks ──────────────────────────────────────────────────────────
+    @GET("water/tanks")
+    suspend fun getWaterTanks(): Response<List<com.sudarshanchakra.domain.model.water.WaterTank>>
+
+    @GET("water/tanks/{id}")
+    suspend fun getWaterTank(@Path("id") id: String): Response<com.sudarshanchakra.domain.model.water.WaterTank>
+
+    @GET("water/tanks/{id}/history")
+    suspend fun getWaterHistory(
+        @Path("id") id: String,
+        @Query("hours") hours: Int = 24,
+    ): Response<List<Map<String, Any>>>
+
+    // ── Motor Controllers ────────────────────────────────────────────────────
+    @GET("water/motors")
+    suspend fun getMotors(): Response<List<com.sudarshanchakra.domain.model.water.WaterMotor>>
+
+    @GET("water/motors/{id}")
+    suspend fun getMotor(@Path("id") id: String): Response<com.sudarshanchakra.domain.model.water.WaterMotor>
+
+    @POST("water/motors/{id}/command")
+    suspend fun sendMotorCommand(
+        @Path("id") id: String,
+        @Body body: Map<String, String>,
+    ): Response<Map<String, String>>
+
+    @PUT("water/motors/{id}")
+    suspend fun updateMotor(
+        @Path("id") id: String,
+        @Body body: Map<String, Any>,
+    ): Response<com.sudarshanchakra.domain.model.water.WaterMotor>

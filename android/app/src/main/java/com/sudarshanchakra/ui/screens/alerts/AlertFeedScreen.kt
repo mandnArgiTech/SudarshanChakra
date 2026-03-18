@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +38,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.sudarshanchakra.domain.model.AlertPriority
 import com.sudarshanchakra.ui.components.AlertCard
 import com.sudarshanchakra.ui.theme.CreamBackground
+import com.sudarshanchakra.ui.components.WaterStripCard
+import com.sudarshanchakra.ui.screens.water.WaterViewModel
 import com.sudarshanchakra.ui.theme.CriticalRed
 import com.sudarshanchakra.ui.theme.GeorgiaFamily
 import com.sudarshanchakra.ui.theme.HighPriority
@@ -50,9 +53,12 @@ import com.sudarshanchakra.ui.theme.WarningPriority
 fun AlertFeedScreen(
     onAlertClick: (String) -> Unit,
     onSirenClick: () -> Unit,
-    viewModel: AlertViewModel = hiltViewModel()
+    onWaterCardClick: () -> Unit = {},
+    viewModel: AlertViewModel = hiltViewModel(),
+    waterViewModel: WaterViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val waterUiState by waterViewModel.uiState.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -182,6 +188,16 @@ fun AlertFeedScreen(
                 }
             }
             else -> {
+                // Water tank strip — tap to navigate to WaterTanksScreen
+                if (waterUiState.tanks.isNotEmpty()) {
+                    WaterStripCard(
+                        tanks   = waterUiState.tanks,
+                        motors  = waterUiState.motors,
+                        onClick = onWaterCardClick,
+                        modifier = androidx.compose.ui.Modifier.padding(horizontal = 0.dp, vertical = 4.dp),
+                    )
+                }
+
                 LazyColumn(
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
