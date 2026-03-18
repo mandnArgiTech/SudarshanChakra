@@ -23,6 +23,13 @@ data class WaterTank(
         @SerializedName("state")           val state: String          = "unknown",
         @SerializedName("lastReadingAt")   val lastReadingAt: String? = null,
     )
+    @SerializedName("battery") val battery: BatteryStatus?    = null,
+) {
+    data class BatteryStatus(
+        @SerializedName("voltage") val voltage: Double = 0.0,
+        @SerializedName("percent") val percent: Int    = 0,
+        @SerializedName("state")   val state: String   = "unknown",
+    )
     val isOnline get() = status == "online"
     val levelPercent get() = currentLevel?.percentFilled ?: 0.0
     val levelState get() = when {

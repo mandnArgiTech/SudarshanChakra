@@ -69,6 +69,9 @@ public class WaterService {
             .temperatureC(payload.getTemperatureC())
             .state(payload.getState())
             .sensorOk(payload.getSensorOk() != null ? payload.getSensorOk() : true)
+            .batteryVoltage(payload.getBattery() != null ? payload.getBattery().voltage : null)
+            .batteryPercent(payload.getBattery() != null ? payload.getBattery().percent : null)
+            .batteryState(payload.getBattery()  != null ? payload.getBattery().state   : null)
             .build();
         readingRepo.save(reading);
         tankRepo.updateLastReading(tankId, OffsetDateTime.now());

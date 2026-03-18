@@ -308,6 +308,9 @@ CREATE TABLE water_level_readings (
     temperature_c REAL,
     state VARCHAR(20),
     sensor_ok BOOLEAN DEFAULT TRUE,
+    battery_voltage REAL,
+    battery_percent SMALLINT,
+    battery_state VARCHAR(10),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

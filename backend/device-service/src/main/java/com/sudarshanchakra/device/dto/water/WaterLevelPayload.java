@@ -19,4 +19,14 @@ public class WaterLevelPayload {
     @JsonProperty("deviceName")       private String deviceName;   // matches mqtt.deviceName config
     @JsonProperty("deviceTag")        private String deviceTag;
     @JsonProperty("timestamp")        private String timestamp;
+
+    // Battery monitoring (from 2× 32700 LiFePO4 pack via A0 resistor divider)
+    @JsonProperty("battery")          private BatteryPayload battery;
+
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    public static class BatteryPayload {
+        @JsonProperty("voltage") public Double  voltage;
+        @JsonProperty("percent") public Integer percent;
+        @JsonProperty("state")   public String  state;
+    }
 }

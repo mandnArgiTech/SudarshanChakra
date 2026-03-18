@@ -21,6 +21,9 @@ public class WaterLevelReading {
     @Column(name = "temperature_c")   private Double temperatureC;
     @Column(length = 20)              private String state;
     @Column(name = "sensor_ok")       @Builder.Default private Boolean sensorOk = true;
+    @Column(name = "battery_voltage")  private Double  batteryVoltage;
+    @Column(name = "battery_percent")  private Integer batteryPercent;
+    @Column(name = "battery_state", length = 10) private String batteryState;
     @Column(name = "created_at", updatable = false) private OffsetDateTime createdAt;
 
     @PrePersist protected void onCreate() { createdAt = OffsetDateTime.now(); }
