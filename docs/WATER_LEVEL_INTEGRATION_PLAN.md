@@ -512,3 +512,338 @@ PUT  /api/v1/water/tanks/{id}         → Update thresholds/config
 ```
 
 Steps 1-3 can be done today. Steps 4-8 are for the cloud agent.
+
+---
+
+## Tests — Every Feature Must Be Tested
+
+**No feature is complete without tests.** The cloud agent MUST implement all tests below alongside the feature code.
+
+### Test Layer 1: Backend Unit Tests (JUnit 5 + Mockito)
+
+**File:** `backend/alert-service/src/test/java/com/sudarshanchakra/alert/service/WaterLevelConsumerTest.java`
+
+```
+test_handleWaterLevel_parsesPayload_savesReading()
+    Mock: readingRepo.save() + tankRepo
+    Input: valid JSON with percentFilled=72.5, volumeLiters=1768.4
+    Assert: readingRepo.save() called with correct values
+
+test_handleWaterLevel_invalidJson_doesNotCrash()
+    Input: "not json"
+    Assert: no exception, readingRepo.save() NOT called
+
+test_handleWaterLevel_missingFields_handledGracefully()
+    Input: {"percentFilled": 50.0}  (missing volumeLiters, etc.)
+    Assert: saves with nulls for missing fields, no crash
+
+test_checkThresholds_criticalLow_generatesAlert()
+    Setup: tank with critical_threshold=10.0
+    Input: percentFilled=8.5
+    Assert: alertService.createWaterAlert() called with priority="critical"
+
+test_checkThresholds_low_generatesWarning()
+    Setup: tank with low_threshold=20.0
+    Input: percentFilled=17.2
+    Assert: alertService.createWaterAlert() called with priority="warning"
+
+test_checkThresholds_overflow_generatesWarning()
+    Setup: tank with overflow_threshold=95.0
+    Input: percentFilled=96.1
+    Assert: alertService.createWaterAlert() called with priority="warning"
+
+test_checkThresholds_normalLevel_noAlert()
+    Input: percentFilled=50.0 (between all thresholds)
+    Assert: alertService.createWaterAlert() NOT called
+
+test_checkThresholds_exactlyAtLowThreshold_generatesWarning()
+    Input: percentFilled=20.0 (equals low_threshold)
+    Assert: alert generated (boundary condition — ≤ not <)
+
+test_checkThresholds_tankNotFound_noAlert()
+    Setup: tankRepo.findById() returns empty
+    Assert: no exception, no alert
+
+test_handleWaterLevel_updatesLastReadingTimestamp()
+    Assert: tankRepo.updateLastReading() called with tank ID and current time
+```
+
+**File:** `backend/device-service/src/test/java/com/sudarshanchakra/device/service/WaterTankServiceTest.java`
+
+```
+test_getAllTanks_returnsList()
+    Setup: 2 tanks in repo
+    Assert: returns list of 2 with latest readings attached
+
+test_getTankById_found_returnsTank()
+    Assert: correct tank with current level data
+
+test_getTankById_notFound_throws404()
+
+test_getHistory_returns24hReadings()
+    Setup: 50 readings over 48 hours
+    Assert: only returns readings from last 24 hours
+
+test_getHistory_emptyTank_returnsEmptyList()
+
+test_createTank_savesToRepo()
+    Input: {id:"tank2", displayName:"Backup Tank", capacityLiters:1000}
+    Assert: saved with default thresholds (low=20, critical=10, overflow=95)
+
+test_updateTank_changesThresholds()
+    Input: {lowThresholdPercent: 25.0, criticalThresholdPercent: 15.0}
+    Assert: updated in DB
+
+test_updateTank_notFound_throws404()
+
+test_deleteTank_removesFromRepo()
+```
+
+**File:** `backend/device-service/src/test/java/com/sudarshanchakra/device/controller/WaterTankControllerTest.java`
+
+```
+@WebMvcTest test:
+
+test_getTanks_returns200_withList()
+    GET /api/v1/water/tanks → 200, JSON array
+
+test_getTankById_returns200()
+    GET /api/v1/water/tanks/tank1 → 200, JSON with currentLevel
+
+test_getTankById_notFound_returns404()
+    GET /api/v1/water/tanks/nonexistent → 404
+
+test_getHistory_returns200_withReadings()
+    GET /api/v1/water/tanks/tank1/history → 200, JSON array
+
+test_createTank_returns201()
+    POST /api/v1/water/tanks → 201
+
+test_createTank_missingRequiredFields_returns400()
+    POST with {} → 400 with validation errors
+
+test_updateTank_returns200()
+    PUT /api/v1/water/tanks/tank1 → 200
+
+test_deleteTank_returns204()
+    DELETE /api/v1/water/tanks/tank1 → 204
+
+test_unauthorized_returns401()
+    GET /api/v1/water/tanks without JWT → 401
+```
+
+### Test Layer 2: Backend Integration Tests (Testcontainers)
+
+**File:** `backend/alert-service/src/test/java/.../integration/WaterLevelIntegrationTest.java`
+
+```
+@Testcontainers (PostgreSQL + RabbitMQ auto-started)
+
+test_waterLevelMessage_fromRabbitMQ_storedInPostgres()
+    Publish water level JSON to water.level queue
+    → Wait 5s
+    → Query water_level_readings table
+    → Assert row exists with correct percentFilled, volumeLiters
+
+test_criticalLowLevel_generatesAlertInDatabase()
+    Publish level with percentFilled=5.0
+    → Wait 5s
+    → Query alerts table
+    → Assert alert with priority="critical", detection_class="water_critical_low"
+
+test_normalLevel_noAlertGenerated()
+    Publish level with percentFilled=50.0
+    → Wait 5s
+    → Query alerts table
+    → Assert no water alert created
+
+test_multipleReadings_allStored()
+    Publish 10 readings 1 second apart
+    → Query water_level_readings
+    → Assert 10 rows for this tank
+
+test_tankOfflineEvent_generatesAlert()
+    Publish tank status {"online": false} to water.status queue
+    → Wait 5s
+    → Query alerts table
+    → Assert alert with priority="high", type="tank_offline"
+```
+
+**File:** `backend/device-service/src/test/java/.../integration/WaterTankIntegrationTest.java`
+
+```
+@Testcontainers (PostgreSQL)
+
+test_createTank_getTank_fullLifecycle()
+    POST /api/v1/water/tanks → 201
+    GET /api/v1/water/tanks/{id} → 200 → matches posted data
+
+test_updateThresholds_persistsCorrectly()
+    POST tank → PUT thresholds → GET → assert new thresholds
+
+test_getHistory_withRealData()
+    Insert 20 readings directly into DB
+    GET /api/v1/water/tanks/{id}/history
+    Assert: returns readings sorted by time desc
+
+test_deleteTank_cascadesReadings()
+    POST tank → insert readings → DELETE tank
+    Assert: readings also deleted (CASCADE)
+```
+
+### Test Layer 3: Dashboard Component Tests (Vitest + RTL)
+
+**File:** `dashboard/src/components/__tests__/WaterTankGauge.test.tsx`
+
+```
+test_renders_tank_name()
+    Render <WaterTankGauge tank={mockTank} />
+    Assert: "Main Farm Tank" visible
+
+test_renders_percentage()
+    tank.currentLevel.percentFilled = 72.5
+    Assert: "72.5%" visible
+
+test_renders_volume()
+    Assert: "1,768 / 2,438 L" visible
+
+test_critical_level_shows_red()
+    tank.currentLevel.percentFilled = 8.0
+    Assert: gauge bar has red/critical color class
+
+test_low_level_shows_amber()
+    percentFilled = 15.0
+    Assert: amber/warning color
+
+test_normal_level_shows_green()
+    percentFilled = 60.0
+    Assert: green/success color
+
+test_overflow_level_shows_red()
+    percentFilled = 97.0
+    Assert: red/critical color
+
+test_offline_tank_shows_status()
+    tank.status = "offline"
+    Assert: "Offline" badge visible
+
+test_renders_temperature()
+    Assert: "28.5°C" visible
+
+test_renders_last_updated_time()
+    Assert: relative time like "2m ago" visible
+```
+
+**File:** `dashboard/src/pages/__tests__/WaterPage.test.tsx`
+
+```
+test_renders_all_tanks()
+    Mock API returns 2 tanks
+    Assert: 2 WaterTankGauge components rendered
+
+test_renders_history_chart()
+    Assert: Recharts AreaChart component rendered
+
+test_fetches_tanks_on_mount()
+    Assert: API call to /api/v1/water/tanks made
+
+test_fetches_history_when_tank_selected()
+    Click on a tank → assert API call to /history
+
+test_empty_state_shows_message()
+    Mock API returns []
+    Assert: "No water tanks configured" message
+```
+
+### Test Layer 4: Edge Water Bridge Tests (pytest)
+
+**File:** `edge/tests/test_water_bridge.py`
+
+```
+test_bridge_forwards_message_to_vps()
+    Setup: mock local MQTT client + mock VPS MQTT client
+    Simulate: local message on "tank1_a9ad51/water/level" with payload
+    Assert: VPS client.publish() called with same topic and payload
+
+test_bridge_forwards_status_messages()
+    Simulate: "tank1_a9ad51/water/status" → assert forwarded to VPS
+
+test_bridge_handles_disconnect_gracefully()
+    Simulate: VPS client disconnects
+    Assert: no crash, reconnection attempted
+
+test_bridge_ignores_non_water_topics()
+    Simulate: local message on "some/other/topic"
+    Assert: VPS client.publish() NOT called
+
+test_bridge_wildcard_matches_multiple_tanks()
+    Simulate: "tank1_abc/water/level" and "tank2_def/water/level"
+    Assert: both forwarded to VPS
+```
+
+### Test Layer 5: Full Stack E2E Test
+
+**File:** Add to `e2e/test_full_stack.py`
+
+```
+test_13_water_tank_data_flows_to_api()
+    # Simulate ESP8266 publishing water level via MQTT
+    mosquitto_pub -h localhost -t "tank1_test/water/level" \
+        -m '{"percentFilled":65.3,"volumeLiters":1592.1,"waterHeightMm":1112,...}'
+    
+    # Wait for consumer to process
+    time.sleep(5)
+    
+    # Query API
+    GET /api/v1/water/tanks → assert "tank1" present
+    GET /api/v1/water/tanks/tank1/history → assert reading with percentFilled=65.3
+
+test_14_water_critical_low_generates_alert()
+    # Publish critically low level
+    mosquitto_pub -t "tank1_test/water/level" \
+        -m '{"percentFilled":5.0,"volumeLiters":122,...}'
+    
+    time.sleep(5)
+    
+    # Check alert was created
+    GET /api/v1/alerts?priority=critical → assert water alert exists
+    
+test_15_water_tank_crud()
+    POST /api/v1/water/tanks → create "tank2"
+    GET /api/v1/water/tanks/tank2 → verify
+    PUT /api/v1/water/tanks/tank2 → update thresholds
+    DELETE /api/v1/water/tanks/tank2 → verify gone
+```
+
+---
+
+## Test Count Summary (Water Integration)
+
+| Layer | Test File | Tests | Framework |
+|:------|:----------|:------|:----------|
+| Unit | WaterLevelConsumerTest.java | 10 | JUnit 5 + Mockito |
+| Unit | WaterTankServiceTest.java | 10 | JUnit 5 + Mockito |
+| Unit | WaterTankControllerTest.java | 9 | @WebMvcTest |
+| Integration | WaterLevelIntegrationTest.java | 5 | Testcontainers |
+| Integration | WaterTankIntegrationTest.java | 4 | Testcontainers |
+| Dashboard | WaterTankGauge.test.tsx | 10 | Vitest + RTL |
+| Dashboard | WaterPage.test.tsx | 5 | Vitest + RTL |
+| Edge | test_water_bridge.py | 5 | pytest |
+| E2E | test_full_stack.py (3 new) | 3 | Docker Compose |
+| **Total** | | **61 tests** | |
+
+---
+
+## Acceptance Criteria (Definition of Done)
+
+A water level integration task is NOT complete unless:
+
+```
+□ Feature code implemented
+□ Unit tests written and passing
+□ Integration tests written and passing (where applicable)
+□ Dashboard component tests written and passing
+□ E2E test passing in docker-compose stack
+□ No existing tests broken (run full test suite)
+□ Code reviewed
+```
