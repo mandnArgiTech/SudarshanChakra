@@ -21,3 +21,9 @@ management:
     web:
       exposure:
         include: health,info
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:admin}
+    password: ${RABBITMQ_PASS:devpassword123}
+    virtual-host: /

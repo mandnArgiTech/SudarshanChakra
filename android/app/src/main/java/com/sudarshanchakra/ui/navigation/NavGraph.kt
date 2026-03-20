@@ -18,17 +18,23 @@ import com.sudarshanchakra.ui.screens.cameras.CameraGridScreen
 import com.sudarshanchakra.ui.screens.devices.DeviceStatusScreen
 import com.sudarshanchakra.ui.screens.login.LoginScreen
 import com.sudarshanchakra.ui.screens.siren.SirenControlScreen
+import com.sudarshanchakra.ui.screens.water.MotorControlScreen
+import com.sudarshanchakra.ui.screens.water.WaterTanksScreen
 
 object Routes {
-    const val LOGIN = "login"
-    const val ALERTS = "alerts"
+    const val LOGIN        = "login"
+    const val ALERTS       = "alerts"
     const val ALERT_DETAIL = "alertDetail/{id}"
-    const val CAMERAS = "cameras"
-    const val SIREN = "siren"
-    const val DEVICES = "devices"
-    const val PROFILE = "profile"
+    const val CAMERAS      = "cameras"
+    const val SIREN        = "siren"
+    const val DEVICES      = "devices"
+    const val PROFILE      = "profile"
+    // ── Water ────────────────────────────────────────────────────────────────
+    const val WATER_TANKS    = "water_tanks"
+    const val MOTOR_CONTROL  = "motor_control/{motorId}"
 
     fun alertDetail(id: String) = "alertDetail/$id"
+    fun motorControl(motorId: String) = "motor_control/$motorId"
 }
 
 @Composable
@@ -48,7 +54,7 @@ fun NavGraph() {
                         navController.navigate(route) {
                             popUpTo(Routes.ALERTS) { saveState = true }
                             launchSingleTop = true
-                            restoreState = true
+                            restoreState    = true
                         }
                     }
                 )
@@ -56,52 +62,57 @@ fun NavGraph() {
         }
     ) { paddingValues ->
         NavHost(
-            navController = navController,
+            navController    = navController,
             startDestination = Routes.LOGIN,
-            modifier = Modifier.padding(paddingValues)
+            modifier         = Modifier.padding(paddingValues),
         ) {
             composable(Routes.LOGIN) {
-                LoginScreen(
-                    onLoginSuccess = {
-                        navController.navigate(Routes.ALERTS) {
-                            popUpTo(Routes.LOGIN) { inclusive = true }
-                        }
+                LoginScreen(onLoginSuccess = {
+                    navController.navigate(Routes.ALERTS) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
                     }
-                )
+                })
             }
+
             composable(Routes.ALERTS) {
                 AlertFeedScreen(
-                    onAlertClick = { alertId ->
-                        navController.navigate(Routes.alertDetail(alertId))
-                    },
-                    onSirenClick = {
-                        navController.navigate(Routes.SIREN)
-                    }
+                    onAlertClick      = { id -> navController.navigate(Routes.alertDetail(id)) },
+                    onSirenClick      = { navController.navigate(Routes.SIREN) },
+                    onWaterCardClick  = { navController.navigate(Routes.WATER_TANKS) },
                 )
             }
+
             composable(
-                route = Routes.ALERT_DETAIL,
-                arguments = listOf(navArgument("id") { type = NavType.StringType })
-            ) { backStackEntry ->
-                val alertId = backStackEntry.arguments?.getString("id") ?: ""
+                route     = Routes.ALERT_DETAIL,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+            ) { back ->
                 AlertDetailScreen(
-                    alertId = alertId,
-                    onBackClick = { navController.popBackStack() },
-                    onSirenClick = { navController.navigate(Routes.SIREN) }
+                    alertId    = back.arguments?.getString("id") ?: "",
+                    onBackClick  = { navController.popBackStack() },
+                    onSirenClick = { navController.navigate(Routes.SIREN) },
                 )
             }
-            composable(Routes.CAMERAS) {
-                CameraGridScreen()
+
+            composable(Routes.CAMERAS) { CameraGridScreen() }
+            composable(Routes.SIREN)   { SirenControlScreen() }
+            composable(Routes.DEVICES) { DeviceStatusScreen() }
+            composable(Routes.PROFILE) { DeviceStatusScreen() }
+
+            // ── Water ────────────────────────────────────────────────────────
+            composable(Routes.WATER_TANKS) {
+                WaterTanksScreen(
+                    onMotorClick = { motorId -> navController.navigate(Routes.motorControl(motorId)) },
+                )
             }
-            composable(Routes.SIREN) {
-                SirenControlScreen()
-            }
-            composable(Routes.DEVICES) {
-                DeviceStatusScreen()
-            }
-            composable(Routes.PROFILE) {
-                // Placeholder profile screen
-                DeviceStatusScreen()
+
+            composable(
+                route     = Routes.MOTOR_CONTROL,
+                arguments = listOf(navArgument("motorId") { type = NavType.StringType }),
+            ) { back ->
+                MotorControlScreen(
+                    motorId = back.arguments?.getString("motorId") ?: "",
+                    onBack  = { navController.popBackStack() },
+                )
             }
         }
     }

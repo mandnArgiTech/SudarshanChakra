@@ -1,0 +1,30 @@
+package com.sudarshanchakra.device.model.water;
+
+import jakarta.persistence.*;
+import lombok.*;
+import java.time.OffsetDateTime;
+
+@Data @Builder @NoArgsConstructor @AllArgsConstructor
+@Entity @Table(name = "water_level_readings")
+public class WaterLevelReading {
+
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "tank_id", length = 50)
+    private String tankId;
+
+    @Column(name = "percent_filled", nullable = false) private Double percentFilled;
+    @Column(name = "volume_liters")   private Double volumeLiters;
+    @Column(name = "water_height_mm") private Double waterHeightMm;
+    @Column(name = "distance_mm")     private Double distanceMm;
+    @Column(name = "temperature_c")   private Double temperatureC;
+    @Column(length = 20)              private String state;
+    @Column(name = "sensor_ok")       @Builder.Default private Boolean sensorOk = true;
+    @Column(name = "battery_voltage")  private Double  batteryVoltage;
+    @Column(name = "battery_percent")  private Integer batteryPercent;
+    @Column(name = "battery_state", length = 10) private String batteryState;
+    @Column(name = "created_at", updatable = false) private OffsetDateTime createdAt;
+
+    @PrePersist protected void onCreate() { createdAt = OffsetDateTime.now(); }
+}

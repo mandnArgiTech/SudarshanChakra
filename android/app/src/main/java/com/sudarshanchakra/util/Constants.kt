@@ -16,4 +16,10 @@ object Constants {
     const val MQTT_SIREN_TOPIC = "siren/#"
 
     const val ALERT_CACHE_MAX_AGE_HOURS = 24L
+
+    // Water level MQTT topics
+    const val MQTT_WATER_LEVEL_TOPIC  = "+/water/level"   // wildcard — any tank device
+    const val MQTT_WATER_STATUS_TOPIC = "+/water/status"
+    const val MQTT_MOTOR_STATUS_TOPIC = "+/motor/status"
+    const val MQTT_MOTOR_ALERT_TOPIC  = "+/motor/alert"
 }
