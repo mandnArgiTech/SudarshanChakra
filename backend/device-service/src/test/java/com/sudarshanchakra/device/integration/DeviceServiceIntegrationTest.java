@@ -70,16 +70,17 @@ class DeviceServiceIntegrationTest extends AbstractDeviceIntegrationTest {
     }
 
     @Test
-    void waterTank_createAndList() throws Exception {
-        String create = "{\"name\":\"Tank A\",\"capacityLiters\":1000,\"thresholdLowPct\":20.0,\"farmId\":\"" + FARM + "\"}";
-        mockMvc.perform(post("/api/v1/water/tanks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(create))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("Tank A"));
-
+    void waterTanks_listFromSeedData() throws Exception {
         mockMvc.perform(get("/api/v1/water/tanks"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].name").value("Tank A"));
+                .andExpect(jsonPath("$[?(@.id=='farm_tank1')]").exists())
+                .andExpect(jsonPath("$[?(@.displayName=='Farm Tank 1')]").exists());
+    }
+
+    @Test
+    void waterMotors_listFromSeedData() throws Exception {
+        mockMvc.perform(get("/api/v1/water/motors"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
     }
 }

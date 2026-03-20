@@ -12,6 +12,7 @@ const pageTitles: Record<string, string> = {
   '/workers': 'Worker Tags',
   '/analytics': 'Analytics',
   '/water': 'Water Levels',
+  '/water/motors': 'Pump Control',
   '/settings': 'Settings',
 };
 

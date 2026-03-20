@@ -1,0 +1,43 @@
+name: Firmware CI
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'firmware/**'
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'firmware/**'
+
+jobs:
+  compile-esp32:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install arduino-cli
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+          echo "$PWD/bin" >> $GITHUB_PATH
+
+      - name: ESP32 core + LoRa
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install "LoRa"
+
+      - name: Compile bridge receiver
+        run: |
+          arduino-cli compile --fqbn esp32:esp32:esp32 \
+            firmware/esp32_lora_bridge_receiver
+
+      - name: Compile LoRa tag
+        run: |
+          arduino-cli compile --fqbn esp32:esp32:esp32 \
+            firmware/esp32_lora_tag
+
+      - name: Compile worker beacon
+        run: |
+          arduino-cli compile --fqbn esp32:esp32:esp32 \
+            firmware/worker_beacon

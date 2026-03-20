@@ -7,6 +7,7 @@
 # tested, and deployed independently, or all at once.
 #
 # Run with --help for full usage information.
+# See AGENTS.md for stack versions, CI, and Docker gotchas.
 #
 # Components: backend (Java/Spring Boot), dashboard (React/Vite),
 #   edge (Python/YOLO), android (Kotlin/Compose), firmware (ESP32/Arduino),
@@ -283,16 +284,16 @@ ensure_java21() {
   log_debug "Java: ${java_ver}"
 }
 
-ensure_node18() {
+ensure_node22() {
   require_cmd node || return 1
   require_cmd npm  || return 1
 
   local node_major
   node_major=$(node --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/')
   [[ "${node_major}" =~ ^[0-9]+$ ]] || node_major="0"
-  [[ "${node_major}" -ge 18 ]] || {
-    log_error "Node.js 18+ required. Found: v${node_major}"
-    log_error "Install via https://nodejs.org/ or run: install-deps"
+  [[ "${node_major}" -ge 22 ]] || {
+    log_error "Node.js 22+ required (dashboard / Vite). Found: v${node_major}.x"
+    log_error "Install via NodeSource 22.x or https://nodejs.org/ — or run: install-deps"
     return 1
   }
   log_debug "Node.js $(node --version), npm $(npm --version 2>/dev/null)"
@@ -644,8 +645,8 @@ cmd_install_deps() {
     [[ "${node_major}" =~ ^[0-9]+$ ]] || node_major="0"
   fi
 
-  if [[ "${node_major}" -ge 18 ]]; then
-    log_info "Node.js $(node --version) already installed (>= 18)."
+  if [[ "${node_major}" -ge 22 ]]; then
+    log_info "Node.js $(node --version) already installed (>= 22)."
   else
     # Remove old Ubuntu Node.js packages that conflict with NodeSource
     # libnode72 (22.04), libnode108/libnode109 (24.04), and related dev packages
@@ -678,7 +679,7 @@ cmd_install_deps() {
         sudo npm install -g npm@latest 2>/dev/null || true
       fi
     else
-      log_warn "NodeSource unavailable. Install Node.js 18+ manually: https://nodejs.org/"
+      log_warn "NodeSource unavailable. Install Node.js 22+ manually: https://nodejs.org/"
     fi
   fi
 
@@ -949,7 +950,7 @@ cmd_build_backend() {
 # -- Dashboard (React / Vite / TypeScript) -----------------------------------
 
 cmd_build_dashboard() {
-  ensure_node18 || return 1
+  ensure_node22 || return 1
 
   log_info "Installing npm dependencies..."
   (cd "${ROOT_DIR}/dashboard" && npm install) \
@@ -1004,7 +1005,9 @@ cmd_build_android() {
    ANDROID_HOME="${ANDROID_HOME}" ./gradlew clean assembleDebug --no-daemon) \
     || { log_error "Android build failed."; return 1; }
 
-  log_success "Android APK built: android/app/build/outputs/apk/debug/app-debug.apk"
+  log_success "Android APK: android/app/build/outputs/apk/debug/app-debug.apk"
+  log_info "Install on device: adb install -r android/app/build/outputs/apk/debug/app-debug.apk"
+  log_debug "Debug build uses API URL for emulator (10.0.2.2). On a physical phone, set your PC's LAN IP in android/app/build.gradle.kts (debug API_BASE_URL) before building."
 }
 
 # -- Firmware (ESP32 / Arduino) ----------------------------------------------
@@ -1030,7 +1033,12 @@ cmd_build_firmware() {
     "${ROOT_DIR}/firmware/esp32_lora_tag" \
     || { log_error "LoRa tag firmware build failed."; return 1; }
 
-  log_success "Both firmware sketches compiled successfully."
+  log_info "Compiling worker_beacon..."
+  arduino-cli compile --fqbn esp32:esp32:esp32 \
+    "${ROOT_DIR}/firmware/worker_beacon" \
+    || { log_error "Worker beacon firmware build failed."; return 1; }
+
+  log_success "All firmware sketches compiled successfully."
 }
 
 # -- AlertManagement (Python scripts for Raspberry Pi PA system) -------------
@@ -1097,7 +1105,7 @@ cmd_test_backend() {
 }
 
 cmd_test_dashboard() {
-  ensure_node18 || return 1
+  ensure_node22 || return 1
 
   log_info "Running dashboard tests (Vitest)..."
   (cd "${ROOT_DIR}/dashboard" && npm run test -- --run --passWithNoTests) \
@@ -1227,7 +1235,7 @@ cmd_deploy_backend() {
 }
 
 cmd_deploy_dashboard() {
-  ensure_node18 || return 1
+  ensure_node22 || return 1
 
   if ! check_port_free 3000; then
     log_warn "Port 3000 already in use — dashboard may already be running."
@@ -1520,17 +1528,18 @@ ${BOLD}PREREQUISITES:${RESET}
   Ubuntu 22.04 / 24.04 (or Debian-based). Run ${CYAN}install-deps${RESET} to auto-install, or manually:
     Java 21          sudo apt install openjdk-21-jdk
     Node.js 22+      curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-    Python 3.10+     (pre-installed on Ubuntu 22.04/24.04)
+                     (${CYAN}build-dashboard${RESET} / ${CYAN}test-dashboard${RESET} require Node 22+)
+    Python 3.10+     (3.12 matches CI / AGENTS.md for edge tooling)
     Docker           sudo apt install docker.io && sudo usermod -aG docker \$USER
-    arduino-cli      curl -fsSL https://downloads.arduino.cc/arduino-cli/... | sudo tar -xzf -
-    Android SDK      Set ANDROID_HOME or use install-deps to download
+    arduino-cli      Installed by ${CYAN}install-deps${RESET} (or Arduino CLI tarball → /usr/local/bin)
+    Android SDK      ${CYAN}install-deps${RESET} installs to ${DIM}<repo>/android-sdk${RESET}; or set ANDROID_HOME (e.g. /opt/android-sdk)
 
 ${BOLD}COMPONENT STACK:${RESET}
-  backend        Java 21, Spring Boot 3.2, Gradle 8.7 (5 microservices)
-  dashboard      React 18, Vite 5, TypeScript, Tailwind CSS 3
-  edge           Python 3.10+, YOLO, Flask, OpenCV
-  android        Kotlin 1.9, Jetpack Compose, Gradle 8.5
-  firmware       C++ / Arduino, ESP32, LoRa SX1276
+  backend        Java 21, Spring Boot 3.2, Gradle wrapper 8.7 (5 microservices)
+  dashboard      React 18, Vite 5, TypeScript, Tailwind CSS 3 (Vitest)
+  edge           Python 3.10+, YOLO, Flask, OpenCV (pytest in edge/tests/)
+  android        Kotlin 1.9, Jetpack Compose, Gradle wrapper 8.5, Hilt, Retrofit
+  firmware       Arduino CLI, ESP32 (bridge_receiver, lora_tag, worker_beacon sketches)
   cloud          Docker Compose, PostgreSQL 16, RabbitMQ 3
   alertmgmt      Python (Raspberry Pi PA system)
 
@@ -1546,21 +1555,23 @@ ${BOLD}SETUP:${RESET}
   ${CYAN}install-deps${RESET}            Install all system packages (Ubuntu/Debian; uses sudo)
 
 ${BOLD}BUILD:${RESET}
-  ${CYAN}build-backend${RESET}           Gradle build (compile + package, skip tests)
-  ${CYAN}build-dashboard${RESET}         npm install + ESLint + tsc + Vite build -> dist/
+  ${CYAN}build-backend${RESET}           Gradle clean build -x test (artifacts only; use ${CYAN}test-backend${RESET} for JUnit)
+  ${CYAN}build-dashboard${RESET}         npm install + ESLint + tsc + Vite build → dist/
   ${CYAN}build-edge${RESET}              Python venv + pip deps + py_compile + flake8
-  ${CYAN}build-android${RESET}           Gradle assembleDebug -> app-debug.apk
-  ${CYAN}build-firmware${RESET}          arduino-cli compile (bridge receiver + LoRa tag)
+  ${CYAN}build-android${RESET}           Gradle assembleDebug → app-debug.apk (needs ANDROID_HOME)
+  ${CYAN}build-firmware${RESET}          arduino-cli compile: esp32_lora_bridge_receiver, esp32_lora_tag, worker_beacon
   ${CYAN}build-alertmgmt${RESET}         py_compile AlertManagement/scripts/*.py
   ${CYAN}build-cloud${RESET}             Validate cloud scripts/nginx + start PostgreSQL/RabbitMQ
-  ${CYAN}build-all${RESET}               Run all build commands in dependency order
+  ${CYAN}build-all${RESET}               cloud → backend → dashboard → edge → android → alertmgmt → firmware
+                                        (respects SKIP_DASHBOARD, SKIP_ANDROID, SKIP_FIRMWARE)
 
 ${BOLD}TEST:${RESET}
-  ${CYAN}test-backend${RESET}            Gradle test (JUnit 5, H2 in-memory DB)
-  ${CYAN}test-dashboard${RESET}          Vitest (--run --passWithNoTests)
+  ${CYAN}test-backend${RESET}            Gradle test (JUnit 5; device-service uses Testcontainers where configured)
+  ${CYAN}test-dashboard${RESET}          Vitest: npm run test -- --run --passWithNoTests
   ${CYAN}test-edge${RESET}               pytest edge/tests/ -v
-  ${CYAN}test-android${RESET}            Gradle testDebugUnitTest
-  ${CYAN}test-all${RESET}                Run all test commands
+  ${CYAN}test-android${RESET}            Gradle testDebugUnitTest (needs ANDROID_HOME unless skipped)
+  ${CYAN}test-all${RESET}                backend + dashboard + edge + android tests (same SKIP_* as build-all)
+  ${CYAN}test-full${RESET}               Delegates to ${DIM}run_all_tests.sh${RESET} if present
 
 ${BOLD}DEPLOY (Local / Non-Docker):${RESET}
   ${CYAN}deploy-infra${RESET}            Start PostgreSQL + RabbitMQ containers + topology
@@ -1584,11 +1595,16 @@ ${BOLD}ENVIRONMENT VARIABLES:${RESET}
   SKIP_ANDROID=1          Skip Android in build-all / test-all
   SKIP_FIRMWARE=1         Skip firmware in build-all
   SKIP_DASHBOARD=1        Skip dashboard in build-all / test-all / deploy-all
-  ANDROID_HOME            Path to Android SDK (default: ./android-sdk or /opt/android-sdk)
+  ANDROID_HOME            Android SDK root (default: ${DIM}<repo>/android-sdk${RESET} then ${DIM}/opt/android-sdk${RESET})
   DB_PASS                 PostgreSQL password     (default: devpassword123)
   RABBITMQ_PASS           RabbitMQ password       (default: devpassword123)
   DOCKER_BIN              Docker binary           (default: docker)
   PYTHON_BIN              Python binary           (default: python3)
+
+${BOLD}FULL STACK (typical dev machine):${RESET}
+  ${DIM}./${SCRIPT_NAME} install-deps${RESET}   # once
+  ${DIM}./${SCRIPT_NAME} build-all${RESET}       # compile all components
+  ${DIM}./${SCRIPT_NAME} test-all${RESET}        # backend + dashboard + edge + Android unit tests
 
 ${BOLD}EXAMPLES:${RESET}
   ${DIM}# First-time setup: install everything and build${RESET}
@@ -1615,6 +1631,16 @@ ${BOLD}EXAMPLES:${RESET}
 
   ${DIM}# Skip optional components${RESET}
   SKIP_ANDROID=1 SKIP_FIRMWARE=1 ./${SCRIPT_NAME} build-all test-all
+
+  ${DIM}# Android: use repo-local SDK and install APK on USB device${RESET}
+  ${DIM}export ANDROID_HOME=\$(pwd)/android-sdk${RESET}
+  ${DIM}./${SCRIPT_NAME} build-android${RESET}
+  ${DIM}\"\$ANDROID_HOME/platform-tools/adb\" install -r android/app/build/outputs/apk/debug/app-debug.apk${RESET}
+
+${BOLD}NOTES:${RESET}
+  Debug APK defaults to emulator loopback (${DIM}10.0.2.2${RESET}) for REST; on a ${BOLD}physical phone${RESET} set your PC's
+  LAN IP in ${DIM}android/app/build.gradle.kts${RESET} (debug ${DIM}API_BASE_URL${RESET}, trailing ${DIM}/${RESET} required by Retrofit).
+  CI workflows: ${DIM}.github/workflows/test.yml${RESET}, ${DIM}backend.yml${RESET}, ${DIM}android.yml${RESET}, ${DIM}firmware.yml${RESET}.
 
 EOF
 }

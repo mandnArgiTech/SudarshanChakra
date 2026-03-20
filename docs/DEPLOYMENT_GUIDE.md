@@ -194,7 +194,7 @@ python3 scripts/test_pa.py stop
 ### 4.1 Worker Beacon Tags
 
 ```
-1. Open firmware/worker_beacon/esp32_lora_tag.ino in Arduino IDE
+1. Open firmware/worker_beacon/worker_beacon.ino in Arduino IDE
 2. Install libraries: LoRa by Sandeep Mistry, Adafruit MPU6050
 3. Set: TAG_ID = "TAG-W001" (unique per tag)
 4. Set: DEVICE_MODE = "WORKER_BEACON"

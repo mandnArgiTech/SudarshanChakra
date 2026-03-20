@@ -14,6 +14,7 @@ data class WaterTank(
     @SerializedName("overflowThresholdPercent") val overflowThresholdPercent: Double = 95.0,
     @SerializedName("currentLevel") val currentLevel: CurrentLevel? = null,
     @SerializedName("linkedMotorId") val linkedMotorId: String?    = null,
+    @SerializedName("battery") val battery: BatteryStatus?          = null,
 ) {
     data class CurrentLevel(
         @SerializedName("percentFilled")   val percentFilled: Double  = 0.0,
@@ -23,8 +24,6 @@ data class WaterTank(
         @SerializedName("state")           val state: String          = "unknown",
         @SerializedName("lastReadingAt")   val lastReadingAt: String? = null,
     )
-    @SerializedName("battery") val battery: BatteryStatus?    = null,
-) {
     data class BatteryStatus(
         @SerializedName("voltage") val voltage: Double = 0.0,
         @SerializedName("percent") val percent: Int    = 0,

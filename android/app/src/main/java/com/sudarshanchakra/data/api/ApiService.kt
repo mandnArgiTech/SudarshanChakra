@@ -66,9 +66,8 @@ interface ApiService {
     // MQTT client ID
     @PATCH("users/me/mqtt-client-id")
     suspend fun updateMqttClientId(@Body body: Map<String, String>): Response<Unit>
-}
 
-    // ── Water Tanks ──────────────────────────────────────────────────────────
+    // Water tanks
     @GET("water/tanks")
     suspend fun getWaterTanks(): Response<List<com.sudarshanchakra.domain.model.water.WaterTank>>
 
@@ -81,7 +80,7 @@ interface ApiService {
         @Query("hours") hours: Int = 24,
     ): Response<List<Map<String, Any>>>
 
-    // ── Motor Controllers ────────────────────────────────────────────────────
+    // Motor controllers
     @GET("water/motors")
     suspend fun getMotors(): Response<List<com.sudarshanchakra.domain.model.water.WaterMotor>>
 
@@ -99,3 +98,4 @@ interface ApiService {
         @Path("id") id: String,
         @Body body: Map<String, Any>,
     ): Response<com.sudarshanchakra.domain.model.water.WaterMotor>
+}

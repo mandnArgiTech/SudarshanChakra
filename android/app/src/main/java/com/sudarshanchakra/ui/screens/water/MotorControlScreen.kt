@@ -140,7 +140,7 @@ private fun MotorStatusCard(motor: WaterMotor, onCommand: (String) -> Unit) {
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    if (isRunning) Icons.Default.WaterDrop else Icons.Default.WaterDrop,
+                    imageVector = Icons.Default.WaterDrop,
                     contentDescription = null,
                     tint = stateColor,
                     modifier = Modifier.size(32.dp),

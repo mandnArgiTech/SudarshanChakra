@@ -52,8 +52,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        // Retrofit requires baseUrl to end with '/' (paths in @GET are relative to this).
+        val base = Constants.API_BASE_URL.trimEnd('/') + "/"
         return Retrofit.Builder()
-            .baseUrl(Constants.API_BASE_URL)
+            .baseUrl(base)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()

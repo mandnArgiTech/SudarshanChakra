@@ -12,6 +12,7 @@ import WorkersPage from '@/pages/WorkersPage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
 import SettingsPage from '@/pages/SettingsPage';
 import WaterPage from '@/pages/WaterPage';
+import MotorControlPage from '@/pages/MotorControlPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="water" element={<WaterPage />} />
+        <Route path="water/motors" element={<MotorControlPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -12,6 +12,7 @@ import {
   BarChart3,
   Settings,
   Droplets,
+  Zap,
 } from 'lucide-react';
 import { useNodes } from '@/api/devices';
 
@@ -25,6 +26,7 @@ const navItems = [
   { to: '/workers', icon: Users, label: 'Workers' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/water', icon: Droplets, label: 'Water' },
+  { to: '/water/motors', icon: Zap, label: 'Pumps' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

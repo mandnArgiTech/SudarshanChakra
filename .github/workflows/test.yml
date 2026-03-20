@@ -35,4 +35,3 @@ jobs:
         with:
           node-version: "22"
       - run: cd dashboard && npm ci && npm run test -- --run
-        continue-on-error: true

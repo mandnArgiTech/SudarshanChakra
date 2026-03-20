@@ -18,6 +18,24 @@ SudarshanChakra is an enterprise smart farm hazard detection & security system (
 
 See `AGENT_INSTRUCTIONS.md` for the full implementation plan and phased build order.
 
+### Full monorepo build & test (canonical path)
+
+From the repo root, [setup_and_build_all.sh](setup_and_build_all.sh) orchestrates **all components** in dependency order:
+
+| Command | What it runs |
+|---------|----------------|
+| `./setup_and_build_all.sh install-deps` | One-time Ubuntu/Debian packages (Java 21, Node, Python tooling, optional Docker, `arduino-cli`, Android cmdline-tools) |
+| `./setup_and_build_all.sh build-all` | **build-cloud** → **build-backend** (Gradle `clean build -x test`) → **build-dashboard** → **build-edge** → **build-android** → **build-alertmgmt** → **build-firmware** |
+| `./setup_and_build_all.sh test-all` | **test-backend** (`./gradlew test`) → **test-dashboard** (Vitest) → **test-edge** (pytest) → **test-android** (when `ANDROID_HOME` is set) |
+
+**Environment skips** (optional):
+
+- `SKIP_DASHBOARD=1` — skip dashboard npm build in `build-all`
+- `SKIP_ANDROID=1` — skip Android `assembleDebug` in `build-all`
+- `SKIP_FIRMWARE=1` — skip ESP32 `arduino-cli compile` in `build-all`
+
+**Note:** `build-backend` packages JARs **without** running unit tests; use **`test-backend`** or **`test-all`** for JUnit. For a full verification pipeline locally: `build-all` then `test-all`.
+
 ### Infrastructure services
 
 Start PostgreSQL and RabbitMQ via Docker (without the `deploy.resources` limits that fail in nested containers):

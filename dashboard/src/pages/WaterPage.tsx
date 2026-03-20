@@ -8,12 +8,19 @@ async function fetchTanks(): Promise<WaterTank[]> {
       headers: { Authorization: `Bearer ${localStorage.getItem('sc_token')}` },
     });
     const list = Array.isArray(data) ? data : [];
-    return list.map((t: { id: string; name: string }) => ({
-      id: t.id,
-      name: t.name,
-      levelPct: 50,
-      history: [],
-    }));
+    return list.map(
+      (t: {
+        id: string;
+        displayName?: string;
+        name?: string;
+        currentLevel?: { percentFilled?: number };
+      }) => ({
+        id: t.id,
+        name: t.displayName ?? t.name ?? t.id,
+        levelPct: t.currentLevel?.percentFilled ?? 50,
+        history: [],
+      }),
+    );
   } catch {
     return [
       { id: 'demo', name: 'Main tank (demo)', levelPct: 72, history: [{ t: '24h', v: 72 }, { t: '12h', v: 75 }] },

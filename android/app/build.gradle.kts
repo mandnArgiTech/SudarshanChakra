@@ -17,13 +17,15 @@ android {
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "API_BASE_URL", "\"https://vivasvan-tech.in/api/v1\"")
+        // Trailing '/' satisfies Retrofit; paths in ApiService are relative (e.g. "auth/login").
+        buildConfigField("String", "API_BASE_URL", "\"https://vivasvan-tech.in/api/v1/\"")
         buildConfigField("String", "MQTT_BROKER_URL", "\"ssl://vivasvan-tech.in:8883\"")
     }
 
     buildTypes {
         debug {
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/api/v1\"")
+            // 10.0.2.2 = emulator → host machine. On a real phone use your PC's LAN IP, e.g. "http://192.168.1.5:8080/api/v1/"
+            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/api/v1/\"")
             buildConfigField("String", "MQTT_BROKER_URL", "\"tcp://10.0.2.2:1883\"")
         }
         release {
@@ -63,6 +65,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.8.2")
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
