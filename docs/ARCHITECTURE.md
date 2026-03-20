@@ -1,256 +1,396 @@
-# SudarshanChakra — System Architecture Document
+# SudarshanChakra — System Architecture
 
-## Enterprise Smart Farm Hazard Detection & Security System
+**Enterprise smart farm hazard detection and security**
 
----
-
-## 1. System Overview
-
-SudarshanChakra is a multi-tier IoT + Edge AI + Cloud platform for real-time farm security monitoring. The system detects snakes, scorpions, fire/smoke, intruders, monitors livestock containment and child safety around a pond on a 3000 sq ft agricultural farm in Sanga Reddy, India.
-
-### 1.1 Architecture Tiers
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  TIER 1: SENSING LAYER                                          │
-│  TP-Link RTSP cameras (8×) + ESP32/LoRa wearable tags (4×)     │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │ RTSP H.264 + LoRa 433MHz
-┌────────────────────────────────▼────────────────────────────────┐
-│  TIER 2: EDGE AI LAYER                                          │
-│  2× GPU PCs (i5-10400, RTX 3060 12GB, 32GB RAM)                │
-│  Docker: YOLOv8n TensorRT + Zone Engine + Flask GUI             │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │ MQTT over OpenVPN (10.8.0.0/24)
-┌────────────────────────────────▼────────────────────────────────┐
-│  TIER 3: CLOUD LAYER (vivasvan-tech.in VPS)                     │
-│  PostgreSQL 16 + RabbitMQ 3 + 5× Spring Boot microservices     │
-│  React Dashboard + Nginx reverse proxy                          │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │ HTTPS + MQTTS
-┌────────────────────────────────▼────────────────────────────────┐
-│  TIER 4: USER INTERFACE LAYER                                    │
-│  React web dashboard + Android app (Kotlin/Compose)             │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 1.2 Key Design Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| Single YOLOv8n model (not ensemble) | RTX 3060 budget: 8 cameras × 2.5 FPS requires <8ms/frame |
-| TensorRT FP16 (not INT8) | FP16 gives 2.5× speedup with <0.5% mAP loss; INT8 drops 2-3% (too risky for safety) |
-| MQTT over VPN (not direct internet) | Secure tunnel eliminates public MQTT exposure; auto-reconnects on ISP outage |
-| Bottom-center point-in-polygon (not bbox center) | Feet position accurately represents where a person IS standing |
-| Microservices (not monolith) | Independent deployment of alert, device, auth, siren services |
-| PostgreSQL (not NoSQL) | Strong schema for audit trail; JSONB for flexible metadata |
+This document explains **how the whole system fits together** in language that managers, new developers, and curious farm operators can follow. You do **not** need to be an expert in AI or networking to understand the big ideas. Technical terms are introduced gently and collected again in a [Glossary](#12-glossary) at the end.
 
 ---
 
-## 2. Component Architecture
+## How to read this document
 
-### 2.1 Edge AI Node
+| If you are… | Focus on… |
+|-------------|-----------|
+| **Farm owner / operator** | [§2 Plain-language overview](#2-plain-language-overview-what-is-this-really), [§3 Day in the life](#3-day-in-the-life-of-one-alert), [§11 Reliability](#11-reliability-and-recovery) |
+| **Product / project manager** | [§2](#2-plain-language-overview-what-is-this-really), [§4](#4-big-picture-one-page), [§9](#9-apis-and-apps-how-people-touch-the-system) |
+| **Developer (new to repo)** | [§5](#5-where-everything-lives-in-the-repo), [§6](#6-edge-ai-node-on-the-farm), [§7](#7-cloud-platform-vps), [§8](#8-messaging-and-data-stores) |
+| **ML / CV engineer** | [§6.3](#63-ai-pipeline-in-simple-steps), [§10](#10-ai-zones-and-safety-rules) |
 
-**Hardware:** Intel i5-10400, NVIDIA RTX 3060 12GB, 32GB RAM, USB ESP32 LoRa receiver
+---
 
-**Software Stack:**
+## 1. Document info
+
+| Item | Detail |
+|------|--------|
+| **Purpose** | Describe architecture **breadth** (all major parts) and enough **depth** to orient a normal reader |
+| **Scope** | IoT cameras, edge AI, cloud services, mobile/web clients, optional PA/siren hardware |
+| **Deployment example** | Farm site (e.g. Sanga Reddy, India) + cloud VPS; exact hostnames may vary per environment |
+
+---
+
+## 2. Plain-language overview — what is this, really?
+
+### 2.1 The problem in one paragraph
+
+Farms need **eyes everywhere**: dangerous animals (snakes, scorpions), fire and smoke, people or children in unsafe areas (e.g. near a pond), and livestock leaving safe zones. Humans cannot watch eight camera feeds 24/7. **SudarshanChakra** uses **computers on the farm (edge)** to watch the cameras in real time with **AI**, applies **rules** (virtual fences, worker badges), and sends **clear alerts** to a **cloud** system so dashboards and phones can react — including triggering a **siren** when policy says so.
+
+### 2.2 The solution in four plain steps
+
+1. **Cameras** send video to a **small datacenter on the farm** (a PC with a GPU).
+2. That PC runs **object detection** (finding “person”, “snake”, “fire”, etc.) and asks: **Is this in a dangerous zone? Should we trust this detection? Is a known worker nearby?**
+3. If it is a real incident, the edge node sends a message **through a private tunnel (VPN)** to the **cloud**.
+4. The cloud **stores** the alert, shows it on a **web dashboard** and **Android app**, and can **command** loudspeakers or sirens on site.
+
+### 2.3 Why not “just use the cloud for AI”?
+
+- **Latency**: Safety events need fast local reaction; sending every video frame to the internet is slow and expensive.
+- **Bandwidth**: Eight HD streams 24/7 is costly; the farm keeps video local and only sends **small alert messages** and optional snapshots.
+- **Privacy / resilience**: If the internet blips, the edge can still detect; the VPN reconnects when the link returns.
+
+---
+
+## 3. “Day in the life” of one alert
+
+**Story (simplified):**
+
+1. **Camera 3** shows a person stepping into a **virtual fence** drawn around the pond (a polygon on the video).
+2. The **edge** AI says: “person, high confidence.” **Filters** check shape and history to reduce false alarms.
+3. The **zone engine** says: “This zone is **zero tolerance** (pond safety) — do **not** suppress just because a worker tag might be elsewhere.”
+4. The **alert engine** builds a JSON alert and publishes it on **MQTT** (a lightweight messaging bus) toward the cloud path.
+5. In the **cloud**, **RabbitMQ** routes the message to **alert-service**, which **saves** it in **PostgreSQL** and may **push** updates over **WebSocket** to anyone viewing the dashboard.
+6. An operator **acknowledges** the alert in the app; **siren-service** can publish a **stop** command if the siren was triggered.
+
+You do not need to remember every product name — the point is: **video → local AI → rules → message bus → database → people.**
+
+---
+
+## 4. Big picture (one page)
+
+### 4.1 Layers (mental model)
+
+Think of four stacked layers:
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│  PEOPLE & APPS                                                          │
+│  Web dashboard (browser) · Android app · optional on-farm PA / siren      │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │ HTTPS, WebSocket, MQTT (TLS where configured)
+┌───────────────────────────────────▼─────────────────────────────────────┐
+│  CLOUD (VPS)                                                            │
+│  API gateway · microservices · PostgreSQL · RabbitMQ · Nginx              │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │ VPN tunnel (private IP space, e.g. 10.8.0.x)
+┌───────────────────────────────────▼─────────────────────────────────────┐
+│  EDGE (on-farm PC + GPU)                                                │
+│  Video ingest · YOLO inference · zones · LoRa tags · local Flask UI      │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │ RTSP (cameras) · USB serial (LoRa) · LAN
+┌───────────────────────────────────▼─────────────────────────────────────┐
+│  FIELD DEVICES                                                          │
+│  IP cameras · ESP32 / LoRa worker tags · sensors (e.g. water level)      │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
-Docker Container: ultralytics/ultralytics (CUDA + cuDNN)
-├── farm_edge_node.py        ← Main orchestrator (CMD entrypoint)
-├── pipeline.py              ← Multi-camera RTSP grabbing + YOLO inference
-├── zone_engine.py           ← Virtual fence polygon checks (Shapely)
-├── lora_receiver.py         ← ESP32 LoRa USB-Serial tag receiver
-├── alert_engine.py          ← Central decision engine (fusion + dedup + publish)
-├── detection_filters.py     ← 4-layer false positive reduction
-└── edge_gui.py              ← Flask web GUI for polygon drawing (:5000)
-```
 
-**Data Flow:**
-```
-Camera RTSP → CameraGrabber threads → Frame Queue → YOLO Inference
-    → Detection → Filters → Zone Check → LoRa Fusion → MQTT Publish
-```
+### 4.2 Visual flow (data)
 
-**Threading Model:**
-- 1 thread per camera (CameraGrabber) — GIL released during cv2.read()
-- 1 main thread for inference loop
-- 1 daemon thread for Flask GUI
-- 1 daemon thread for heartbeat
-- 1 daemon thread for LoRa receiver
-- 1 daemon thread for MQTT client loop
-
-### 2.2 Cloud VPS
-
-**Services (Docker Compose):**
-
-| Container | Image | Port | Purpose |
-|-----------|-------|------|---------|
-| postgres | postgres:16-alpine | 5432 | Alert/device/user storage |
-| rabbitmq | rabbitmq:3-management | 5672, 1883, 15672 | Message broker (AMQP + MQTT) |
-| api-gateway | Spring Boot | 8080 | Route API requests |
-| alert-service | Spring Boot | 8081 | Consume alerts, store, push via MQTT |
-| device-service | Spring Boot | 8082 | Edge node/camera/zone CRUD |
-| auth-service | Spring Boot | 8083 | JWT auth, user management |
-| siren-service | Spring Boot | 8084 | Siren commands → RabbitMQ |
-| react-dashboard | Nginx | 443 | Static React SPA |
-| nginx-proxy | nginx:alpine | 80, 443 | TLS termination, reverse proxy |
-
-### 2.3 Messaging Architecture
-
-**Exchanges:**
-- `farm.alerts` (topic) — Edge → Cloud alert routing
-- `farm.commands` (direct) — Cloud → Edge siren commands
-- `farm.events` (topic) — Status, heartbeat, suppression events
-- `farm.dead-letter` (fanout) — Failed message catch-all
-
-**Queue Routing:**
-```
-farm/alerts/critical  → alert.critical queue (priority=10, TTL=24h)
-farm/alerts/high      → alert.high queue (TTL=24h)
-farm/alerts/warning   → alert.warning queue (TTL=12h)
-farm.siren.trigger    → siren.commands queue
-farm.siren.stop       → siren.commands queue
-node.*                → node.events queue (TTL=1h)
-worker_identified     → worker.suppression queue (TTL=24h)
-```
-
-### 2.4 Database Schema
-
-10 tables across 3 domains:
-
-**Authentication:** `users`
-**Devices:** `edge_nodes`, `cameras`, `zones`, `worker_tags`
-**Operations:** `alerts`, `siren_actions`, `suppression_log`, `node_health_log`, `daily_alert_summary`
-
-Key indexes optimized for: priority+time queries, active alert filtering, zone-based lookups.
-
-### 2.5 Network Architecture
-
-```
-Farm Site (Sanga Reddy)              Cloud VPS (vivasvan-tech.in)
-┌─────────────────────┐              ┌─────────────────────┐
-│ Edge Node A         │──OpenVPN────▶│ OpenVPN Server      │
-│ 10.8.0.10           │  Tunnel      │ 10.8.0.1            │
-│ 4 cameras           │              │                     │
-├─────────────────────┤              │ PostgreSQL :5432     │
-│ Edge Node B         │──OpenVPN────▶│ RabbitMQ :5672/1883 │
-│ 10.8.0.11           │  Tunnel      │ Spring Boot :8080-84│
-│ 4 cameras           │              │ Nginx :443          │
-├─────────────────────┤              └─────────┬───────────┘
-│ Raspberry Pi        │                        │
-│ PA System (siren)   │                        │ HTTPS/MQTTS
-│ Local MQTT :1883    │              ┌─────────▼───────────┐
-└─────────────────────┘              │ Android App         │
-                                     │ REST + MQTT          │
-                                     └─────────────────────┘
+```mermaid
+flowchart LR
+  subgraph field [FieldDevices]
+    Cams[RTSP_Cameras]
+    Tags[LoRa_Tags]
+  end
+  subgraph edge [EdgeNode]
+    Pipe[Inference_Pipeline]
+    Zones[Zone_Engine]
+    Alerts[Alert_Engine]
+  end
+  subgraph cloud [Cloud]
+    GW[API_Gateway]
+    DB[(PostgreSQL)]
+    MQ[RabbitMQ]
+  end
+  subgraph users [Users]
+    Dash[Web_Dashboard]
+    And[Android_App]
+  end
+  Cams --> Pipe
+  Tags --> Alerts
+  Pipe --> Zones
+  Zones --> Alerts
+  Alerts -->|MQTT_over_VPN| MQ
+  MQ --> DB
+  GW --> DB
+  Dash --> GW
+  And --> GW
 ```
 
 ---
 
-## 3. AI Detection Architecture
+## 5. Where everything lives in the repo
 
-### 3.1 Class Taxonomy (10 Classes)
+Monorepo layout (high level):
 
-| ID | Class | Priority | Alert Action |
-|----|-------|----------|-------------|
-| 0 | person | high | Zone check + LoRa fusion |
-| 1 | child | critical | Zone check, never suppressed in zero_tolerance |
-| 2 | cow | warning | Containment check (OUTSIDE = alert) |
-| 3 | snake | high | Geometric + temporal filter |
-| 4 | scorpion | high | Size filter + 2-frame temporal |
-| 5 | fire | critical | Color histogram + 3-frame temporal |
-| 6 | smoke | high | Texture + color + 3-frame temporal |
-| 7 | dog | info | Suppression class (no alert) |
-| 8 | vehicle | info | Suppression class (no alert) |
-| 9 | bird | info | Suppression class (no alert) |
+| Folder | Role |
+|--------|------|
+| `edge/` | Python edge runtime: inference, zones, MQTT, Flask GUI |
+| `backend/` | Java Spring Boot: gateway, auth, devices, alerts, siren |
+| `dashboard/` | React web UI (Vite + TypeScript) |
+| `android/` | Kotlin / Jetpack Compose mobile app |
+| `cloud/` | Docker Compose, DB schema (`db/init.sql`), RabbitMQ helpers |
+| `firmware/` | ESP32 / Arduino examples (e.g. tags, sensors) |
+| `AlertManagement/` | Raspberry Pi PA / audio sidecar (optional) |
+| `e2e/` | Optional full-stack smoke tests |
 
-### 3.2 Detection Pipeline
-
-```
-YOLO Detection
-  │
-  ├── Layer 0: Confidence threshold (class-specific, night-adjusted)
-  ├── Layer 1: Geometric validation (aspect ratio, size, position)
-  ├── Layer 2: Color validation (fire HSV histogram, smoke texture)
-  ├── Layer 3: Temporal confirmation (fire: 3/5s, scorpion: 2/3s)
-  ├── Layer 4: Zone relevance (point-in-polygon check)
-  ├── Layer 5: LoRa fusion (worker tag suppression)
-  └── Layer 6: Deduplication (30s window per zone+class)
-```
-
-### 3.3 Zone Types
-
-| Type | Trigger Condition | Worker Tag Suppression |
-|------|------------------|----------------------|
-| `intrusion` | Target INSIDE polygon | Yes — authorized workers suppress |
-| `zero_tolerance` | Target INSIDE polygon | **No** — never suppressed (pond safety) |
-| `livestock_containment` | Target OUTSIDE polygon | N/A |
-| `hazard` | Target INSIDE polygon | Yes |
+This mirrors the **logical** architecture: **edge**, **cloud services**, **clients**, **infra**.
 
 ---
 
-## 4. API Architecture
+## 6. Edge AI node (on the farm)
 
-### 4.1 REST API (via API Gateway :8080)
+### 6.1 What hardware is it?
 
+Typical target (can vary):
+
+- **CPU + GPU** PC (e.g. Core i5 class + **NVIDIA RTX 3060** class) with enough RAM for several camera streams.
+- **Cameras** on the LAN: RTSP (e.g. TP-Link VIGI / Tapo style setups).
+- Optional **LoRa USB receiver** for **worker tags** (wearables) to know authorized people nearby.
+- Optional **local MQTT** bridge for **water level** or other IoT readings.
+
+### 6.2 Main software pieces (names you will see in code)
+
+| Module (concept) | Plain English |
+|------------------|---------------|
+| **Pipeline** | Reads frames from each camera on a schedule, runs **YOLO** detection, hands results to the rest of the system. |
+| **Zone engine** | Stores **polygons** (virtual fences) per camera; checks if a detection’s **foot point** is inside the right area. |
+| **Detection filters** | Reduces false positives: confidence, shape, night tweaks, temporal confirmation for fire/smoke/scorpion, optional **suppression rules file**. |
+| **Alert engine** | Combines zone logic + **LoRa “worker nearby”** fusion + deduplication, then **publishes** alerts. |
+| **Flask GUI (`edge_gui`)** | Browser UI on the edge (e.g. port 5000) to draw zones, see **health**, **camera status**, **model path**, snapshots. |
+| **MQTT client** | Talks to the broker (often via **VPN**) for alerts, heartbeats, siren commands, **admin** messages. |
+
+### 6.3 AI pipeline in simple steps
+
+```text
+Camera RTSP  →  grab thread per camera  →  frame queue  →  YOLO inference
+      →  filter detection  →  zone check  →  LoRa fusion  →  MQTT publish
 ```
-Base: /api/v1
 
-Auth:     POST /auth/login, /auth/register
-Alerts:   GET /alerts, GET /alerts/:id, PATCH /alerts/:id/acknowledge
-Devices:  GET /nodes, GET /cameras, GET/POST/DELETE /zones, GET/POST /tags
-Siren:    POST /siren/trigger, POST /siren/stop, GET /siren/history
-Users:    GET /users, PATCH /users/me/mqtt-client-id
+**Threading (why it matters):** each camera’s grabber runs in its own thread so one slow stream does not block others; the GPU runs inference as frames arrive; MQTT and Flask run on their own loops/threads.
 
-WebSocket: ws://.../ws/alerts (STOMP over SockJS)
-  → /topic/alerts (real-time new alerts)
-  → /topic/nodes (node status changes)
-```
+### 6.4 Admin and hot reload (operator-friendly)
 
-### 4.2 MQTT Topics
+The edge can react to **MQTT topics** (when enabled and connected), for example:
 
-```
-Edge → Cloud:
-  farm/alerts/{priority}     Alert payloads (QoS 1)
-  farm/nodes/{id}/status     Online/offline status (retain)
-  farm/nodes/{id}/heartbeat  GPU stats every 30s (QoS 0)
-  farm/events/worker_identified  Suppression audit log
+- **`farm/admin/reload_config`** — reload **zones** and **suppression rules** without restarting the container.
+- **`farm/admin/model_update`** — point inference at a **new model file** (`.pt` / `.engine`) when valid paths are provided.
 
-Cloud → Edge:
-  farm/siren/trigger         Siren activation command
-  farm/siren/stop            Siren stop command
-  farm/admin/update          OTA update command
+A **file watcher** (optional dependency: `watchdog`) can also reload when `zones.json` or `suppression_rules.json` changes on disk.
 
-Edge → Cloud (acknowledgment):
-  farm/siren/ack             Siren command acknowledgment
-```
+### 6.5 Key design choices (edge)
+
+| Decision | Why |
+|----------|-----|
+| **Single efficient model** (e.g. YOLOv8n-class) | Many cameras × low latency per frame on a mid-range GPU. |
+| **TensorRT / FP16** (when used) | Big speedup with small accuracy tradeoff; safety prefers stability over marginal speed. |
+| **Bottom-center in polygon** | Represents **where feet stand**, not the center of a tall bounding box. |
+| **MQTT over VPN** | Broker is not exposed on the public internet; tunnel reconnects after outages. |
 
 ---
 
-## 5. Deployment Architecture
+## 7. Cloud platform (VPS)
 
-### 5.1 Container Strategy
+### 7.1 What runs there?
 
-- **Edge Nodes:** Docker with NVIDIA runtime, OpenVPN client in sidecar
-- **Cloud VPS:** Docker Compose with healthchecks and restart policies
-- **CI/CD:** GitHub Actions → GHCR → SSH deploy to VPS
+Typical **Docker Compose** style deployment:
 
-### 5.2 Update Strategy
+| Piece | Port (typical) | Plain English |
+|-------|----------------|---------------|
+| **PostgreSQL** | 5432 | System of record: users, devices, alerts, audit, optional water tanks, health logs. |
+| **RabbitMQ** | 5672 (AMQP), 1883 (MQTT plugin if enabled) | Message **router** between edge patterns and Java consumers. |
+| **api-gateway** | 8080 | Single front door for **REST**; routes paths to the right microservice. |
+| **alert-service** | 8081 | Consumes alert queues, persists alerts, **WebSocket** broadcast to dashboards. |
+| **device-service** | 8082 | CRUD for **nodes, cameras, zones, worker tags**, water tank registry, etc. |
+| **auth-service** | 8083 | **JWT** login/register, user records. |
+| **siren-service** | 8084 | Records siren actions, publishes **trigger/stop** commands to the bus. |
+| **Nginx** | 80/443 | TLS termination, static dashboard hosting (layout varies by deployment). |
 
-- **Cloud services:** `docker compose pull && docker compose up -d`
-- **Edge AI model:** rsync over VPN + MQTT update command
-- **Edge software:** Docker image pull over VPN
-- **Firmware:** Physical USB flashing (no OTA currently)
+### 7.2 Why microservices?
+
+So **alerts**, **devices**, **auth**, and **siren** can be **scaled or deployed independently** (e.g. patch siren logic without touching auth). The **API gateway** keeps the **browser/app** simple: one base URL.
+
+### 7.3 API gateway routes (conceptual)
+
+All under **`/api/v1/`** (exact paths in [API_REFERENCE.md](./API_REFERENCE.md)):
+
+- **Auth** → auth-service  
+- **Alerts** → alert-service  
+- **Nodes, cameras, zones, tags, water** → device-service  
+- **Siren** → siren-service  
 
 ---
 
-## 6. Reliability & Recovery
+## 8. Messaging and data stores
 
-| Scenario | Recovery Mechanism |
-|----------|-------------------|
-| Edge Node power loss | Docker `restart: always` + OpenVPN auto-reconnect (<90s) |
-| VPN tunnel drop | `keepalive 10 60` + exponential backoff reconnect |
-| RTSP camera offline | Per-camera exponential backoff (1s → 30s max) |
-| MQTT broker down | Client auto-reconnect with Last Will for offline detection |
-| LoRa serial disconnect | 5s retry loop with error logging |
-| PostgreSQL overload | Connection pooling + 2G memory limit + healthcheck |
+### 8.1 RabbitMQ (bus)
+
+Think of **exchanges** as **labeled mail sorters** and **queues** as **inboxes** for services.
+
+| Exchange (example) | Role |
+|--------------------|------|
+| **farm.alerts** (topic) | Routes edge-originated alerts by **severity / routing key**. |
+| **farm.commands** (direct) | Cloud → edge style commands (e.g. siren). |
+| **farm.events** (topic) | Status, heartbeats, camera events, suppression audit. |
+| **farm.water** (topic) | Water level / tank related messages (when used). |
+| **farm.dead-letter** (fanout) | Holds messages that failed processing for inspection. |
+
+**Queues** (examples): `alert.critical`, `alert.high`, `alert.warning`, `water.level`, etc. Exact bindings are created by **`cloud/scripts/rabbitmq_init.py`** in a proper deployment.
+
+### 8.2 PostgreSQL (database)
+
+**Domains** (conceptual):
+
+- **Identity** — users, roles.  
+- **Inventory** — edge nodes, cameras, zones, worker tags, water tanks.  
+- **Operations** — alerts, siren audit, suppression log, node health, summaries.
+
+The canonical schema is in **`cloud/db/init.sql`**.
+
+### 8.3 MQTT topics (plain map)
+
+**Edge → cloud (examples):**
+
+- `farm/alerts/{priority}` — alert payloads.  
+- `farm/nodes/{id}/status` — online/offline (often **retained** so last state is visible).  
+- `farm/nodes/{id}/heartbeat` — periodic health.  
+- `farm/events/...` — various events (e.g. worker identified / suppression audit).
+
+**Cloud → edge (examples):**
+
+- `farm/siren/trigger`, `farm/siren/stop` — siren control.  
+- `farm/admin/update`, `farm/admin/reload_config`, `farm/admin/model_update` — operations / OTA-style workflows (exact support depends on edge version and config).
+
+**Edge → cloud (ack):**
+
+- `farm/siren/ack` — confirms siren command handling where implemented.
+
+---
+
+## 9. APIs and apps — how people touch the system
+
+### 9.1 Web dashboard
+
+- **React** SPA, talks to **API gateway** over HTTPS.  
+- **JWT** stored in the browser after login (see project conventions).  
+- **WebSocket** (via SockJS/STOMP) for **live alert** updates when backend is available.
+
+### 9.2 Android app
+
+- **Kotlin**, Compose UI, **Retrofit** for REST, **MQTT** client for realtime paths as designed.  
+- Same logical APIs: login, alerts, devices, siren where exposed.
+
+### 9.3 Typical REST capabilities
+
+| Area | Examples |
+|------|----------|
+| Auth | Register, login, JWT refresh patterns (see API reference). |
+| Alerts | List, filter, get by id, acknowledge, resolve, false positive. |
+| Devices | Nodes, cameras, zones, worker tags, water tanks. |
+| Siren | Trigger, stop, history. |
+
+---
+
+## 10. AI, zones, and safety rules
+
+### 10.1 Detection classes (example taxonomy)
+
+The model is trained / configured for **farm-relevant classes** (exact list may evolve). Examples:
+
+| Class | Typical risk angle |
+|-------|-------------------|
+| person / child | Intrusion, pond safety |
+| cow | Containment (inside/outside polygon rules) |
+| snake / scorpion | Venomous wildlife |
+| fire / smoke | Early fire warning |
+| dog / vehicle / bird | Often **informational** or **suppressed** from alerts |
+
+### 10.2 Zone types (behavioral summary)
+
+| Zone type | Plain English |
+|-----------|---------------|
+| **intrusion** | Object **inside** polygon → alert; **authorized worker nearby** may suppress. |
+| **zero_tolerance** | Object **inside** → alert; **strong safety** (e.g. pond): typically **not** suppressed by worker presence. |
+| **livestock_containment** | Animal **outside** safe polygon → alert. |
+| **hazard** | Object **inside** dangerous region → alert; may allow worker suppression depending on policy. |
+
+### 10.3 Filter layers (intuition)
+
+```text
+Confidence  →  geometry / size  →  color or texture (fire/smoke)  →  time-based confirmation
+  →  zone relevance  →  worker fusion  →  deduplication window
+```
+
+**Suppression file:** `edge/config/suppression_rules.json` can list classes (and optionally **per-camera** IDs) to **ignore** for alerts, reloadable via MQTT or file watch.
+
+---
+
+## 11. Reliability and recovery
+
+| Scenario | What the system tries to do |
+|----------|------------------------------|
+| **Edge reboot** | Docker / service manager restarts containers; OpenVPN reconnects. |
+| **VPN drop** | Keepalives + client **reconnect**; **Last Will** on MQTT can mark node offline. |
+| **Camera disconnect** | Per-camera **backoff** before reconnecting RTSP (avoid hammering the camera). |
+| **Broker unavailable** | MQTT client **reconnect**; alerts may backlog or drop depending on QoS and disk (operational choice). |
+| **Database stress** | Pooling, limits, healthchecks in compose; scale VPS if needed. |
+
+**Important:** “Highly available” still depends on **power**, **ISP**, and **correct ops** (backups, monitoring). This table describes **software behavior**, not a formal SLA.
+
+---
+
+## 12. Deployment and operations (overview)
+
+| Layer | Typical update |
+|-------|----------------|
+| **Cloud** | Pull new images / jars, `docker compose up`, run DB migrations **only** via controlled processes (schema from `init.sql` + ops discipline). |
+| **Edge** | Pull new container image over VPN; **model** swap via file + MQTT or manual replace. |
+| **Firmware** | Often **USB** flash unless you add OTA later. |
+
+**CI:** GitHub Actions can build **backend** services per module; integration tests may use **Testcontainers** (Docker required) — see `backend/build.gradle.kts` and `integrationTest` task.
+
+---
+
+## 13. Glossary
+
+| Term | Simple meaning |
+|------|----------------|
+| **Edge** | Compute **on the farm**, next to cameras. |
+| **VPS** | Virtual private server in a datacenter (“the cloud” here). |
+| **RTSP** | Video streaming protocol many IP cameras use. |
+| **YOLO** | A family of fast **object detection** models (finds boxes + class names). |
+| **MQTT** | Lightweight **publish/subscribe** messaging for IoT. |
+| **RabbitMQ** | Message **broker** with queues and routing rules. |
+| **VPN** | Encrypted tunnel so farm devices share a **private** IP range with the VPS. |
+| **JWT** | Signed token proving **who logged in** for API calls. |
+| **Microservice** | Small **independently deployable** backend program. |
+| **API Gateway** | One public HTTP entry that **forwards** to internal services. |
+| **Polygon / zone** | Closed shape drawn on the camera image = **virtual fence**. |
+| **LoRa** | Long-range, low-power radio for **small sensor/badge** payloads. |
+| **WebSocket** | Long-lived browser connection for **push** updates (e.g. new alerts). |
+| **TensorRT** | NVIDIA runtime that can **accelerate** inference. |
+| **QoS (MQTT)** | Delivery guarantee level (0 = fire and forget, 1 = at least once, etc.). |
+
+---
+
+## 14. Related documents
+
+| Document | Contents |
+|----------|----------|
+| [API_REFERENCE.md](./API_REFERENCE.md) | REST paths, payloads, conventions |
+| [AGENTS.md](../AGENTS.md) | Developer setup, ports, run commands |
+| `cloud/db/init.sql` | Authoritative SQL schema |
+| `cloud/scripts/rabbitmq_init.py` | Broker topology setup |
+
+---
+
+## 15. Revision note
+
+This architecture description is **intentionally broader** than a pure internal design memo: it balances **accuracy** with **readability**. When code and docs disagree, **the repository implementation** should win — please open an issue or PR to align this document.
