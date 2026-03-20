@@ -26,12 +26,12 @@ export default function SirenButton({
         'font-mono font-extrabold uppercase tracking-[2px] cursor-pointer transition-all duration-200 flex items-center justify-center gap-3',
         isPrimary
           ? clsx(
-              'w-full py-4 rounded-xl text-lg border-2',
+              'w-full min-h-[48px] py-4 rounded-xl text-lg border-2 touch-manipulation active:scale-[0.98]',
               active
                 ? 'border-sc-success bg-sc-success/10 text-sc-success hover:bg-sc-success/20'
                 : 'border-sc-critical bg-sc-critical/10 text-sc-critical hover:bg-sc-critical/20',
             )
-          : 'py-2.5 px-6 rounded-lg text-[13px] border border-sc-high/30 bg-sc-high/5 text-sc-high hover:bg-sc-high/15',
+          : 'min-h-[48px] py-2.5 px-6 rounded-lg text-[13px] border border-sc-high/30 bg-sc-high/5 text-sc-high hover:bg-sc-high/15 touch-manipulation active:scale-[0.98]',
         loading && 'opacity-50 cursor-not-allowed',
       )}
     >

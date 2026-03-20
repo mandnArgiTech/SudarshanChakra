@@ -15,7 +15,7 @@ describe('Sidebar', () => {
     render(
       <QueryClientProvider client={qc}>
         <BrowserRouter>
-          <Sidebar />
+          <Sidebar open onClose={() => {}} />
         </BrowserRouter>
       </QueryClientProvider>,
     );
@@ -27,7 +27,7 @@ describe('Sidebar', () => {
     render(
       <QueryClientProvider client={qc}>
         <BrowserRouter>
-          <Sidebar />
+          <Sidebar open onClose={() => {}} />
         </BrowserRouter>
       </QueryClientProvider>,
     );
@@ -38,7 +38,7 @@ describe('Sidebar', () => {
     render(
       <QueryClientProvider client={qc}>
         <BrowserRouter>
-          <Sidebar />
+          <Sidebar open onClose={() => {}} />
         </BrowserRouter>
       </QueryClientProvider>,
     );
@@ -49,7 +49,7 @@ describe('Sidebar', () => {
     render(
       <QueryClientProvider client={qc}>
         <BrowserRouter>
-          <Sidebar />
+          <Sidebar open onClose={() => {}} />
         </BrowserRouter>
       </QueryClientProvider>,
     );
@@ -60,7 +60,7 @@ describe('Sidebar', () => {
     render(
       <QueryClientProvider client={qc}>
         <BrowserRouter>
-          <Sidebar />
+          <Sidebar open onClose={() => {}} />
         </BrowserRouter>
       </QueryClientProvider>,
     );

@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { clsx } from 'clsx';
-import { Hexagon, Shield, Eye } from 'lucide-react';
+import { Hexagon, Shield, Eye, Plus } from 'lucide-react';
 import { useZones } from '@/api/devices';
 import type { Zone } from '@/types';
 
@@ -21,6 +22,7 @@ const priorityColorMap: Record<string, string> = {
 };
 
 export default function ZonesPage() {
+  const [createOpen, setCreateOpen] = useState(false);
   const { data: zones } = useZones();
   const zoneList = zones ?? fallbackZones;
 
@@ -31,6 +33,37 @@ export default function ZonesPage() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <p className="text-sc-text-muted text-sm max-w-xl">
+          Virtual fences tie detections to cameras. Create zones in the field, then sync from device-service.
+        </p>
+        <button
+          type="button"
+          onClick={() => setCreateOpen((v) => !v)}
+          className="inline-flex items-center justify-center gap-2 min-h-[48px] px-5 rounded-xl bg-sc-accent text-sc-bg font-bold text-sm font-mono uppercase tracking-wider hover:bg-sc-accent/90 transition-colors touch-manipulation active:scale-[0.98] shrink-0"
+        >
+          <Plus size={18} strokeWidth={2.5} />
+          Create zone
+        </button>
+      </div>
+
+      {createOpen && (
+        <div className="rounded-xl border border-sc-border bg-sc-surface-alt p-5 space-y-3">
+          <h4 className="text-sc-text font-semibold text-sm">New zone (draft)</h4>
+          <p className="text-sc-text-dim text-xs font-mono leading-relaxed">
+            Full polygon editor + POST /api/v1/devices/zones will plug in here. For now, define zones via device-service
+            or edge config, then refresh this page.
+          </p>
+          <button
+            type="button"
+            onClick={() => setCreateOpen(false)}
+            className="text-sc-accent text-xs font-mono uppercase tracking-wider hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {Object.entries(grouped).map(([cameraId, cameraZones]) => (
         <div key={cameraId}>
           <div className="flex items-center gap-2 mb-3">

@@ -7,6 +7,7 @@ import com.sudarshanchakra.device.repository.water.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,7 +25,7 @@ public class WaterService {
     private final WaterTankRepository tankRepo;
     private final WaterLevelReadingRepository readingRepo;
     private final WaterMotorRepository motorRepo;
-    private final RabbitTemplate rabbitTemplate;
+    private final ObjectProvider<RabbitTemplate> rabbitTemplate;
     private final ObjectMapper objectMapper;
 
     // ── Tank queries ─────────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ public class WaterService {
             .build();
         readingRepo.save(reading);
         tankRepo.updateLastReading(tankId, OffsetDateTime.now());
-        log.debug("Saved reading for tank {} — {:.1f}%", tankId, payload.getPercentFilled());
+        log.debug("Saved reading for tank {} — {}%", tankId, payload.getPercentFilled());
 
         // Evaluate motor auto-command
         evaluateAutoCommand(tankId, payload.getPercentFilled());
@@ -94,11 +95,11 @@ public class WaterService {
             boolean isStopped = "stopped".equals(motor.getState());
 
             if (isStopped && level < motor.getPumpOnPercent()) {
-                log.info("AUTO: tank {} at {:.1f}% < {:.0f}% — commanding motor {} ON",
+                log.info("AUTO: tank {} at {}% < {}% — commanding motor {} ON",
                     tankId, level, motor.getPumpOnPercent(), motor.getId());
                 publishMotorCommand(motor, "pump_on", "auto");
             } else if (isRunning && level >= motor.getPumpOffPercent()) {
-                log.info("AUTO: tank {} at {:.1f}% >= {:.0f}% — commanding motor {} OFF",
+                log.info("AUTO: tank {} at {}% >= {}% — commanding motor {} OFF",
                     tankId, level, motor.getPumpOffPercent(), motor.getId());
                 publishMotorCommand(motor, "pump_off", "auto");
             }
@@ -120,8 +121,12 @@ public class WaterService {
         }
         String topic = motor.getDeviceTag() + "/motor/command";
         String payload = String.format("{\"command\":\"%s\",\"source\":\"%s\"}", command, source);
-        // Publish via MQTT (RabbitMQ MQTT plugin forwards to correct topic)
-        rabbitTemplate.convertAndSend("amq.topic", topic.replace("/", "."), payload);
+        RabbitTemplate rt = rabbitTemplate.getIfAvailable();
+        if (rt == null) {
+            log.warn("RabbitMQ not available — motor command not published for {}", motor.getId());
+            return;
+        }
+        rt.convertAndSend("amq.topic", topic.replace("/", "."), payload);
         log.info("Motor command published → {} : {}", topic, payload);
     }
 

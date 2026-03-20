@@ -39,7 +39,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         {stats.map((s) => (
           <div
             key={s.label}
@@ -63,7 +63,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-[2fr_1fr] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
         <div className="bg-sc-surface border border-sc-border rounded-xl p-5">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-sc-text text-base font-semibold">Live Alert Feed</h3>
@@ -98,7 +98,7 @@ export default function DashboardPage() {
               onClick={() => triggerSiren.mutate({ nodeId: 'all' })}
               loading={triggerSiren.isPending}
             />
-            <div className="grid grid-cols-2 gap-2 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
               <SirenButton
                 variant="secondary"
                 label="Node A"

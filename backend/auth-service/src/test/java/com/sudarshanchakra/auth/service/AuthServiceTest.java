@@ -120,4 +120,25 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.register(req))
                 .hasMessageContaining("Username already");
     }
+
+    @Test
+    void register_nullEmail_skipsEmailDuplicateCheck() {
+        when(userRepository.existsByUsername("noemail")).thenReturn(false);
+        when(passwordEncoder.encode("pw")).thenReturn("enc");
+        when(userRepository.save(any(User.class))).thenAnswer(i -> {
+            User u = i.getArgument(0);
+            u.setId(UUID.randomUUID());
+            return u;
+        });
+        when(jwtService.generateToken(any(), any())).thenReturn("t");
+        when(jwtService.generateRefreshToken(any())).thenReturn("r");
+
+        var req = new RegisterRequest();
+        req.setUsername("noemail");
+        req.setPassword("pw");
+        req.setEmail(null);
+        var res = authService.register(req);
+        assertThat(res.getUser().getUsername()).isEqualTo("noemail");
+        verify(userRepository, never()).existsByEmail(any());
+    }
 }

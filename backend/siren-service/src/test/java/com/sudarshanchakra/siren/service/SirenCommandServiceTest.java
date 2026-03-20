@@ -93,4 +93,39 @@ class SirenCommandServiceTest {
                 .thenReturn(Page.empty());
         assertThat(serviceWithMq.getHistory(PageRequest.of(0, 10)).getTotalElements()).isEqualTo(0);
     }
+
+    @Test
+    void triggerSiren_whenRabbitFails_stillSavesAudit() {
+        doThrow(new RuntimeException("broker down")).when(rabbitTemplate)
+                .convertAndSend(anyString(), anyString(), any(Map.class));
+        var req = SirenRequest.builder().nodeId("n").build();
+        var res = serviceWithMq.triggerSiren(req);
+        assertThat(res.getStatus()).isEqualTo("triggered");
+        verify(sirenActionRepository).save(any());
+    }
+
+    @Test
+    void stopSiren_whenRabbitFails_stillSavesAudit() {
+        doThrow(new RuntimeException("down")).when(rabbitTemplate)
+                .convertAndSend(anyString(), anyString(), any(Map.class));
+        var req = SirenRequest.builder().nodeId("n2").build();
+        var res = serviceWithMq.stopSiren(req);
+        assertThat(res.getStatus()).isEqualTo("stopped");
+        verify(sirenActionRepository, atLeastOnce()).save(any());
+    }
+
+    @Test
+    void stopSiren_withoutRabbit_stillSaves() {
+        var req = SirenRequest.builder().nodeId("solo").build();
+        serviceNoMq.stopSiren(req);
+        verify(sirenActionRepository).save(argThat((SirenAction a) -> "stop".equals(a.getAction())));
+    }
+
+    @Test
+    void triggerSiren_nullAlertId_ok() {
+        var req = SirenRequest.builder().nodeId("z").sirenUrl(null).alertId(null).build();
+        var res = serviceWithMq.triggerSiren(req);
+        assertThat(res.getNodeId()).isEqualTo("z");
+        verify(sirenActionRepository).save(any());
+    }
 }

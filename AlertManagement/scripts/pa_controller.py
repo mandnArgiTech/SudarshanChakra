@@ -31,6 +31,12 @@ from typing import Optional
 
 import paho.mqtt.client as mqtt
 
+try:
+    from audio_cache import resolve as resolve_audio_url
+except ImportError:
+    def resolve_audio_url(u: str) -> str:
+        return u
+
 # ---------------------------------------------------------------------------
 # Configuration — override via environment variables
 # ---------------------------------------------------------------------------
@@ -290,6 +296,7 @@ class PAController:
 
     def _play_bgm(self, url: str) -> None:
         """Start background music / Suprabatham chant."""
+        url = resolve_audio_url(url)
         with self._lock:
             if self._state == State.PLAYING_SIREN:
                 log.warning("Ignoring BGM request — siren is active (siren has priority)")
@@ -308,6 +315,7 @@ class PAController:
         PRIORITY INTERRUPT: Immediately kill anything playing and blast the siren.
         This is the security-critical path — latency must be minimal.
         """
+        url = resolve_audio_url(url)
         with self._lock:
             interrupted_url = None
 

@@ -59,7 +59,7 @@ export default function SirenPage() {
             : 'Press to activate emergency siren on selected nodes'}
         </p>
 
-        <div className="flex gap-3 justify-center">
+        <div className="flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center px-2">
           <SirenButton
             active={sirenActive}
             label={sirenActive ? 'STOP SIREN' : 'TRIGGER ALL'}
@@ -68,7 +68,7 @@ export default function SirenPage() {
           />
         </div>
 
-        <div className="flex gap-3 justify-center mt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto mt-4 px-2">
           <SirenButton
             variant="secondary"
             label="Node A Only"

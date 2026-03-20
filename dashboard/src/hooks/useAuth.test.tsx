@@ -7,7 +7,19 @@ function T() {
   return (
     <div>
       <span data-testid="t">{token || 'none'}</span>
-      <button type="button" onClick={() => login('a', 'b', { id: '1', username: 'x', email: '', role: 'viewer' })}>
+      <button
+        type="button"
+        onClick={() =>
+          login('a', 'b', {
+            id: '1',
+            username: 'x',
+            email: '',
+            role: 'viewer',
+            farmId: 'f1',
+            active: true,
+          })
+        }
+      >
         in
       </button>
       <button type="button" onClick={logout}>

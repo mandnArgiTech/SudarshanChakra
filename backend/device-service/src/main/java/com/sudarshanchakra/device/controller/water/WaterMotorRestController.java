@@ -18,7 +18,7 @@ import java.util.Map;
 @RequestMapping("/api/v1/water/motors")
 @RequiredArgsConstructor
 @Tag(name = "Motor Controllers", description = "Pump motor control (relay and SMS)")
-public class WaterMotorController {
+public class WaterMotorRestController {
 
     private final WaterService waterService;
 

@@ -1,0 +1,5 @@
+# Raspberry Pi PA stack (scheduler, dashboard, MQTT helpers)
+schedule>=1.2.0
+paho-mqtt>=1.6.0
+flask>=3.0.0
+astral>=3.2

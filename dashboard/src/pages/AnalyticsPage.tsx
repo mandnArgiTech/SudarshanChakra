@@ -70,7 +70,7 @@ export default function AnalyticsPage() {
         </ResponsiveContainer>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-sc-surface border border-sc-border rounded-xl p-6">
           <h3 className="text-sc-text text-base font-semibold mb-4">Alerts by Zone</h3>
           <ResponsiveContainer width="100%" height={280}>
@@ -113,7 +113,7 @@ export default function AnalyticsPage() {
 
       <div className="bg-sc-surface border border-sc-border rounded-xl p-6">
         <h3 className="text-sc-text text-base font-semibold mb-4">Summary Statistics</h3>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {[
             { label: 'Total Alerts (24h)', value: '143', color: 'text-sc-critical' },
             { label: 'Avg Response Time', value: '2.4 min', color: 'text-sc-accent' },

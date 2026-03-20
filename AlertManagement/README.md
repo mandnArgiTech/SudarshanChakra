@@ -20,6 +20,10 @@
   ./setup_and_build_all.sh build-alertmgmt   # py_compile AlertManagement/scripts/*.py
   ```
 
+- **Python deps (Pi or dev):** `pip install -r AlertManagement/requirements.txt` — includes `schedule`, `paho-mqtt`, `flask`, `astral` (for sunrise/sunset hooks in `scheduler.py`).
+
+- **Scheduler extras:** `PA_SCHEDULE_BGM_URLS` (comma-separated playlist, rotates each daily BGM run), `PA_SCHEDULE_PLAYLIST_STATE` (index file), `PA_FARM_LAT` / `PA_FARM_LON` / `PA_FARM_TZ` + `astral` for MQTT hooks on `pa/schedule/sunrise` and `pa/schedule/sunset`. **PA dashboard SSE:** `GET /api/events` on `pa_dashboard.py` (interval `PA_SSE_INTERVAL`, default 3s).
+
 - **Manual run on Pi (for debugging):**
   ```bash
   cd /opt/pa-system
