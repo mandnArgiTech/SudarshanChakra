@@ -1,17 +1,27 @@
 package com.sudarshanchakra.domain.model
 
+import com.google.gson.annotations.SerializedName
+
+/** Matches device-service [EdgeNode] JSON (displayName, vpnIp, …). */
 data class EdgeNode(
-    val id: String,
-    val name: String,
-    val location: String,
-    val status: NodeStatus,
-    val lastHeartbeat: String?,
-    val cameraCount: Int,
-    val zoneCount: Int
-)
+    @SerializedName("id") val id: String = "",
+    @SerializedName("displayName") val name: String = "",
+    @SerializedName("vpnIp") val vpnIp: String? = null,
+    @SerializedName("localIp") val localIp: String? = null,
+    val status: NodeStatus = NodeStatus.UNKNOWN,
+    @SerializedName("lastHeartbeat") val lastHeartbeat: String? = null,
+    /** Not on entity; reserved for future API — default 0 */
+    val cameraCount: Int = 0,
+    val zoneCount: Int = 0,
+) {
+    val location: String get() = vpnIp?.takeIf { it.isNotBlank() } ?: localIp?.takeIf { it.isNotBlank() } ?: ""
+}
 
 enum class NodeStatus {
-    ONLINE, OFFLINE, DEGRADED
+    @SerializedName("online") ONLINE,
+    @SerializedName("offline") OFFLINE,
+    @SerializedName("degraded") DEGRADED,
+    @SerializedName("unknown") UNKNOWN,
 }
 
 data class Camera(

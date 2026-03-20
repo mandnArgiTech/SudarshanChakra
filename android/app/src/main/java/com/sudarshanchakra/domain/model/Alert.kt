@@ -1,24 +1,33 @@
 package com.sudarshanchakra.domain.model
 
+import com.google.gson.annotations.SerializedName
+
 data class Alert(
-    val id: String,
-    val nodeId: String,
-    val cameraId: String,
-    val zoneId: String,
-    val zoneName: String,
-    val zoneType: String,
-    val priority: AlertPriority,
-    val detectionClass: String,
-    val confidence: Float,
-    val snapshotUrl: String?,
-    val status: AlertStatus,
-    val createdAt: String
+    val id: String = "",
+    val nodeId: String? = null,
+    val cameraId: String? = null,
+    val zoneId: String? = null,
+    val zoneName: String? = null,
+    val zoneType: String? = null,
+    val priority: AlertPriority = AlertPriority.LOW,
+    val detectionClass: String? = null,
+    val confidence: Float? = null,
+    val snapshotUrl: String? = null,
+    val status: AlertStatus = AlertStatus.ACTIVE,
+    val createdAt: String? = null,
 )
 
 enum class AlertPriority {
-    CRITICAL, HIGH, WARNING, LOW
+    @SerializedName("critical") CRITICAL,
+    @SerializedName("high") HIGH,
+    @SerializedName("warning") WARNING,
+    @SerializedName("low") LOW,
 }
 
+/** Backend uses string values: new, acknowledged, resolved, false_positive */
 enum class AlertStatus {
-    ACTIVE, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE
+    @SerializedName("new") ACTIVE,
+    @SerializedName("acknowledged") ACKNOWLEDGED,
+    @SerializedName("resolved") RESOLVED,
+    @SerializedName("false_positive") FALSE_POSITIVE,
 }

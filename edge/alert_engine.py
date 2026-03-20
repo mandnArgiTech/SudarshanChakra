@@ -74,8 +74,11 @@ class AlertDecisionEngine:
         self._throttle_window = float(os.getenv("ALERT_THROTTLE_WINDOW_SEC", "60"))
         self._throttle_max = int(os.getenv("ALERT_THROTTLE_MAX_PER_CAMERA", "10"))
         self._cleanup_stop = threading.Event()
-        t = threading.Thread(target=self._snapshot_cleanup_loop, daemon=True,
-                           name="snapshot-cleanup")
+        t = threading.Thread(
+            target=self._snapshot_cleanup_loop,
+            daemon=True,
+            name="snapshot-cleanup",
+        )
         t.start()
 
     def process_detection(self, detection: dict, frame: np.ndarray = None):

@@ -14,9 +14,10 @@ import javax.inject.Inject
 data class LoginUiState(
     val username: String = "",
     val password: String = "",
+    val rememberMe: Boolean = true,
     val isLoading: Boolean = false,
     val error: String? = null,
-    val isLoggedIn: Boolean = false
+    val isLoggedIn: Boolean = false,
 )
 
 @HiltViewModel
@@ -27,12 +28,29 @@ class LoginViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            val remembered = authRepository.getRememberedLoginForm()
+            _uiState.update {
+                it.copy(
+                    username = remembered.username,
+                    password = remembered.password,
+                    rememberMe = remembered.rememberMe,
+                )
+            }
+        }
+    }
+
     fun onUsernameChange(username: String) {
         _uiState.update { it.copy(username = username, error = null) }
     }
 
     fun onPasswordChange(password: String) {
         _uiState.update { it.copy(password = password, error = null) }
+    }
+
+    fun onRememberMeChange(remember: Boolean) {
+        _uiState.update { it.copy(rememberMe = remember, error = null) }
     }
 
     fun login() {
@@ -44,7 +62,7 @@ class LoginViewModel @Inject constructor(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            val result = authRepository.login(state.username, state.password)
+            val result = authRepository.login(state.username, state.password, state.rememberMe)
             result.fold(
                 onSuccess = {
                     _uiState.update { it.copy(isLoading = false, isLoggedIn = true) }

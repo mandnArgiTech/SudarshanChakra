@@ -71,7 +71,10 @@ public class WaterService {
             .state(payload.getState())
             .sensorOk(payload.getSensorOk() != null ? payload.getSensorOk() : true)
             .batteryVoltage(payload.getBattery() != null ? payload.getBattery().voltage : null)
-            .batteryPercent(payload.getBattery() != null ? payload.getBattery().percent : null)
+            .batteryPercent(
+                payload.getBattery() != null && payload.getBattery().percent != null
+                    ? payload.getBattery().percent.shortValue()
+                    : null)
             .batteryState(payload.getBattery()  != null ? payload.getBattery().state   : null)
             .build();
         readingRepo.save(reading);

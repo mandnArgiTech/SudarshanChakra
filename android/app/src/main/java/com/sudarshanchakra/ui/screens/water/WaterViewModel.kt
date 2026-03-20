@@ -13,6 +13,7 @@ import javax.inject.Inject
 
 data class WaterUiState(
     val loading: Boolean           = true,
+    val isRefreshing: Boolean      = false,
     val tanks: List<WaterTank>     = emptyList(),
     val motors: List<WaterMotor>   = emptyList(),
     val selectedMotor: WaterMotor? = null,
@@ -30,17 +31,25 @@ class WaterViewModel @Inject constructor(private val api: ApiService) : ViewMode
     private val _ui = MutableStateFlow(WaterUiState())
     val uiState: StateFlow<WaterUiState> = _ui.asStateFlow()
 
-    init { refresh() }
+    init { loadTanks(fullScreenLoading = true) }
 
-    fun refresh() {
+    fun refresh() = loadTanks(fullScreenLoading = false)
+
+    private fun loadTanks(fullScreenLoading: Boolean = false) {
         viewModelScope.launch {
-            _ui.update { it.copy(loading = true) }
+            _ui.update {
+                if (fullScreenLoading) {
+                    it.copy(loading = true, isRefreshing = false)
+                } else {
+                    it.copy(loading = false, isRefreshing = true)
+                }
+            }
             try {
                 val tanks  = api.getWaterTanks().body() ?: emptyList()
                 val motors = api.getMotors().body() ?: emptyList()
-                _ui.update { it.copy(loading = false, tanks = tanks, motors = motors, error = null) }
+                _ui.update { it.copy(loading = false, isRefreshing = false, tanks = tanks, motors = motors, error = null) }
             } catch (e: Exception) {
-                _ui.update { it.copy(loading = false, error = e.message) }
+                _ui.update { it.copy(loading = false, isRefreshing = false, error = e.message) }
             }
         }
     }

@@ -29,8 +29,9 @@
     @com.google.gson.annotations.SerializedName <fields>;
 }
 
-# Domain models
+# Domain models + API DTOs used by Gson (Retrofit response bodies)
 -keep class com.sudarshanchakra.domain.model.** { *; }
+-keep class com.sudarshanchakra.data.api.AlertsPageResponse { *; }
 
 # Hilt
 -dontwarn dagger.hilt.**

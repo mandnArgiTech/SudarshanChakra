@@ -693,19 +693,31 @@ def create_app(zone_engine, cameras, config_dir, mqtt_client=None, pipeline=None
         cams = [{"id": c.id, "name": c.name} for c in cameras]
         return render_template_string(CAMERAS_HTML, cams=cams)
 
-    ALERTS_HTML = """
-    <!DOCTYPE html><html><head><meta charset="utf-8"><title>Alert history</title>
-    <style>body{background:#0f172a;color:#e2e8f0;font-family:system-ui;padding:16px;}
-    table{border-collapse:collapse;width:100%;max-width:1000px;} th,td{border:1px solid #334155;padding:8px;text-align:left;}
-    th{background:#1e293b;color:#f59e0b;}</style></head>
-    <body><h1>Recent alerts</h1><table><thead><tr><th>Time</th><th>Camera</th><th>Class</th><th>Zone</th><th>Priority</th></tr></thead><tbody id="t"></tbody></table>
-    <script>
-    async function load(){ const r = await fetch('/api/alerts'); const d = await r.json();
-      document.getElementById('t').innerHTML = d.slice().reverse().map(a =>
-        '<tr><td>'+new Date(a.timestamp*1000).toLocaleString()+'</td><td>'+a.camera_id+'</td><td>'+a.class+'</td><td>'+a.zone+'</td><td>'+a.priority+'</td></tr>').join('') || '<tr><td colspan="5">No alerts yet</td></tr>';
-    } load(); setInterval(load, 5000);
-    </script></body></html>
-    """
+    ALERTS_HTML = (
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+        "<title>Alert history</title>"
+        "<style>body{background:#0f172a;color:#e2e8f0;font-family:system-ui;padding:16px;}"
+        "table{border-collapse:collapse;width:100%;max-width:1000px;}"
+        "th,td{border:1px solid #334155;padding:8px;text-align:left;}"
+        "th{background:#1e293b;color:#f59e0b;}</style></head>"
+        "<body><h1>Recent alerts</h1>"
+        "<table><thead><tr>"
+        "<th>Time</th><th>Camera</th><th>Class</th><th>Zone</th><th>Priority</th>"
+        "</tr></thead><tbody id=\"t\"></tbody></table>"
+        "<script>\n"
+        "async function load(){\n"
+        "  const r = await fetch('/api/alerts');\n"
+        "  const d = await r.json();\n"
+        "  const row = (a) => '<tr><td>'+new Date(a.timestamp*1000).toLocaleString()"
+        "+'</td><td>'+a.camera_id+'</td><td>'+a.class+'</td><td>'+a.zone+'</td>"
+        "<td>'+a.priority+'</td></tr>';\n"
+        "  document.getElementById('t').innerHTML = "
+        "d.slice().reverse().map(row).join('') || "
+        "'<tr><td colspan=\"5\">No alerts yet</td></tr>';\n"
+        "}\n"
+        "load(); setInterval(load, 5000);\n"
+        "</script></body></html>"
+    )
 
     @app.route("/alerts")
     def alerts_page():

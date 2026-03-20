@@ -44,6 +44,7 @@ def _publish_camera_event(camera_id: str, event: str):
     except Exception:
         pass
 
+
 # ── Model Paths ──
 ENGINE_PATH = os.getenv("ENGINE_PATH", "/app/models/yolov8n_farm.engine")
 PT_PATH = os.getenv("PT_PATH", "/app/models/yolov8n_farm.pt")

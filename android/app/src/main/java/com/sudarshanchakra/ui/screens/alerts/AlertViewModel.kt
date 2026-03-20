@@ -18,6 +18,7 @@ data class AlertFeedUiState(
     val filteredAlerts: List<Alert> = emptyList(),
     val selectedPriority: AlertPriority? = null,
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
     val selectedAlert: Alert? = null,
     val isDetailLoading: Boolean = false,
@@ -33,12 +34,20 @@ class AlertViewModel @Inject constructor(
     val uiState: StateFlow<AlertFeedUiState> = _uiState.asStateFlow()
 
     init {
-        loadAlerts()
+        loadAlerts(fullScreenLoading = true)
     }
 
-    fun loadAlerts() {
+    fun refresh() = loadAlerts(fullScreenLoading = false)
+
+    fun loadAlerts(fullScreenLoading: Boolean = false) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update {
+                if (fullScreenLoading) {
+                    it.copy(isLoading = true, error = null)
+                } else {
+                    it.copy(isRefreshing = true, error = null)
+                }
+            }
             val result = alertRepository.getAlerts()
             result.fold(
                 onSuccess = { alerts ->
@@ -46,7 +55,9 @@ class AlertViewModel @Inject constructor(
                         it.copy(
                             alerts = alerts,
                             filteredAlerts = filterAlerts(alerts, it.selectedPriority),
-                            isLoading = false
+                            isLoading = false,
+                            isRefreshing = false,
+                            error = null,
                         )
                     }
                 },
@@ -54,10 +65,11 @@ class AlertViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = error.message ?: "Failed to load alerts"
+                            isRefreshing = false,
+                            error = error.message ?: "Failed to load alerts",
                         )
                     }
-                }
+                },
             )
         }
     }
@@ -97,7 +109,7 @@ class AlertViewModel @Inject constructor(
             result.fold(
                 onSuccess = { alert ->
                     _uiState.update { it.copy(selectedAlert = alert, actionMessage = "Alert acknowledged") }
-                    loadAlerts()
+                    refresh()
                 },
                 onFailure = { error ->
                     _uiState.update { it.copy(actionMessage = "Failed to acknowledge: ${error.message}") }
@@ -112,7 +124,7 @@ class AlertViewModel @Inject constructor(
             result.fold(
                 onSuccess = { alert ->
                     _uiState.update { it.copy(selectedAlert = alert, actionMessage = "Alert resolved") }
-                    loadAlerts()
+                    refresh()
                 },
                 onFailure = { error ->
                     _uiState.update { it.copy(actionMessage = "Failed to resolve: ${error.message}") }
@@ -127,7 +139,7 @@ class AlertViewModel @Inject constructor(
             result.fold(
                 onSuccess = { alert ->
                     _uiState.update { it.copy(selectedAlert = alert, actionMessage = "Marked as false positive") }
-                    loadAlerts()
+                    refresh()
                 },
                 onFailure = { error ->
                     _uiState.update { it.copy(actionMessage = "Failed: ${error.message}") }

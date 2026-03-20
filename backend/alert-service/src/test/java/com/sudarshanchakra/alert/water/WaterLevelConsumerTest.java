@@ -6,12 +6,11 @@ import com.sudarshanchakra.alert.service.WebSocketService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
-import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -33,7 +32,7 @@ class WaterLevelConsumerTest {
     @Mock
     private WebSocketService webSocketService;
 
-    private ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private WaterLevelConsumer consumer;
 
@@ -49,10 +48,10 @@ class WaterLevelConsumerTest {
 
     @Test
     void onLevelMessage_belowThreshold_createsAlert() throws Exception {
-        UUID tankId = UUID.randomUUID();
+        String tankId = "farm_tank1";
         WaterTankEntity tank = new WaterTankEntity();
-        org.springframework.test.util.ReflectionTestUtils.setField(tank, "id", tankId);
-        org.springframework.test.util.ReflectionTestUtils.setField(tank, "thresholdLowPct", 40.0);
+        ReflectionTestUtils.setField(tank, "id", tankId);
+        ReflectionTestUtils.setField(tank, "lowThresholdPercent", 40.0);
 
         when(tankRepository.findById(tankId)).thenReturn(Optional.of(tank));
 
@@ -67,14 +66,14 @@ class WaterLevelConsumerTest {
 
     @Test
     void onLevelMessage_aboveThreshold_noAlert() throws Exception {
-        UUID tankId = UUID.randomUUID();
+        String tankId = "farm_tank1";
         WaterTankEntity tank = new WaterTankEntity();
-        org.springframework.test.util.ReflectionTestUtils.setField(tank, "id", tankId);
-        org.springframework.test.util.ReflectionTestUtils.setField(tank, "thresholdLowPct", 15.0);
+        ReflectionTestUtils.setField(tank, "id", tankId);
+        ReflectionTestUtils.setField(tank, "lowThresholdPercent", 15.0);
 
         when(tankRepository.findById(tankId)).thenReturn(Optional.of(tank));
 
-        String msg = String.format("{\"tank_id\":\"%s\",\"level_pct\":80.0}", tankId);
+        String msg = String.format("{\"tank_id\":\"%s\",\"percent_filled\":80.0}", tankId);
         consumer.onLevelMessage(msg);
 
         verify(readingRepository).save(any(WaterLevelReadingEntity.class));

@@ -36,9 +36,11 @@ services:
       - "5672:5672"
       - "1883:1883"
       - "15672:15672"
+      - "15675:15675" # rabbitmq_web_mqtt (browser simulator)
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./rabbitmq/conf.d:/etc/rabbitmq/conf.d:ro
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:?Set RABBITMQ_PASS in cloud/.env}
@@ -141,6 +143,18 @@ services:
       - api-gateway
       - react-dashboard
     restart: always
+
+  simulator:
+    profiles: [dev]
+    build:
+      context: ../simulator
+      dockerfile: Dockerfile
+    container_name: farm-simulator
+    ports:
+      - "3001:80"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
 volumes:
   pg_data:

@@ -1,21 +1,28 @@
 package com.sudarshanchakra.ui.screens.login
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -27,7 +34,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -37,7 +43,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.sudarshanchakra.service.MqttForegroundService
 import com.sudarshanchakra.ui.theme.CreamBackground
 import com.sudarshanchakra.ui.theme.CriticalRed
 import com.sudarshanchakra.ui.theme.DividerColor
@@ -50,15 +55,14 @@ import com.sudarshanchakra.ui.theme.TextSecondary
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
-    viewModel: LoginViewModel = hiltViewModel()
+    onConfigureServer: () -> Unit = {},
+    viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
-    val context = LocalContext.current
 
     LaunchedEffect(uiState.isLoggedIn) {
         if (uiState.isLoggedIn) {
-            MqttForegroundService.start(context)
             onLoginSuccess()
         }
     }
@@ -71,7 +75,8 @@ fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 32.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 32.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -149,6 +154,32 @@ fun LoginScreen(
                 )
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(
+                    checked = uiState.rememberMe,
+                    onCheckedChange = viewModel::onRememberMeChange,
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = Terracotta,
+                        uncheckedColor = DividerColor,
+                    ),
+                )
+                Text(
+                    text = "Remember me (save username & password on this device)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            viewModel.onRememberMeChange(!uiState.rememberMe)
+                        },
+                )
+            }
+
             if (uiState.error != null) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
@@ -160,7 +191,21 @@ fun LoginScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            OutlinedButton(
+                onClick = onConfigureServer,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(
+                    text = "Configure server (API & MQTT)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Terracotta,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             Button(
                 onClick = viewModel::login,

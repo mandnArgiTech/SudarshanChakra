@@ -829,6 +829,7 @@ _start_infra() {
     -p 5672:5672 \
     -p 1883:1883 \
     -p 15672:15672 \
+    -v "${ROOT_DIR}/cloud/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro" \
     rabbitmq:3-management \
     || { log_error "Failed to create RabbitMQ container."; return 1; }
 
@@ -863,10 +864,24 @@ _start_infra() {
   fi
   log_success "RabbitMQ is ready (port 5672, management 15672)."
 
-  # ── Enable MQTT plugin ──
-  log_info "Enabling RabbitMQ MQTT plugin..."
+  # ── MQTT plugins ──
+  # Prefer enabled_plugins mount (starts with broker). If not loaded, enable here.
+  log_info "Ensuring RabbitMQ MQTT plugins..."
   "${DOCKER_BIN}" exec "${RABBITMQ_CONTAINER}" \
     rabbitmq-plugins enable rabbitmq_mqtt rabbitmq_web_mqtt 2>/dev/null || true
+
+  # Enabling plugins can restart the AMQP listener; wait for broker again before pika connects.
+  log_info "Waiting for AMQP (5672) after plugin load..."
+  sleep 5
+  ready=0
+  for _ in $(seq 1 45); do
+    if "${DOCKER_BIN}" exec "${RABBITMQ_CONTAINER}" \
+         rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
+      ready=1; break
+    fi
+    sleep 2
+  done
+  [[ ${ready} -eq 1 ]] || log_warn "RabbitMQ ping slow after plugins — topology init may retry."
 
   # ── Initialize topology ──
   _init_topology
@@ -884,7 +899,8 @@ _init_topology() {
 
   local attempt
   for attempt in $(seq 1 10); do
-    if (cd "${ROOT_DIR}" && RABBITMQ_PASS="${RABBITMQ_PASS}" \
+    if (cd "${ROOT_DIR}" && RABBITMQ_HOST=127.0.0.1 RABBITMQ_PORT=5672 \
+         RABBITMQ_USER="${RABBITMQ_USER}" RABBITMQ_PASS="${RABBITMQ_PASS}" \
          "${PYTHON_EXEC}" "${ROOT_DIR}/cloud/scripts/rabbitmq_init.py" 2>&1); then
       log_success "RabbitMQ topology initialized."
       return 0

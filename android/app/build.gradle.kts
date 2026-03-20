@@ -17,7 +17,8 @@ android {
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Trailing '/' satisfies Retrofit; paths in ApiService are relative (e.g. "auth/login").
+        // Defaults only — users can override in app: Login → "Server connection…" or Profile tab.
+        // Trailing slash optional; `/api/v1` is appended if missing.
         buildConfigField("String", "API_BASE_URL", "\"https://vivasvan-tech.in/api/v1/\"")
         buildConfigField("String", "MQTT_BROKER_URL", "\"ssl://vivasvan-tech.in:8883\"")
     }
@@ -94,6 +95,9 @@ dependencies {
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+
+    // Encrypted prefs ("Remember me" password). 1.0.0 uses legacy create(String, String, Context, …) — no MasterKey.
+    implementation("androidx.security:security-crypto:1.1.0")
 
     // Core
     implementation("androidx.core:core-ktx:1.12.0")

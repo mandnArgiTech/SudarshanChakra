@@ -6,16 +6,19 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
 
-import java.util.UUID;
-
+/**
+ * Read-only subset of {@code water_tanks} for water-level alert thresholds.
+ * Schema must match {@code cloud/db/init.sql} and device-service {@code WaterTank}.
+ */
 @Entity
 @Table(name = "water_tanks")
 @Getter
 public class WaterTankEntity {
 
     @Id
-    private UUID id;
+    @Column(length = 50)
+    private String id;
 
-    @Column(name = "threshold_low_pct")
-    private Double thresholdLowPct;
+    @Column(name = "low_threshold_percent")
+    private Double lowThresholdPercent;
 }

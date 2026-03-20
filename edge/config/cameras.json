@@ -5,6 +5,8 @@
     "TP-Link RTSP URL Formats:",
     "  VIGI C540-W (Pan/Tilt): rtsp://<user>:<pass>@<ip>:554/stream1 (main 2K)",
     "                          rtsp://<user>:<pass>@<ip>:554/stream2 (sub 640x480)",
+    "  Tapo C110 (Indoor):     rtsp://<user>:<pass>@<ip>:554/stream1 (main 1080p)",
+    "                          rtsp://<user>:<pass>@<ip>:554/stream2 (sub 640x480)",
     "  Tapo C210 (Indoor):     rtsp://<user>:<pass>@<ip>:554/stream1 (main 1080p)",
     "                          rtsp://<user>:<pass>@<ip>:554/stream2 (sub 640x360)",
     "  Tapo C320WS (Outdoor):  rtsp://<user>:<pass>@<ip>:554/stream1 (main 2K)",
@@ -19,12 +21,22 @@
   ],
   "cameras": [
     {
+      "id": "cam-tapo-c110-01",
+      "name": "Test Camera (Tapo C110)",
+      "model": "TP-Link Tapo C110",
+      "rtsp_url": "rtsp://administrator:interOP@123@192.168.68.56:554/stream2",
+      "fps": 2.0,
+      "enabled": true,
+      "location": "Test deployment — local machine",
+      "notes": "Tapo C110 — sub-stream (stream2) for inference at 2 FPS"
+    },
+    {
       "id": "cam-01",
       "name": "Front Gate (VIGI C540-W)",
       "model": "TP-Link VIGI C540-W",
       "rtsp_url": "rtsp://admin:farm2024@192.168.1.201:554/stream2",
       "fps": 2.5,
-      "enabled": true,
+      "enabled": false,
       "location": "Main entrance gate — facing driveway",
       "notes": "Pan/Tilt — set home position facing gate before locking"
     },

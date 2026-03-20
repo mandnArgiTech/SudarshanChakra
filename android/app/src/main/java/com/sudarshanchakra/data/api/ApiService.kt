@@ -26,7 +26,7 @@ interface ApiService {
     suspend fun getAlerts(
         @Query("priority") priority: String? = null,
         @Query("status") status: String? = null
-    ): Response<List<Alert>>
+    ): Response<AlertsPageResponse>
 
     @GET("alerts/{id}")
     suspend fun getAlert(@Path("id") id: String): Response<Alert>

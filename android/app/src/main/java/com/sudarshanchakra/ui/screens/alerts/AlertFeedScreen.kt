@@ -20,15 +20,26 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
+import com.sudarshanchakra.service.MqttForegroundService
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +48,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.sudarshanchakra.domain.model.AlertPriority
 import com.sudarshanchakra.ui.components.AlertCard
+import com.sudarshanchakra.ui.components.ConnectionBanner
+import com.sudarshanchakra.ui.components.OfflineBanner
 import com.sudarshanchakra.ui.components.WaterTankCard
 import com.sudarshanchakra.ui.theme.CreamBackground
 import com.sudarshanchakra.ui.components.WaterStripCard
@@ -60,49 +73,61 @@ fun AlertFeedScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val waterUiState by waterViewModel.uiState.collectAsStateWithLifecycle()
+    val activity = LocalContext.current as? ComponentActivity
+    BackHandler {
+        activity?.moveTaskToBack(true)
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(CreamBackground)
+            .background(CreamBackground),
     ) {
+        ConnectionBanner()
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .weight(1f)
+                .fillMaxWidth(),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
             ) {
-                Column {
-                    Text(
-                        text = "Alert Feed",
-                        fontFamily = GeorgiaFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 26.sp,
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = "${uiState.filteredAlerts.size} active alerts",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(CriticalRed)
-                        .clickable(onClick = onSirenClick),
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(text = "🚨", fontSize = 20.sp)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Alert Feed",
+                            fontFamily = GeorgiaFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 26.sp,
+                            color = TextPrimary,
+                        )
+                        Text(
+                            text = "${uiState.filteredAlerts.size} active alerts",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                        )
+                    }
+                    IconButton(onClick = { viewModel.refresh() }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh alerts")
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(CriticalRed)
+                            .clickable(onClick = onSirenClick),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(text = "🚨", fontSize = 20.sp)
+                    }
                 }
             }
-        }
 
         WaterTankCard(name = "Water tank", levelPct = 72f)
 
@@ -164,7 +189,13 @@ fun AlertFeedScreen(
                         Text(
                             text = uiState.error ?: "Unknown error",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary
+                            color = TextSecondary,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "You may be offline — pull saved data or retry after checking connection.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
                         )
                     }
                 }
@@ -191,27 +222,53 @@ fun AlertFeedScreen(
                 }
             }
             else -> {
-                // Water tank strip — tap to navigate to WaterTanksScreen
-                if (waterUiState.tanks.isNotEmpty()) {
-                    WaterStripCard(
-                        tanks   = waterUiState.tanks,
-                        motors  = waterUiState.motors,
-                        onClick = onWaterCardClick,
-                        modifier = androidx.compose.ui.Modifier.padding(horizontal = 0.dp, vertical = 4.dp),
-                    )
-                }
-
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(uiState.filteredAlerts, key = { it.id }) { alert ->
-                        AlertCard(
-                            alert = alert,
-                            onClick = { onAlertClick(alert.id) }
-                        )
+                val pullRefreshState = rememberPullToRefreshState()
+                LaunchedEffect(uiState.isRefreshing) {
+                    if (!uiState.isRefreshing) {
+                        pullRefreshState.endRefresh()
                     }
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                }
+                
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // Water tank strip — tap to navigate to WaterTanksScreen
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (waterUiState.tanks.isNotEmpty()) {
+                            WaterStripCard(
+                                tanks = waterUiState.tanks,
+                                motors = waterUiState.motors,
+                                onClick = onWaterCardClick,
+                                modifier = androidx.compose.ui.Modifier.padding(horizontal = 0.dp, vertical = 4.dp),
+                            )
+                        }
+
+                        val mqttConnected by MqttForegroundService.mqttConnected.collectAsStateWithLifecycle()
+                        
+                        PullToRefreshBox(
+                            isRefreshing = uiState.isRefreshing,
+                            onRefresh = { viewModel.refresh() },
+                            state = pullRefreshState,
+                        ) {
+                            LazyColumn(
+                                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                if (!mqttConnected && uiState.filteredAlerts.isNotEmpty()) {
+                                    item {
+                                        OfflineBanner(modifier = Modifier.padding(bottom = 8.dp))
+                                    }
+                                }
+                                items(uiState.filteredAlerts, key = { it.id }) { alert ->
+                                    AlertCard(
+                                        alert = alert,
+                                        onClick = { onAlertClick(alert.id) },
+                                        onAcknowledge = { viewModel.acknowledgeAlert(alert.id) },
+                                        onFalsePositive = { viewModel.markFalsePositive(alert.id) },
+                                    )
+                                }
+                                item { Spacer(modifier = Modifier.height(16.dp)) }
+                            }
+                        }
+                    }
                 }
             }
         }

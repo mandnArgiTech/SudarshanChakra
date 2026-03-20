@@ -24,33 +24,33 @@ data class AlertEntity(
 ) {
     fun toAlert(): Alert = Alert(
         id = id,
-        nodeId = nodeId,
-        cameraId = cameraId,
-        zoneId = zoneId,
-        zoneName = zoneName,
-        zoneType = zoneType,
+        nodeId = nodeId.ifBlank { null },
+        cameraId = cameraId.ifBlank { null },
+        zoneId = zoneId.ifBlank { null },
+        zoneName = zoneName.ifBlank { null },
+        zoneType = zoneType.ifBlank { null },
         priority = try { AlertPriority.valueOf(priority) } catch (_: Exception) { AlertPriority.LOW },
-        detectionClass = detectionClass,
+        detectionClass = detectionClass.ifBlank { null },
         confidence = confidence,
         snapshotUrl = snapshotUrl,
         status = try { AlertStatus.valueOf(status) } catch (_: Exception) { AlertStatus.ACTIVE },
-        createdAt = createdAt
+        createdAt = createdAt.ifBlank { null },
     )
 
     companion object {
         fun fromAlert(alert: Alert): AlertEntity = AlertEntity(
             id = alert.id,
-            nodeId = alert.nodeId,
-            cameraId = alert.cameraId,
-            zoneId = alert.zoneId,
-            zoneName = alert.zoneName,
-            zoneType = alert.zoneType,
+            nodeId = alert.nodeId.orEmpty(),
+            cameraId = alert.cameraId.orEmpty(),
+            zoneId = alert.zoneId.orEmpty(),
+            zoneName = alert.zoneName.orEmpty(),
+            zoneType = alert.zoneType.orEmpty(),
             priority = alert.priority.name,
-            detectionClass = alert.detectionClass,
-            confidence = alert.confidence,
+            detectionClass = alert.detectionClass.orEmpty(),
+            confidence = alert.confidence ?: 0f,
             snapshotUrl = alert.snapshotUrl,
             status = alert.status.name,
-            createdAt = alert.createdAt
+            createdAt = alert.createdAt.orEmpty(),
         )
     }
 }

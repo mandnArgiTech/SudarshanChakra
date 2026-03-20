@@ -32,6 +32,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,6 +55,7 @@ import com.sudarshanchakra.ui.theme.TextMuted
 import com.sudarshanchakra.ui.theme.TextPrimary
 import com.sudarshanchakra.ui.theme.TextSecondary
 import com.sudarshanchakra.ui.theme.WarningPriority
+import com.sudarshanchakra.util.RelativeTimeFormatter
 
 @Composable
 fun AlertDetailScreen(
@@ -62,6 +65,7 @@ fun AlertDetailScreen(
     viewModel: AlertViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val haptic = LocalHapticFeedback.current
 
     LaunchedEffect(alertId) {
         viewModel.loadAlertDetail(alertId)
@@ -159,7 +163,7 @@ fun AlertDetailScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = alert.detectionClass.replaceFirstChar { it.uppercase() },
+                            text = (alert.detectionClass ?: "").replaceFirstChar { it.uppercase() },
                             fontFamily = GeorgiaFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 24.sp,
@@ -177,12 +181,12 @@ fun AlertDetailScreen(
                         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            DetailRow("Zone", "${alert.zoneName} (${alert.zoneType})")
-                            DetailRow("Node ID", alert.nodeId)
-                            DetailRow("Camera ID", alert.cameraId)
-                            DetailRow("Confidence", "${(alert.confidence * 100).toInt()}%")
+                            DetailRow("Zone", "${alert.zoneName ?: "—"} (${alert.zoneType ?: "—"})")
+                            DetailRow("Node ID", alert.nodeId ?: "—")
+                            DetailRow("Camera ID", alert.cameraId ?: "—")
+                            DetailRow("Confidence", "${((alert.confidence ?: 0f) * 100).toInt()}%")
                             DetailRow("Status", alert.status.name)
-                            DetailRow("Time", alert.createdAt.replace("T", " ").take(19))
+                            DetailRow("Time", RelativeTimeFormatter.format(alert.createdAt))
                         }
                     }
 
@@ -190,7 +194,10 @@ fun AlertDetailScreen(
 
                     if (alert.status == AlertStatus.ACTIVE) {
                         Button(
-                            onClick = { viewModel.acknowledgeAlert(alert.id) },
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.acknowledgeAlert(alert.id)
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp),
@@ -205,7 +212,10 @@ fun AlertDetailScreen(
 
                     if (alert.status == AlertStatus.ACTIVE || alert.status == AlertStatus.ACKNOWLEDGED) {
                         OutlinedButton(
-                            onClick = { viewModel.resolveAlert(alert.id) },
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.resolveAlert(alert.id)
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp),
@@ -217,7 +227,10 @@ fun AlertDetailScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         OutlinedButton(
-                            onClick = { viewModel.markFalsePositive(alert.id) },
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.markFalsePositive(alert.id)
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp),

@@ -183,35 +183,6 @@ CREATE TABLE suppression_log (
 CREATE INDEX idx_suppression_created ON suppression_log(created_at DESC);
 
 -- ============================================================================
--- Water tanks & level readings (IoT / ESP8266)
--- ============================================================================
-CREATE TABLE water_tanks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    farm_id UUID NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    capacity_liters REAL,
-    threshold_low_pct REAL DEFAULT 15.0,
-    mqtt_topic VARCHAR(200),
-    location_description TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_water_tanks_farm ON water_tanks(farm_id);
-
-CREATE TABLE water_level_readings (
-    id BIGSERIAL PRIMARY KEY,
-    tank_id UUID NOT NULL REFERENCES water_tanks(id) ON DELETE CASCADE,
-    level_pct REAL NOT NULL,
-    raw_value REAL,
-    node_id VARCHAR(50),
-    metadata JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_water_readings_tank_time ON water_level_readings(tank_id, created_at DESC);
-
--- ============================================================================
 -- Node Health Log
 -- ============================================================================
 CREATE TABLE node_health_log (
@@ -288,7 +259,7 @@ INSERT INTO edge_nodes (id, farm_id, display_name, vpn_ip, status) VALUES
 -- ============================================================================
 
 -- Water Tanks (one row per physical tank / ESP8266 sensor node)
-CREATE TABLE water_tanks (
+CREATE TABLE IF NOT EXISTS water_tanks (
     id VARCHAR(50) PRIMARY KEY,                   -- e.g. "farm_tank1", "home_sump"
     farm_id UUID NOT NULL,
     display_name VARCHAR(100) NOT NULL,
@@ -311,9 +282,10 @@ CREATE TABLE water_tanks (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_water_tanks_farm ON water_tanks(farm_id);
-CREATE INDEX idx_water_tanks_location ON water_tanks(location);
+CREATE INDEX IF NOT EXISTS idx_water_tanks_farm ON water_tanks(farm_id);
+CREATE INDEX IF NOT EXISTS idx_water_tanks_location ON water_tanks(location);
 
+DROP TRIGGER IF EXISTS update_water_tanks_updated_at ON water_tanks;
 CREATE TRIGGER update_water_tanks_updated_at BEFORE UPDATE ON water_tanks
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -324,10 +296,11 @@ VALUES
     ('farm_tank2', 'a0000000-0000-0000-0000-000000000001', 'Farm Tank 2', 'farm', 'circular', 1350, 1704.5, 2438, 20, 10),
     ('farm_tank3', 'a0000000-0000-0000-0000-000000000001', 'Farm Tank 3', 'farm', 'circular', 1350, 1704.5, 2438, 20, 10),
     ('home_sump',  'a0000000-0000-0000-0000-000000000001', 'Home Sump',   'home', 'circular', 1000, 1200,   942,  30, 15),
-    ('home_overhead', 'a0000000-0000-0000-0000-000000000001', 'Home Overhead Tank', 'home', 'circular', 800, 900, 452, 25, 10);
+    ('home_overhead', 'a0000000-0000-0000-0000-000000000001', 'Home Overhead Tank', 'home', 'circular', 800, 900, 452, 25, 10)
+ON CONFLICT (id) DO NOTHING;
 
 -- Water Level Readings (time-series, high volume)
-CREATE TABLE water_level_readings (
+CREATE TABLE IF NOT EXISTS water_level_readings (
     id BIGSERIAL PRIMARY KEY,
     tank_id VARCHAR(50) REFERENCES water_tanks(id) ON DELETE CASCADE,
     percent_filled REAL NOT NULL,
@@ -343,10 +316,10 @@ CREATE TABLE water_level_readings (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_water_readings_tank_time ON water_level_readings(tank_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_water_readings_tank_time ON water_level_readings(tank_id, created_at DESC);
 
 -- Motor Controllers (one per pump — relay or SMS)
-CREATE TABLE water_motor_controllers (
+CREATE TABLE IF NOT EXISTS water_motor_controllers (
     id VARCHAR(50) PRIMARY KEY,                   -- e.g. "farm_motor", "home_motor"
     farm_id UUID NOT NULL,
     display_name VARCHAR(100) NOT NULL,
@@ -381,7 +354,8 @@ CREATE TABLE water_motor_controllers (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_motor_farm ON water_motor_controllers(farm_id);
+CREATE INDEX IF NOT EXISTS idx_motor_farm ON water_motor_controllers(farm_id);
+DROP TRIGGER IF EXISTS update_motor_updated_at ON water_motor_controllers;
 CREATE TRIGGER update_motor_updated_at BEFORE UPDATE ON water_motor_controllers
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -389,10 +363,11 @@ CREATE TRIGGER update_motor_updated_at BEFORE UPDATE ON water_motor_controllers
 INSERT INTO water_motor_controllers (id, farm_id, display_name, location, control_type, gsm_on_message, gsm_off_message, pump_on_percent, pump_off_percent, max_run_minutes)
 VALUES
     ('farm_motor', 'a0000000-0000-0000-0000-000000000001', 'Farm Motor (5HP)', 'farm', 'sms', 'START PUMP', 'STOP PUMP', 20, 85, 60),
-    ('home_motor', 'a0000000-0000-0000-0000-000000000001', 'Home Motor',       'home', 'relay', null, null, 25, 90, 30);
+    ('home_motor', 'a0000000-0000-0000-0000-000000000001', 'Home Motor',       'home', 'relay', null, null, 25, 90, 30)
+ON CONFLICT (id) DO NOTHING;
 
 -- Maps tanks to their motor (many-to-one: multiple tanks served by one motor)
-CREATE TABLE water_tank_motor_map (
+CREATE TABLE IF NOT EXISTS water_tank_motor_map (
     tank_id VARCHAR(50) REFERENCES water_tanks(id) ON DELETE CASCADE,
     motor_id VARCHAR(50) REFERENCES water_motor_controllers(id) ON DELETE CASCADE,
     is_primary BOOLEAN DEFAULT TRUE,
@@ -405,10 +380,11 @@ INSERT INTO water_tank_motor_map (tank_id, motor_id, is_primary) VALUES
     ('farm_tank2', 'farm_motor', false),
     ('farm_tank3', 'farm_motor', false),
     ('home_sump',  'home_motor', true),
-    ('home_overhead', 'home_motor', false);
+    ('home_overhead', 'home_motor', false)
+ON CONFLICT (tank_id, motor_id) DO NOTHING;
 
 -- Motor run history (start/stop events)
-CREATE TABLE motor_run_log (
+CREATE TABLE IF NOT EXISTS motor_run_log (
     id BIGSERIAL PRIMARY KEY,
     motor_id VARCHAR(50) REFERENCES water_motor_controllers(id) ON DELETE CASCADE,
     event VARCHAR(20) NOT NULL
@@ -421,4 +397,4 @@ CREATE TABLE motor_run_log (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_motor_run_log_motor ON motor_run_log(motor_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_motor_run_log_motor ON motor_run_log(motor_id, created_at DESC);

@@ -2,10 +2,10 @@ package com.sudarshanchakra.alert.water;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sudarshanchakra.alert.dto.AlertResponse;
 import com.sudarshanchakra.alert.model.Alert;
 import com.sudarshanchakra.alert.repository.AlertRepository;
 import com.sudarshanchakra.alert.service.WebSocketService;
-import com.sudarshanchakra.alert.dto.AlertResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -33,21 +33,54 @@ public class WaterLevelConsumer {
     public void onLevelMessage(String message) {
         try {
             JsonNode n = objectMapper.readTree(message);
-            UUID tankId = UUID.fromString(n.path("tank_id").asText());
-            double levelPct = n.path("level_pct").asDouble();
-            String nodeId = n.hasNonNull("node_id") ? n.get("node_id").asText() : null;
-            Double raw = n.has("raw_value") ? n.get("raw_value").asDouble() : null;
+            String tankId = n.path("tank_id").asText(null);
+            if (tankId == null || tankId.isBlank()) {
+                log.warn("water.level message missing tank_id");
+                return;
+            }
 
-            readingRepository.save(WaterLevelReadingEntity.builder()
+            double levelPct = n.hasNonNull("percent_filled")
+                    ? n.get("percent_filled").asDouble()
+                    : n.path("level_pct").asDouble(0.0);
+
+            String nodeId = n.hasNonNull("node_id") ? n.get("node_id").asText() : null;
+
+            WaterLevelReadingEntity.WaterLevelReadingEntityBuilder b = WaterLevelReadingEntity.builder()
                     .tankId(tankId)
-                    .levelPct(levelPct)
-                    .rawValue(raw)
-                    .nodeId(nodeId)
-                    .metadata(message.length() > 2000 ? message.substring(0, 2000) : message)
-                    .build());
+                    .percentFilled(levelPct);
+
+            if (n.hasNonNull("volume_liters")) {
+                b.volumeLiters(n.get("volume_liters").asDouble());
+            }
+            if (n.hasNonNull("water_height_mm")) {
+                b.waterHeightMm(n.get("water_height_mm").asDouble());
+            }
+            if (n.hasNonNull("distance_mm")) {
+                b.distanceMm(n.get("distance_mm").asDouble());
+            }
+            if (n.hasNonNull("temperature_c")) {
+                b.temperatureC(n.get("temperature_c").asDouble());
+            }
+            if (n.hasNonNull("state")) {
+                b.state(n.get("state").asText());
+            }
+            if (n.has("sensor_ok")) {
+                b.sensorOk(n.get("sensor_ok").asBoolean(true));
+            }
+            if (n.hasNonNull("battery_voltage")) {
+                b.batteryVoltage(n.get("battery_voltage").asDouble());
+            }
+            if (n.hasNonNull("battery_percent")) {
+                b.batteryPercent((short) n.get("battery_percent").asInt());
+            }
+            if (n.hasNonNull("battery_state")) {
+                b.batteryState(n.get("battery_state").asText());
+            }
+
+            readingRepository.save(b.build());
 
             tankRepository.findById(tankId).ifPresent(tank -> {
-                double th = tank.getThresholdLowPct() != null ? tank.getThresholdLowPct() : 15.0;
+                double th = tank.getLowThresholdPercent() != null ? tank.getLowThresholdPercent() : 15.0;
                 if (levelPct < th) {
                     Alert alert = Alert.builder()
                             .id(UUID.randomUUID())

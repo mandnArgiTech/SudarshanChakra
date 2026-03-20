@@ -2,6 +2,9 @@ package com.sudarshanchakra.device.model.water;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.time.OffsetDateTime;
 
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
@@ -22,7 +25,10 @@ public class WaterLevelReading {
     @Column(length = 20)              private String state;
     @Column(name = "sensor_ok")       @Builder.Default private Boolean sensorOk = true;
     @Column(name = "battery_voltage")  private Double  batteryVoltage;
-    @Column(name = "battery_percent")  private Integer batteryPercent;
+    /** DB column is SMALLINT (int2); @JdbcTypeCode avoids Hibernate 6 validating as INTEGER. */
+    @JdbcTypeCode(SqlTypes.SMALLINT)
+    @Column(name = "battery_percent")
+    private Short batteryPercent;
     @Column(name = "battery_state", length = 10) private String batteryState;
     @Column(name = "created_at", updatable = false) private OffsetDateTime createdAt;
 

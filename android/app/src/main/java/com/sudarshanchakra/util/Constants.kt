@@ -1,11 +1,11 @@
 package com.sudarshanchakra.util
 
-import com.sudarshanchakra.BuildConfig
-
+/**
+ * API base URL and MQTT broker are user-configurable (Profile / login → Server connection)
+ * and stored in DataStore; build-time defaults live in [com.sudarshanchakra.BuildConfig]
+ * via [com.sudarshanchakra.data.config.ConnectionUrlNormalizer].
+ */
 object Constants {
-    val API_BASE_URL: String = BuildConfig.API_BASE_URL
-    val MQTT_BROKER_URL: String = BuildConfig.MQTT_BROKER_URL
-
     const val DATASTORE_NAME = "sudarshanchakra_prefs"
     const val TOKEN_KEY = "auth_token"
     const val REFRESH_TOKEN_KEY = "refresh_token"

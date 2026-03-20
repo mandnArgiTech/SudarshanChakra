@@ -7,6 +7,10 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.media.AudioAttributes
+import android.media.RingtoneManager
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -18,6 +22,7 @@ import com.hivemq.client.mqtt.mqtt5.Mqtt5AsyncClient
 import com.hivemq.client.mqtt.mqtt5.message.publish.Mqtt5Publish
 import com.sudarshanchakra.MainActivity
 import com.sudarshanchakra.data.api.ApiService
+import com.sudarshanchakra.data.config.RuntimeConnectionConfig
 import com.sudarshanchakra.util.Constants
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +30,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.net.URI
@@ -38,6 +46,9 @@ class MqttForegroundService : Service() {
 
     @Inject
     lateinit var apiService: ApiService
+
+    @Inject
+    lateinit var runtimeConnectionConfig: RuntimeConnectionConfig
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var mqttClient: Mqtt5AsyncClient? = null
@@ -71,6 +82,7 @@ class MqttForegroundService : Service() {
         serviceScope.cancel()
         mqttClient?.disconnectWith()?.send()
         mqttClient = null
+        _mqttConnected.value = false
         super.onDestroy()
     }
 
@@ -89,11 +101,13 @@ class MqttForegroundService : Service() {
             isConnecting = false
             if (throwable != null) {
                 Log.e(TAG, "MQTT connection failed", throwable)
+                _mqttConnected.value = false
                 updateServiceStatus("Unable to connect. Retrying...")
                 scheduleReconnect(client)
                 return@whenComplete
             }
 
+            _mqttConnected.value = true
             updateServiceStatus("Connected. Listening for alerts")
             subscribeToTopic(client, Constants.MQTT_ALERT_TOPIC)
             subscribeToTopic(client, LEGACY_ALERT_TOPIC)
@@ -105,13 +119,14 @@ class MqttForegroundService : Service() {
             delay(RECONNECT_DELAY_MS)
             if (mqttClient == client) {
                 mqttClient = null
+                _mqttConnected.value = false
                 connectAndSubscribe()
             }
         }
     }
 
     private fun buildClient(clientId: String): Mqtt5AsyncClient {
-        val brokerUri = URI(Constants.MQTT_BROKER_URL)
+        val brokerUri = URI(runtimeConnectionConfig.getMqttBrokerUrl())
         val scheme = (brokerUri.scheme ?: "tcp").lowercase()
         val port = if (brokerUri.port > 0) brokerUri.port else defaultPortForScheme(scheme)
         val host = brokerUri.host ?: "localhost"
@@ -165,17 +180,20 @@ class MqttForegroundService : Service() {
         } else {
             "New alert received on $topic"
         }
-        showAlertNotification(title, body, payload.hashCode())
+        val alertId = alertInfo.alertId.ifBlank { "mqtt-${payload.hashCode()}" }
+        showAlertNotification(title, body, alertId, alertInfo.priority)
     }
 
     private fun parseAlertPayload(payload: String): AlertPayload {
         if (payload.isBlank()) return AlertPayload()
         return try {
             val json = JSONObject(payload)
+            val id = json.optString("alert_id", json.optString("alertId", json.optString("id", "")))
             AlertPayload(
+                alertId = id,
                 priority = json.optString("priority", "unknown"),
                 zoneName = json.optString("zone_name", json.optString("zoneName", "")),
-                detectionClass = json.optString("detection_class", json.optString("detectionClass", "hazard"))
+                detectionClass = json.optString("detection_class", json.optString("detectionClass", "hazard")),
             )
         } catch (ex: Exception) {
             Log.w(TAG, "Failed to parse alert payload", ex)
@@ -193,26 +211,64 @@ class MqttForegroundService : Service() {
 
     private fun createNotificationChannels() {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
         val serviceChannel = NotificationChannel(
             SERVICE_CHANNEL_ID,
             "MQTT Background Service",
-            NotificationManager.IMPORTANCE_LOW
-        )
-        val alertChannel = NotificationChannel(
-            ALERT_CHANNEL_ID,
-            "Farm Alerts",
-            NotificationManager.IMPORTANCE_HIGH
-        )
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = "Keeps SudarshanChakra connected for farm alerts"
+            setShowBadge(false)
+        }
+
+        val highChannel = NotificationChannel(
+            HIGH_ALERT_CHANNEL_ID,
+            "High & warning farm alerts",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "High and warning priority detections"
+            enableVibration(true)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+
+        val criticalChannel = NotificationChannel(
+            CRITICAL_ALERT_CHANNEL_ID,
+            "Critical farm alerts",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "Snake, fire, child near pond — immediate danger"
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
+            val alarmAttrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM), alarmAttrs)
+            enableLights(true)
+            lightColor = Color.RED
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+
         manager.createNotificationChannel(serviceChannel)
-        manager.createNotificationChannel(alertChannel)
+        manager.createNotificationChannel(highChannel)
+        manager.createNotificationChannel(criticalChannel)
+    }
+
+    private fun buildMainActivityIntent(alertId: String?, priority: String?): Intent {
+        return Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_NAVIGATE_TO, NAV_ALERT_DETAIL)
+            if (alertId != null) putExtra(EXTRA_ALERT_ID, alertId)
+            if (priority != null) putExtra(EXTRA_ALERT_PRIORITY, priority)
+        }
     }
 
     private fun buildServiceNotification(message: String): Notification {
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            buildMainActivityIntent(null, null),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         return NotificationCompat.Builder(this, SERVICE_CHANNEL_ID)
@@ -228,19 +284,29 @@ class MqttForegroundService : Service() {
     private fun updateServiceStatus(message: String) {
         NotificationManagerCompat.from(this).notify(
             SERVICE_NOTIFICATION_ID,
-            buildServiceNotification(message)
+            buildServiceNotification(message),
         )
     }
 
-    private fun showAlertNotification(title: String, body: String, alertNotificationId: Int) {
+    private fun alertChannelId(priority: String): String {
+        return when (priority.lowercase()) {
+            "critical" -> CRITICAL_ALERT_CHANNEL_ID
+            "high", "warning" -> HIGH_ALERT_CHANNEL_ID
+            else -> HIGH_ALERT_CHANNEL_ID
+        }
+    }
+
+    private fun showAlertNotification(title: String, body: String, alertId: String, priority: String) {
+        val channelId = alertChannelId(priority)
+        val reqCode = kotlin.math.abs(alertId.hashCode() % 50000)
         val pendingIntent = PendingIntent.getActivity(
             this,
-            1,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            reqCode + 100,
+            buildMainActivityIntent(alertId, priority),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(title)
             .setContentText(body)
@@ -248,11 +314,15 @@ class MqttForegroundService : Service() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-            .build()
+
+        if (channelId == CRITICAL_ALERT_CHANNEL_ID) {
+            builder.setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+        }
 
         NotificationManagerCompat.from(this).notify(
-            ALERT_NOTIFICATION_BASE_ID + kotlin.math.abs(alertNotificationId % 10000),
-            notification
+            ALERT_NOTIFICATION_BASE_ID + reqCode,
+            builder.build(),
         )
     }
 
@@ -268,21 +338,33 @@ class MqttForegroundService : Service() {
     }
 
     data class AlertPayload(
+        val alertId: String = "",
         val priority: String = "unknown",
         val zoneName: String = "",
-        val detectionClass: String = ""
+        val detectionClass: String = "",
     )
 
     companion object {
         private const val TAG = "MqttForegroundService"
         private const val ACTION_START = "com.sudarshanchakra.action.START_MQTT_SERVICE"
         private const val ACTION_STOP = "com.sudarshanchakra.action.STOP_MQTT_SERVICE"
-        private const val SERVICE_CHANNEL_ID = "sc_mqtt_service"
-        private const val ALERT_CHANNEL_ID = "sc_alerts"
+
+        const val SERVICE_CHANNEL_ID = "sc_mqtt_service"
+        const val HIGH_ALERT_CHANNEL_ID = "sc_high_alerts"
+        const val CRITICAL_ALERT_CHANNEL_ID = "sc_critical_alerts"
+
+        const val EXTRA_NAVIGATE_TO = "NAVIGATE_TO"
+        const val EXTRA_ALERT_ID = "ALERT_ID"
+        const val EXTRA_ALERT_PRIORITY = "ALERT_PRIORITY"
+        const val NAV_ALERT_DETAIL = "alertDetail"
+
         private const val SERVICE_NOTIFICATION_ID = 1001
         private const val ALERT_NOTIFICATION_BASE_ID = 2000
         private const val RECONNECT_DELAY_MS = 5000L
         private const val LEGACY_ALERT_TOPIC = "alerts/#"
+
+        private val _mqttConnected = MutableStateFlow(false)
+        val mqttConnected: StateFlow<Boolean> = _mqttConnected.asStateFlow()
 
         fun start(context: Context) {
             val intent = Intent(context, MqttForegroundService::class.java).apply {

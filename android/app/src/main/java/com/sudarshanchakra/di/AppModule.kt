@@ -5,11 +5,12 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
+import com.sudarshanchakra.BuildConfig
 import com.sudarshanchakra.data.api.ApiService
 import com.sudarshanchakra.data.api.AuthInterceptor
+import com.sudarshanchakra.data.api.DynamicBaseUrlInterceptor
 import com.sudarshanchakra.data.db.AlertDao
 import com.sudarshanchakra.data.db.AppDatabase
-import com.sudarshanchakra.util.Constants
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -22,7 +23,9 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = Constants.DATASTORE_NAME)
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+    name = com.sudarshanchakra.util.Constants.DATASTORE_NAME,
+)
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -36,11 +39,19 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient {
+    fun provideOkHttpClient(
+        dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
+        authInterceptor: AuthInterceptor,
+    ): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BODY
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
         }
         return OkHttpClient.Builder()
+            .addInterceptor(dynamicBaseUrlInterceptor)
             .addInterceptor(authInterceptor)
             .addInterceptor(logging)
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -52,8 +63,8 @@ object AppModule {
     @Provides
     @Singleton
     fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
-        // Retrofit requires baseUrl to end with '/' (paths in @GET are relative to this).
-        val base = Constants.API_BASE_URL.trimEnd('/') + "/"
+        // Fixed placeholder; [DynamicBaseUrlInterceptor] rewrites host to user-configured API.
+        val base = DynamicBaseUrlInterceptor.PLACEHOLDER_RETROFIT_BASE.trimEnd('/') + "/"
         return Retrofit.Builder()
             .baseUrl(base)
             .client(okHttpClient)

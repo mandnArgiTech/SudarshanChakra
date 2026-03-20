@@ -9,24 +9,59 @@ Usage:
   docker exec -it rabbitmq bash
   python3 /app/rabbitmq_init.py
 
-Or run from VPS host:
+Or run from host (AMQP port 5672, not MQTT 1883):
   pip install pika
-  python3 rabbitmq_init.py
+  RABBITMQ_PASS=yourpass RABBITMQ_HOST=127.0.0.1 python3 rabbitmq_init.py
+
+Env: RABBITMQ_HOST (default 127.0.0.1), RABBITMQ_PORT (default 5672),
+     RABBITMQ_USER, RABBITMQ_PASS
+
+If Management UI says plugins need a restart: docker restart rabbitmq && sleep 30
 """
 
 import os
+import sys
+
 import pika
 
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
+# AMQP (used by pika / Java services) — NOT MQTT. Default port is 5672.
+# Do NOT point this at 1883 (MQTT) or you get StreamLostError / IncompatibleProtocolError.
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "127.0.0.1")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
 RABBITMQ_USER = os.getenv("RABBITMQ_USER", "admin")
 RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "changeme")
 
 
 def main():
     credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
-    connection = pika.BlockingConnection(
-        pika.ConnectionParameters(host=RABBITMQ_HOST, credentials=credentials)
+    params = pika.ConnectionParameters(
+        host=RABBITMQ_HOST,
+        port=RABBITMQ_PORT,
+        credentials=credentials,
+        connection_attempts=5,
+        retry_delay=2,
+        socket_timeout=10,
+        heartbeat=600,
+        blocked_connection_timeout=300,
     )
+    try:
+        connection = pika.BlockingConnection(params)
+    except Exception as e:
+        print(
+            f"ERROR: Cannot open AMQP connection to {RABBITMQ_HOST}:{RABBITMQ_PORT} — {e}\n"
+            "\n"
+            "  rabbitmq_init.py uses AMQP (pika), port 5672 by default.\n"
+            "  Port 1883 is MQTT only; connecting there causes EOF / protocol errors.\n"
+            "\n"
+            "  If you changed plugins in the Management UI, restart the broker:\n"
+            "    docker restart rabbitmq\n"
+            "  Then wait ~30s and run this script again.\n"
+            "\n"
+            "  Check:  docker exec rabbitmq rabbitmq-diagnostics -q ping\n"
+            "          echo $RABBITMQ_PASS   (must match RABBITMQ_DEFAULT_PASS)\n",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from e
     channel = connection.channel()
 
     print("=== Creating Exchanges ===")
@@ -219,55 +254,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-def setup_water_queues(channel):
-    """Add water level and motor queues — call from main() after existing setup."""
-    print("\n=== Water Level Monitor Queues ===")
-
-    dead_letter_args = {"x-dead-letter-exchange": "farm.dead-letter"}
-
-    # Water level readings from all tank sensor nodes
-    channel.queue_declare(
-        queue="water.level",
-        durable=True,
-        arguments={**dead_letter_args, "x-message-ttl": 86400000},  # 24h
-    )
-    print("  ✓ water.level")
-
-    # Tank online/offline LWT status
-    channel.queue_declare(queue="water.status", durable=True)
-    print("  ✓ water.status")
-
-    # Motor controller status updates ({motorTag}/motor/status)
-    channel.queue_declare(
-        queue="motor.status",
-        durable=True,
-        arguments={**dead_letter_args, "x-message-ttl": 3600000},   # 1h
-    )
-    print("  ✓ motor.status")
-
-    # Motor safety/error events (dry_run_blocked, max_runtime, sms_failed)
-    channel.queue_declare(
-        queue="motor.alert",
-        durable=True,
-        arguments={**dead_letter_args, "x-message-ttl": 86400000},
-    )
-    print("  ✓ motor.alert")
-
-    # Bindings — wildcard matches any device tag
-    # ESP8266 publishes as MQTT topic → RabbitMQ routes via amq.topic exchange
-    channel.queue_bind(queue="water.level",  exchange="amq.topic", routing_key="*.water.level")
-    channel.queue_bind(queue="water.status", exchange="amq.topic", routing_key="*.water.status")
-    channel.queue_bind(queue="motor.status", exchange="amq.topic", routing_key="*.motor.status")
-    channel.queue_bind(queue="motor.alert",  exchange="amq.topic", routing_key="*.motor.alert")
-    print("  ✓ *.water.level   → water.level")
-    print("  ✓ *.water.status  → water.status")
-    print("  ✓ *.motor.status  → motor.status")
-    print("  ✓ *.motor.alert   → motor.alert")
-
-    print("""
-  MQTT user for water/motor ESP8266 nodes:
-    rabbitmqctl add_user water-node <password>
-    rabbitmqctl set_permissions water-node "" ".*" ".*"
-""")
-

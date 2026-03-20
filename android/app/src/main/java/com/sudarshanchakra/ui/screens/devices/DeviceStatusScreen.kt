@@ -17,12 +17,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -58,7 +65,8 @@ import javax.inject.Inject
 data class DeviceUiState(
     val nodes: List<EdgeNode> = emptyList(),
     val isLoading: Boolean = false,
-    val error: String? = null
+    val isRefreshing: Boolean = false,
+    val error: String? = null,
 )
 
 @HiltViewModel
@@ -68,23 +76,36 @@ class DeviceViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DeviceUiState())
     val uiState: StateFlow<DeviceUiState> = _uiState.asStateFlow()
 
+    private var hasLoadedOnce = false
+
     init {
         loadNodes()
     }
 
     fun loadNodes() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            val blocking = !hasLoadedOnce
+            _uiState.update {
+                if (blocking) it.copy(isLoading = true, error = null)
+                else it.copy(isRefreshing = true, error = null)
+            }
             val result = deviceRepository.getNodes()
             result.fold(
                 onSuccess = { nodes ->
-                    _uiState.update { it.copy(nodes = nodes, isLoading = false) }
+                    hasLoadedOnce = true
+                    _uiState.update {
+                        it.copy(nodes = nodes, isLoading = false, isRefreshing = false)
+                    }
                 },
                 onFailure = { error ->
                     _uiState.update {
-                        it.copy(isLoading = false, error = error.message ?: "Failed to load devices")
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            error = error.message ?: "Failed to load devices",
+                        )
                     }
-                }
+                },
             )
         }
     }
@@ -101,24 +122,31 @@ fun DeviceStatusScreen(
             .fillMaxSize()
             .background(CreamBackground)
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "Edge Nodes",
-                fontFamily = GeorgiaFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 26.sp,
-                color = TextPrimary
-            )
-            val onlineCount = uiState.nodes.count { it.status == NodeStatus.ONLINE }
-            Text(
-                text = "$onlineCount of ${uiState.nodes.size} online",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Edge Nodes",
+                    fontFamily = GeorgiaFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 26.sp,
+                    color = TextPrimary,
+                )
+                val onlineCount = uiState.nodes.count { it.status == NodeStatus.ONLINE }
+                Text(
+                    text = "$onlineCount of ${uiState.nodes.size} online",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                )
+            }
+            IconButton(onClick = { viewModel.loadNodes() }) {
+                Icon(Icons.Filled.Refresh, contentDescription = "Refresh devices")
+            }
         }
 
         when {
@@ -168,14 +196,29 @@ fun DeviceStatusScreen(
                 }
             }
             else -> {
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(uiState.nodes, key = { it.id }) { node ->
-                        NodeCard(node = node)
+                val pullRefreshState = rememberPullToRefreshState()
+                LaunchedEffect(uiState.isRefreshing) {
+                    if (!uiState.isRefreshing) {
+                        pullRefreshState.endRefresh()
                     }
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                }
+                
+                Box(modifier = Modifier.fillMaxSize()) {
+                    PullToRefreshBox(
+                        isRefreshing = uiState.isRefreshing,
+                        onRefresh = { viewModel.refresh() },
+                        state = pullRefreshState,
+                    ) {
+                        LazyColumn(
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(uiState.nodes, key = { it.id }) { node ->
+                                NodeCard(node = node)
+                            }
+                            item { Spacer(modifier = Modifier.height(16.dp)) }
+                        }
+                    }
                 }
             }
         }
@@ -188,11 +231,13 @@ private fun NodeCard(node: EdgeNode) {
         NodeStatus.ONLINE -> StatusOnline
         NodeStatus.OFFLINE -> StatusOffline
         NodeStatus.DEGRADED -> StatusDegraded
+        NodeStatus.UNKNOWN -> StatusOffline
     }
     val statusLabel = when (node.status) {
         NodeStatus.ONLINE -> "Online"
         NodeStatus.OFFLINE -> "Offline"
         NodeStatus.DEGRADED -> "Degraded"
+        NodeStatus.UNKNOWN -> "Unknown"
     }
 
     Card(
@@ -225,7 +270,7 @@ private fun NodeCard(node: EdgeNode) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = node.name,
+                        text = node.name.ifBlank { "Unnamed node" },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = TextPrimary
@@ -248,7 +293,7 @@ private fun NodeCard(node: EdgeNode) {
                 }
 
                 Text(
-                    text = node.location,
+                    text = node.location.ifBlank { "—" },
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )

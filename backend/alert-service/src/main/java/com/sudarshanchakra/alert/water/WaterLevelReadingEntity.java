@@ -2,10 +2,14 @@ package com.sudarshanchakra.alert.water;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
-import java.util.UUID;
 
+/**
+ * Same table/columns as device-service {@code WaterLevelReading} and {@code cloud/db/init.sql}.
+ */
 @Entity
 @Table(name = "water_level_readings")
 @Data
@@ -18,22 +22,43 @@ public class WaterLevelReadingEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "tank_id", nullable = false)
-    private UUID tankId;
+    @Column(name = "tank_id", length = 50, nullable = false)
+    private String tankId;
 
-    @Column(name = "level_pct", nullable = false)
-    private Double levelPct;
+    @Column(name = "percent_filled", nullable = false)
+    private Double percentFilled;
 
-    @Column(name = "raw_value")
-    private Double rawValue;
+    @Column(name = "volume_liters")
+    private Double volumeLiters;
 
-    @Column(name = "node_id", length = 50)
-    private String nodeId;
+    @Column(name = "water_height_mm")
+    private Double waterHeightMm;
 
-    @Column(columnDefinition = "jsonb")
-    private String metadata;
+    @Column(name = "distance_mm")
+    private Double distanceMm;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "temperature_c")
+    private Double temperatureC;
+
+    @Column(length = 20)
+    private String state;
+
+    @Column(name = "sensor_ok")
+    @Builder.Default
+    private Boolean sensorOk = true;
+
+    @Column(name = "battery_voltage")
+    private Double batteryVoltage;
+
+    /** DB column is SMALLINT (int2); @JdbcTypeCode avoids Hibernate 6 validating as INTEGER. */
+    @JdbcTypeCode(SqlTypes.SMALLINT)
+    @Column(name = "battery_percent")
+    private Short batteryPercent;
+
+    @Column(name = "battery_state", length = 10)
+    private String batteryState;
+
+    @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
 
     @PrePersist

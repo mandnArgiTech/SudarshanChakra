@@ -10,6 +10,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -30,6 +32,7 @@ fun MotorControlScreen(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val motor = ui.motors.find { it.id == motorId }
+    val haptic = LocalHapticFeedback.current
 
     LaunchedEffect(motorId) { viewModel.refresh() }
 
@@ -63,16 +66,26 @@ fun MotorControlScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             // Status card
-            MotorStatusCard(motor = motor, onCommand = { cmd -> viewModel.sendCommand(motorId, cmd) })
+            MotorStatusCard(
+                motor = motor,
+                onCommand = { cmd ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.sendCommand(motorId, cmd)
+                },
+            )
 
             // Control type badge
             ControlTypeBadge(motor)
 
             // Mode selector
-            ModeSelector(current = motor.mode, onSelect = { mode ->
-                val cmd = when (mode) { "on" -> "pump_on"; "off" -> "pump_off"; else -> "pump_auto" }
-                viewModel.sendCommand(motorId, cmd)
-            })
+            ModeSelector(
+                current = motor.mode,
+                onSelect = { mode ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    val cmd = when (mode) { "on" -> "pump_on"; "off" -> "pump_off"; else -> "pump_auto" }
+                    viewModel.sendCommand(motorId, cmd)
+                },
+            )
 
             // Auto thresholds
             AnimatedVisibility(motor.mode == "auto" || motor.autoMode) {

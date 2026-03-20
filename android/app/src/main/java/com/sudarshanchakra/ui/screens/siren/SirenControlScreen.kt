@@ -24,10 +24,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +58,8 @@ fun SirenControlScreen(
     viewModel: SirenViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showSirenConfirm by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
 
     Column(
         modifier = Modifier
@@ -84,8 +93,12 @@ fun SirenControlScreen(
                     SirenButton(
                         isActive = uiState.isAllSirenActive,
                         onClick = {
-                            if (uiState.isAllSirenActive) viewModel.stopAllSirens()
-                            else viewModel.triggerAllSirens()
+                            if (uiState.isAllSirenActive) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.stopAllSirens()
+                            } else {
+                                showSirenConfirm = true
+                            }
                         }
                     )
 
@@ -143,13 +156,13 @@ fun SirenControlScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text(
-                                        text = node.name,
+                                        text = node.name.ifBlank { "Unnamed node" },
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Medium,
                                         color = TextPrimary
                                     )
                                     Text(
-                                        text = node.location,
+                                        text = node.location.ifBlank { "—" },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TextSecondary
                                     )
@@ -209,13 +222,13 @@ fun SirenControlScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "${action.action.replaceFirstChar { it.uppercase() }} - Node ${action.nodeId.takeLast(4)}",
+                                    text = "${action.action.replaceFirstChar { it.uppercase() }} - Node ${action.nodeId.takeLast(4).ifEmpty { "?" }}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium,
                                     color = TextPrimary
                                 )
                                 Text(
-                                    text = "by ${action.triggeredBy} · ${action.timestamp.take(16).replace("T", " ")}",
+                                    text = "by ${action.triggeredBy ?: "—"} · ${action.timestamp.take(16).replace("T", " ").ifEmpty { "—" }}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextMuted
                                 )
@@ -226,6 +239,32 @@ fun SirenControlScreen(
 
                 item { Spacer(modifier = Modifier.height(24.dp)) }
             }
+        }
+
+        if (showSirenConfirm) {
+            AlertDialog(
+                onDismissRequest = { showSirenConfirm = false },
+                title = { Text("Trigger siren?") },
+                text = {
+                    Text("This will activate the farm PA / siren system. Only confirm in a real emergency.")
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showSirenConfirm = false
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.triggerAllSirens()
+                        },
+                    ) {
+                        Text("Trigger", color = CriticalRed)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSirenConfirm = false }) {
+                        Text("Cancel")
+                    }
+                },
+            )
         }
     }
 }
