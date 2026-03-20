@@ -1,7 +1,7 @@
 # SudarshanChakra — Progress Review
 
 **Date:** March 20, 2026
-**Repo:** 355+ files, 58 commits
+**Repo:** 380+ files, 60 commits
 **Branch:** main
 
 ---
@@ -119,6 +119,83 @@ pa_controller.py gained: `volume` command (ALSA amixer), `get_volume`, `play_ton
 
 ---
 
+## Key Commit: 73dd992 + 33ca218 — Water & Motor Integration (PR #7)
+
+Merged via PR #7 (`feature/water-motor-integration`). **29 files changed, 1,848 lines added.** This goes beyond the original WATER_LEVEL_INTEGRATION_PLAN — it adds full motor/pump control and battery monitoring.
+
+### What Was Added Beyond the Original Plan
+
+The original plan covered water tank level monitoring. This commit adds:
+- **Motor/pump control** — start/stop pump motors from the Android app and REST API
+- **Battery monitoring** — ESP8266 battery voltage/percent/state stored per reading
+- **Motor run logging** — audit trail of every motor start/stop event
+- **Tank-to-motor mapping** — which pump fills which tank
+
+### Backend: 16 new Java files in device-service
+
+Organized under a clean `water/` package structure:
+
+| Package | File | Lines | Purpose |
+|:--------|:-----|:------|:--------|
+| config | WaterRabbitConfig.java | 44 | RabbitMQ queues: water.level, water.status, motor.status, motor.alert |
+| controller | WaterTankController.java | 41 | GET /api/v1/water/tanks, /{id}, /{id}/history |
+| controller | WaterMotorController.java | 57 | GET /api/v1/water/motors, /{id}, POST /{id}/command, PUT /{id} |
+| dto | WaterLevelPayload.java | 32 | MQTT incoming: percentFilled, volume, distance, **battery{voltage,percent,state}** |
+| dto | WaterTankResponse.java | 55 | API response with tank + latest reading + motor |
+| dto | MotorCommandRequest.java | 12 | Motor start/stop command |
+| dto | MotorStatusPayload.java | 18 | MQTT incoming: motor running/stopped/error |
+| dto | MotorUpdateRequest.java | 16 | Update motor config (name, control type) |
+| model | WaterTank.java | 47 | JPA entity with thresholds, capacity |
+| model | WaterLevelReading.java | 30 | JPA entity with **batteryVoltage, batteryPercent, batteryState** |
+| model | WaterMotorController.java | 48 | JPA entity: motor state, control type (relay/SMS), linked tank |
+| repository | WaterTankRepository.java | 26 | findByFarmId, findByLocation |
+| repository | WaterLevelReadingRepository.java | 16 | findByTankIdAndCreatedAtAfter (for history chart) |
+| repository | WaterMotorRepository.java | 21 | findByFarmId, findByTankId |
+| service | WaterMqttConsumer.java | 84 | @RabbitListener for water.level, motor.status, motor.alert queues |
+| service | WaterService.java | 163 | Business logic: store readings, check thresholds, motor commands |
+
+### Database: 5 new tables
+
+```sql
+water_tanks              — Tank config (type, dimensions, thresholds, location)
+water_level_readings     — Time-series readings with battery voltage/percent/state
+water_motor_controllers  — Motor config (control type: relay/SMS, state, linked tank)
+water_tank_motor_map     — Many-to-many tank ↔ motor relationship
+motor_run_log            — Audit trail: every start/stop with runtime duration
+```
+
+### RabbitMQ: 4 new queues
+
+```
+water.level    ← ESP8266 publishes tank readings
+water.status   ← ESP8266 online/offline (LWT)
+motor.status   ← Motor controller state changes
+motor.alert    ← Motor error/overrun alerts
+```
+
+### Android: 5 new Kotlin files (833 lines)
+
+| File | Lines | What It Does |
+|:-----|:------|:-------------|
+| WaterTank.kt | 65 | Domain model with tank, readings, motor, battery |
+| WaterStripCard.kt | 123 | Compact water level card for alert feed screen |
+| WaterTanksScreen.kt | 213 | Full water tanks page with list + gauge visuals |
+| MotorControlScreen.kt | 354 | Motor start/stop UI with status, runtime timer, command feedback |
+| WaterViewModel.kt | 78 | ViewModel: fetch tanks, motors, send motor commands |
+
+The **MotorControlScreen** is the most complex new screen — 354 lines with motor status card, start/stop button, runtime display, control type badge (relay vs SMS), and command confirmation feedback.
+
+### What's Missing From This Commit
+
+| Gap | Impact |
+|:---|:---|
+| **No unit tests for water/motor** | No WaterServiceTest, WaterMqttConsumerTest, WaterTankControllerTest, WaterMotorControllerTest |
+| **No integration tests** | No Testcontainers test for water flow |
+| **No dashboard water-motor page updates** | Dashboard has WaterPage + WaterTankGauge from f956658 but no motor control UI |
+| **No E2E test for motor commands** | test_full_stack.py not updated for motor endpoints |
+
+---
+
 ## Test Coverage (All Commits Combined)
 
 | Layer | Files | Functions | Framework |
@@ -129,9 +206,12 @@ pa_controller.py gained: `volume` command (ALSA amixer), `get_volume`, `play_ton
 | Backend integration | 8 | 13 | Testcontainers |
 | Dashboard component | 6 | ~25 | Vitest + RTL |
 | E2E full stack | 1 | 13 | Docker Compose + Python |
+| Water/motor tests | **0** | **0** | ⚠️ **ZERO — 16 Java files with no tests** |
 | **Total** | **34** | **~213** | |
 
-Target from AUTOMATED_TEST_PLAN.md: 227 → **~94% achieved.**
+Target: AUTOMATED_TEST_PLAN (227) + WATER_LEVEL_PLAN (61) = 288 → **~74% achieved.**
+
+**Water-motor is the biggest test gap.** 16 new backend Java files (WaterService 163 lines, WaterMqttConsumer 84 lines, 2 controllers, 3 repos, 5 DTOs, 3 entities) shipped with zero test coverage.
 
 ---
 
@@ -141,7 +221,7 @@ Target from AUTOMATED_TEST_PLAN.md: 227 → **~94% achieved.**
 |:-------------|:------|:-----|:--------|:-----------|
 | AUTOMATED_TEST_PLAN.md | 6 layers | 5 | 1 | 0 |
 | EDGE_AND_PA_ENHANCEMENT_PLAN.md | 25 | 15 | 6 | 4 |
-| WATER_LEVEL_INTEGRATION_PLAN.md | 8 | 7 | 1 | 0 |
+| WATER_LEVEL_INTEGRATION_PLAN.md | 8+motor | 7 | 1 | **tests** |
 | MOBILE_RESPONSIVE_PLAN.md | 10 | 0 | 0 | **10** |
 | TRAINING_PLAYBOOK.md | 9 steps | 0 | 0 | **9** |
 
@@ -157,13 +237,16 @@ Target from AUTOMATED_TEST_PLAN.md: 227 → **~94% achieved.**
 | 2 | Mobile responsive dashboard | 1 day |
 | 3 | Deploy VPS + edge + ESP32 + PA | ~1 day |
 
-### Should Do
+### Should Do (Quality Gaps)
 
 | # | Item | Effort |
 |:--|:-----|:-------|
-| 4 | PA system: finish TTS, scheduler, audio cache | 2 days |
-| 5 | Backend unit test gaps | 1 day |
-| 6 | OpenVPN + TLS setup | 3 hours |
+| 4 | **Water/motor unit + integration tests** | 1-2 days |
+| 5 | **Dashboard motor control page** (Android has it, dashboard doesn't) | 1 day |
+| 6 | PA system: finish TTS, scheduler, audio cache | 2 days |
+| 7 | Backend unit test gaps (other services) | 1 day |
+| 8 | OpenVPN + TLS setup | 3 hours |
+| 9 | **E2E tests for motor command flow** | 0.5 day |
 
 ---
 
@@ -173,7 +256,8 @@ Target from AUTOMATED_TEST_PLAN.md: 227 → **~94% achieved.**
 ████████████████████░░░░░  80%
 
 DONE:     Backend, Dashboard, Android, CI/CD, Cloud, Edge, Firmware,
-          Water integration, Tests (94%), Edge enhancements (15/15)
-PARTIAL:  PA system (60%), Backend tests (thin spots)
+          Water tank integration, Motor control (backend+Android),
+          Tests (74% of target), Edge enhancements (15/15)
+PARTIAL:  PA system (60%), Water/motor tests (0%), Dashboard motor UI (missing)
 NOT DONE: Model training, Mobile responsive, Farm deployment
 ```
