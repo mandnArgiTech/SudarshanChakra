@@ -172,3 +172,23 @@ class TestMasterFilter:
                              bbox=[100, 50, 300, 400])
         result = filter_detection(det)
         assert result is not None
+
+
+class TestSuppressionRulesFile:
+    def test_json_per_camera_suppression(self, tmp_path, monkeypatch, make_detection):
+        import importlib
+        p = tmp_path / "sup.json"
+        p.write_text('{"suppress":[{"class":"cow","cameras":["cam-a"]}]}')
+        monkeypatch.setenv("SUPPRESSION_RULES_PATH", str(p))
+        import detection_filters as df
+        importlib.reload(df)
+        try:
+            d = make_detection(cls="cow", camera_id="cam-a", confidence=0.95,
+                               bbox=[100, 50, 300, 400])
+            assert df.filter_detection(d) is None
+            d2 = make_detection(cls="cow", camera_id="cam-z", confidence=0.95,
+                                bbox=[100, 50, 300, 400])
+            assert df.filter_detection(d2) is not None
+        finally:
+            monkeypatch.delenv("SUPPRESSION_RULES_PATH", raising=False)
+            importlib.reload(df)

@@ -38,6 +38,19 @@ subprojects {
     }
 
     tasks.test {
-        useJUnitPlatform()
+        useJUnitPlatform {
+            excludeTags("integration")
+        }
+    }
+
+    tasks.register<Test>("integrationTest") {
+        group = "verification"
+        description = "Testcontainers tests; requires Docker"
+        testClassesDirs = sourceSets["test"].output.classesDirs
+        classpath = sourceSets["test"].runtimeClasspath
+        useJUnitPlatform {
+            includeTags("integration")
+        }
+        shouldRunAfter(tasks.test)
     }
 }

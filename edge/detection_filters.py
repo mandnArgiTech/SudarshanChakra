@@ -13,13 +13,63 @@ Filters:
 """
 
 import cv2
+import json
 import logging
+import os
 import time
 import numpy as np
 from collections import defaultdict
 from datetime import datetime
 
 log = logging.getLogger("detection_filters")
+
+_SUPPRESSION_RULES = []  # list of {"class": str, "cameras": [optional]}
+
+
+def _default_suppression_path():
+    base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, "config", "suppression_rules.json")
+
+
+def reload_suppression_rules():
+    """Reload from disk (MQTT farm/admin/reload_config or file watcher)."""
+    global _SUPPRESSION_RULES
+    path = os.environ.get("SUPPRESSION_RULES_PATH", _default_suppression_path())
+    _SUPPRESSION_RULES = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        for entry in data.get("suppress", []):
+            if isinstance(entry, str):
+                _SUPPRESSION_RULES.append({"class": entry.lower(), "cameras": []})
+            elif isinstance(entry, dict) and entry.get("class"):
+                cams = entry.get("cameras") or entry.get("camera_ids") or []
+                _SUPPRESSION_RULES.append({
+                    "class": str(entry["class"]).lower(),
+                    "cameras": [str(x) for x in cams] if cams else [],
+                })
+        log.info("Loaded %d suppression rule(s) from %s", len(_SUPPRESSION_RULES), path)
+    except FileNotFoundError:
+        log.debug("No suppression_rules.json at %s", path)
+    except Exception as e:
+        log.warning("Could not load suppression rules: %s", e)
+
+
+reload_suppression_rules()
+
+
+def _is_rule_suppressed(det: dict) -> bool:
+    cam = det.get("camera_id") or ""
+    cls = (det.get("class") or "").lower()
+    for rule in _SUPPRESSION_RULES:
+        if rule["class"] != cls:
+            continue
+        cams = rule.get("cameras") or []
+        if not cams:
+            return True
+        if cam in cams:
+            return True
+    return False
 
 
 # ─── Configuration ────────────────────────────────────────────────────────
@@ -236,6 +286,9 @@ def filter_detection(det: dict, frame: np.ndarray = None,
     Called by alert_engine.py for every YOLO detection.
     """
     cls = det["class"]
+
+    if _is_rule_suppressed(det):
+        return None
 
     # Skip suppression classes (they never generate alerts)
     if cls in SUPPRESS_CLASSES:

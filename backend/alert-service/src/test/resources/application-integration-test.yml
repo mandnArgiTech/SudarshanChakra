@@ -1,0 +1,11 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  rabbitmq:
+    username: guest
+    password: guest
+
+logging:
+  level:
+    com.sudarshanchakra: INFO

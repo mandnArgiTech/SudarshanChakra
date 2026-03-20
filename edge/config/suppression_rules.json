@@ -1,4 +1,4 @@
 {
-  "description": "Optional class/camera suppressions (info only — extend detection_filters to enforce)",
+  "description": "Suppress detections: {\"class\":\"cow\"} all cameras, or {\"class\":\"person\",\"cameras\":[\"cam-01\"]}",
   "suppress": []
 }

@@ -197,11 +197,35 @@ class InferencePipeline:
 
     def __init__(self, model: YOLO, cameras: List[CameraConfig]):
         self.model = model
+        self._model_lock = threading.Lock()
         self.cameras = [c for c in cameras if c.enabled]
         self.frame_queue: Queue = Queue(maxsize=len(self.cameras) * 2)
         self.grabbers: List[CameraGrabber] = []
         self.results_callbacks: List[Callable] = []
         self._running = False
+        self.model_path = PT_PATH
+        try:
+            if getattr(model, "ckpt_path", None):
+                self.model_path = model.ckpt_path
+        except Exception:
+            pass
+
+    def swap_model(self, path: str) -> bool:
+        """Hot-swap weights (MQTT farm/admin/model_update). Path: .pt or .engine."""
+        path = os.path.expanduser(path.strip())
+        if not os.path.isfile(path):
+            log.error("Model file not found: %s", path)
+            return False
+        try:
+            new_model = YOLO(path)
+            with self._model_lock:
+                self.model = new_model
+            self.model_path = path
+            log.info("Inference model swapped to %s", path)
+            return True
+        except Exception as e:
+            log.error("Model swap failed: %s", e)
+            return False
 
     def start(self):
         """Start all camera grabbers and run inference loop (blocking)."""
@@ -226,12 +250,13 @@ class InferencePipeline:
                 continue
 
             try:
-                results = self.model.predict(
-                    packet.frame,
-                    imgsz=INPUT_SIZE,
-                    conf=CONFIDENCE_THRESHOLD,
-                    verbose=False,
-                )
+                with self._model_lock:
+                    results = self.model.predict(
+                        packet.frame,
+                        imgsz=INPUT_SIZE,
+                        conf=CONFIDENCE_THRESHOLD,
+                        verbose=False,
+                    )
 
                 if results and len(results) > 0:
                     self._process_results(packet, results[0])
@@ -281,6 +306,7 @@ class InferencePipeline:
     def get_stats(self) -> dict:
         """Return pipeline statistics for monitoring."""
         return {
+            "model_path": getattr(self, "model_path", PT_PATH),
             "cameras_total": len(self.cameras),
             "cameras_connected": sum(1 for g in self.grabbers if g.connected),
             "queue_size": self.frame_queue.qsize(),

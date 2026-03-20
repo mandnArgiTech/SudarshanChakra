@@ -195,6 +195,13 @@ class MockInferencePipeline:
 
         log.info("Mock inference pipeline initialized with %d cameras, "
                  "detection every %.1fs", len(cameras), detection_interval)
+        self.model_path = "mock-yolov8-dev"
+
+    def swap_model(self, path: str) -> bool:
+        """Dev mode: record path only (no real weight load)."""
+        self.model_path = path
+        log.info("Mock pipeline model_path set to %s", path)
+        return True
 
     def start(self):
         """Run the mock detection loop (blocking, like the real pipeline)."""
@@ -259,6 +266,7 @@ class MockInferencePipeline:
     def get_stats(self) -> dict:
         return {
             "mode": "MOCK",
+            "model_path": getattr(self, "model_path", "mock"),
             "cameras_total": len(self.cameras),
             "cameras_connected": len(self.mock_cameras),
             "scenario_index": self._scenario_index,

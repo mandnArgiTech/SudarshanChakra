@@ -611,6 +611,42 @@ def create_app(zone_engine, cameras, config_dir, mqtt_client=None, pipeline=None
             "timestamp": time.time(),
         })
 
+    @app.route("/api/cameras/status")
+    def api_cameras_status():
+        stats = pipeline.get_stats() if pipeline and hasattr(pipeline, "get_stats") else {}
+        out = []
+        if pipeline and hasattr(pipeline, "grabbers"):
+            for g in pipeline.grabbers:
+                out.append({
+                    "camera_id": g.config.id,
+                    "name": g.config.name,
+                    "connected": bool(getattr(g, "connected", False)),
+                    "frames": int(getattr(g, "frame_count", 0)),
+                })
+        elif pipeline and hasattr(pipeline, "mock_cameras"):
+            for cid, grab in pipeline.mock_cameras.items():
+                out.append({
+                    "camera_id": cid,
+                    "connected": True,
+                    "frames": int(getattr(grab, "frame_count", 0)),
+                })
+        else:
+            for c in cameras:
+                out.append({"camera_id": c.id, "name": c.name, "configured": True})
+        return jsonify({"node_id": _node_id, "cameras": out, "pipeline": stats})
+
+    @app.route("/api/model")
+    def api_model():
+        mp = _model_pt
+        if pipeline and getattr(pipeline, "model_path", None):
+            mp = pipeline.model_path
+        base = os.path.basename(mp) if mp else None
+        return jsonify({
+            "node_id": _node_id,
+            "model_path": mp,
+            "weights_file": base,
+        })
+
     STATUS_HTML = """
     <!DOCTYPE html><html><head><meta charset="utf-8"><title>Edge Status</title>
     <style>body{font-family:system-ui;background:#0f172a;color:#e2e8f0;padding:24px;}

@@ -65,6 +65,38 @@ logging.basicConfig(
 log = logging.getLogger("farm_edge_node")
 
 
+def _mqtt_admin_reload(zone_engine, mqtt_client):
+    """Reload zones.json + suppression_rules.json (topic farm/admin/reload_config)."""
+    try:
+        from detection_filters import reload_suppression_rules
+        zone_engine.reload()
+        reload_suppression_rules()
+        mqtt_client.publish(
+            f"farm/nodes/{NODE_ID}/config_reloaded",
+            json.dumps({"node_id": NODE_ID, "ok": True}),
+            qos=1,
+        )
+        log.info("Admin reload: zones + suppression_rules applied")
+    except Exception as e:
+        log.error("reload_config failed: %s", e)
+
+
+def _mqtt_model_update(mqtt_client, msg, pipeline_holder):
+    """Hot-swap model weights (topic farm/admin/model_update, JSON {\"path\": \"/models/x.pt\"})."""
+    try:
+        body = json.loads(msg.payload.decode() or "{}")
+    except Exception:
+        body = {}
+    path = (body.get("path") or "").strip() or os.getenv("PT_PATH", "")
+    pl = pipeline_holder.get("pipeline")
+    ok = bool(path and pl and getattr(pl, "swap_model", lambda _: False)(path))
+    mqtt_client.publish(
+        f"farm/nodes/{NODE_ID}/model_update_ack",
+        json.dumps({"node_id": NODE_ID, "ok": ok, "path": path}),
+        qos=1,
+    )
+
+
 def load_camera_configs() -> list:
     """
     Load camera configurations from JSON.
@@ -152,7 +184,9 @@ def create_mqtt_client() -> mqtt.Client:
             client.subscribe("farm/siren/trigger", qos=1)
             client.subscribe("farm/siren/stop", qos=1)
             client.subscribe("farm/admin/update", qos=1)
-            log.info("Subscribed to siren and admin command topics")
+            client.subscribe("farm/admin/reload_config", qos=1)
+            client.subscribe("farm/admin/model_update", qos=1)
+            log.info("Subscribed to siren and admin topics (incl. reload_config, model_update)")
         else:
             log.error("MQTT connection failed with rc=%d", rc)
 
@@ -167,7 +201,7 @@ def create_mqtt_client() -> mqtt.Client:
     return client
 
 
-def setup_siren_listener(mqtt_client):
+def setup_siren_listener(mqtt_client, zone_engine, pipeline_holder):
     """
     Subscribe to siren commands from cloud/Android app.
     Forwards to local PA system (AlertManagement controller on Pi).
@@ -221,7 +255,15 @@ def setup_siren_listener(mqtt_client):
                 "timestamp": time.time(),
             }), qos=1)
 
-    mqtt_client.on_message = on_siren_message
+    def combined(client, userdata, msg):
+        if msg.topic == "farm/admin/reload_config":
+            _mqtt_admin_reload(zone_engine, client)
+        elif msg.topic == "farm/admin/model_update":
+            _mqtt_model_update(client, msg, pipeline_holder)
+        else:
+            on_siren_message(client, userdata, msg)
+
+    mqtt_client.on_message = combined
 
 
 def start_heartbeat(mqtt_client, pipeline=None, alert_engine=None):
@@ -298,6 +340,20 @@ def main():
     zone_engine = ZoneEngine(os.path.join(CONFIG_DIR, "zones.json"))
     log.info("Zone engine loaded with %d zone definitions.", len(zone_engine.polygons))
 
+    pipeline_holder = {}
+    try:
+        from config_watcher import start_zone_reload_watcher
+        start_zone_reload_watcher(
+            zone_engine,
+            [
+                os.path.join(CONFIG_DIR, "zones.json"),
+                os.path.join(CONFIG_DIR, "suppression_rules.json"),
+            ],
+        )
+        log.info("File watcher: zones.json + suppression_rules.json")
+    except Exception as ex:
+        log.debug("config watcher skipped: %s", ex)
+
     # ── Step 4: Initialize LoRa receiver (mock in dev mode) ──
     if MOCK_LORA or DEV_MODE:
         lora = MockLoRaReceiver(
@@ -319,10 +375,19 @@ def main():
     # Siren handler (mock in dev mode)
     if MOCK_SIREN or DEV_MODE:
         mock_siren = MockSirenHandler(mqtt_client, NODE_ID)
-        mqtt_client.on_message = mock_siren.handle_command
-        log.info("MOCK siren handler installed (logs instead of PA system)")
+
+        def dev_route(client, userdata, msg):
+            if msg.topic == "farm/admin/reload_config":
+                _mqtt_admin_reload(zone_engine, client)
+            elif msg.topic == "farm/admin/model_update":
+                _mqtt_model_update(client, msg, pipeline_holder)
+            else:
+                mock_siren.handle_command(client, userdata, msg)
+
+        mqtt_client.on_message = dev_route
+        log.info("MOCK siren + admin MQTT handlers installed")
     else:
-        setup_siren_listener(mqtt_client)
+        setup_siren_listener(mqtt_client, zone_engine, pipeline_holder)
 
     # Dev mode: subscribe to simulation commands
     if DEV_MODE:
@@ -394,6 +459,8 @@ def main():
     else:
         log.info("Inference pipeline with %d cameras...", len(cameras))
         pipeline = InferencePipeline(model, cameras)
+
+    pipeline_holder["pipeline"] = pipeline
 
     flask_app = create_app(
         zone_engine, cameras, CONFIG_DIR,

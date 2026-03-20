@@ -23,6 +23,9 @@ public class RabbitMQConfig {
     public static final String QUEUE_HIGH = "alert.high";
     public static final String QUEUE_WARNING = "alert.warning";
 
+    public static final String EXCHANGE_WATER = "farm.water";
+    public static final String QUEUE_WATER_LEVEL = "water.level";
+
     @Bean
     public TopicExchange alertsExchange() {
         return new TopicExchange(EXCHANGE_ALERTS, true, false);
@@ -76,6 +79,21 @@ public class RabbitMQConfig {
     @Bean
     public Binding warningBinding(Queue warningQueue, TopicExchange alertsExchange) {
         return BindingBuilder.bind(warningQueue).to(alertsExchange).with("farm.alerts.warning");
+    }
+
+    @Bean
+    public TopicExchange farmWaterExchange() {
+        return new TopicExchange(EXCHANGE_WATER, true, false);
+    }
+
+    @Bean
+    public Queue waterLevelQueue() {
+        return QueueBuilder.durable(QUEUE_WATER_LEVEL).build();
+    }
+
+    @Bean
+    public Binding waterLevelBinding(Queue waterLevelQueue, TopicExchange farmWaterExchange) {
+        return BindingBuilder.bind(waterLevelQueue).to(farmWaterExchange).with("water.level");
     }
 
     @Bean
