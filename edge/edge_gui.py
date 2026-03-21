@@ -463,9 +463,12 @@ def create_app(zone_engine, cameras, config_dir, mqtt_client=None, pipeline=None
             return Response(jpeg_bytes, mimetype="image/jpeg")
         else:
             import numpy as np
-            placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
+            # Dark gray (not pure black) so "waiting" is visible in dashboard thumbnails
+            placeholder = np.full((480, 640, 3), (48, 48, 56), dtype=np.uint8)
             cv2.putText(placeholder, f"Waiting for {camera_id}...",
-                        (120, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 100, 100), 2)
+                        (40, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 210), 2)
+            cv2.putText(placeholder, "No frames in cache yet",
+                        (40, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (160, 160, 175), 2)
             _, jpeg = cv2.imencode(".jpg", placeholder)
             return Response(jpeg.tobytes(), mimetype="image/jpeg")
 

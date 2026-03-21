@@ -2,23 +2,24 @@ import { useQuery } from '@tanstack/react-query';
 import apiClient from './client';
 import type { EdgeNode, Camera, Zone, WorkerTag } from '@/types';
 
+/** Paths match api-gateway → device-service (e.g. GET /api/v1/cameras), not /devices/... */
 async function fetchNodes(): Promise<EdgeNode[]> {
-  const { data } = await apiClient.get<EdgeNode[]>('/devices/nodes');
+  const { data } = await apiClient.get<EdgeNode[]>('/nodes');
   return data;
 }
 
 async function fetchCameras(): Promise<Camera[]> {
-  const { data } = await apiClient.get<Camera[]>('/devices/cameras');
+  const { data } = await apiClient.get<Camera[]>('/cameras');
   return data;
 }
 
 async function fetchZones(): Promise<Zone[]> {
-  const { data } = await apiClient.get<Zone[]>('/devices/zones');
+  const { data } = await apiClient.get<Zone[]>('/zones');
   return data;
 }
 
 async function fetchTags(): Promise<WorkerTag[]> {
-  const { data } = await apiClient.get<WorkerTag[]>('/devices/tags');
+  const { data } = await apiClient.get<WorkerTag[]>('/tags');
   return data;
 }
 

@@ -321,7 +321,7 @@ curl http://localhost:15672  # RabbitMQ Management UI
 
 # 2. Backend
 curl http://localhost:8080/actuator/health
-curl http://localhost:8080/api/v1/devices/nodes
+curl http://localhost:8080/api/v1/nodes
 
 # 3. Dashboard
 curl http://localhost:3000  # Dev server

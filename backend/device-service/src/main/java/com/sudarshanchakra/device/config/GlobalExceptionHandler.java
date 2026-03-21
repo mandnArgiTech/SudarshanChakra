@@ -2,6 +2,7 @@ package com.sudarshanchakra.device.config;
 
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -27,6 +28,23 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
         log.warn("Bad request: {}", ex.getMessage());
         return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getMostSpecificCause();
+        String detail = cause != null ? cause.getMessage() : ex.getMessage();
+        log.warn("Data integrity: {}", detail);
+        String message =
+                "Database constraint violated (e.g. unknown node_id, duplicate id, or invalid field). "
+                        + "Camera status must be one of: active, offline, error, unknown.";
+        if (detail != null && detail.contains("cameras_status_check")) {
+            message = "Invalid camera status: use active, offline, error, or unknown (not online).";
+        }
+        if (detail != null && detail.contains("cameras_node_id_fkey")) {
+            message = "node_id does not exist in edge_nodes — create the edge node first.";
+        }
+        return buildResponse(HttpStatus.BAD_REQUEST, message);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -83,7 +83,7 @@ curl -X POST http://localhost:9080/api/v1/cameras \
     "fpsTarget": 2.0,
     "resolution": "640x480",
     "enabled": true,
-    "status": "online"
+    "status": "active"
   }'
 ```
 
@@ -181,7 +181,7 @@ Edge will:
 ### Check Backend Health
 
 ```bash
-curl http://localhost:9080/api/v1/devices/nodes
+curl http://localhost:9080/api/v1/nodes
 curl http://localhost:9080/api/v1/cameras
 ```
 
@@ -229,7 +229,7 @@ ffplay rtsp://administrator:interOP@123@192.168.68.56:554/stream2
 
 - Verify API Gateway is running: `curl http://localhost:8080/actuator/health`
 - Check nginx error log: `sudo tail -f /var/log/nginx/error.log`
-- Test proxy: `curl -v http://localhost:9080/api/v1/devices/nodes`
+- Test proxy: `curl -v http://localhost:9080/api/v1/nodes`
 
 ## Next Steps
 

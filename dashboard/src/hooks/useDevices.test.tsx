@@ -69,7 +69,7 @@ describe('useDevices (nodes & cameras)', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toHaveLength(1);
     expect(result.current.data?.[0].displayName).toBe('Node A');
-    expect(apiClient.get).toHaveBeenCalledWith('/devices/nodes');
+    expect(apiClient.get).toHaveBeenCalledWith('/nodes');
   });
 
   it('useCameras returns camera list from API', async () => {
@@ -79,6 +79,6 @@ describe('useDevices (nodes & cameras)', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.[0].name).toBe('Gate');
-    expect(apiClient.get).toHaveBeenCalledWith('/devices/cameras');
+    expect(apiClient.get).toHaveBeenCalledWith('/cameras');
   });
 });

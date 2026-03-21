@@ -84,6 +84,7 @@ sudo docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
 - `sockjs-client` requires `global: 'globalThis'` in `vite.config.ts` `define` — without this the app crashes with "global is not defined".
 - The dashboard uses fallback mock data when backend APIs are unavailable, so it renders fully without running backend services.
 - Auth uses JWT stored in `localStorage` (`sc_token`, `sc_user`). Unauthenticated users are redirected to `/login`.
+- **Cameras page:** Cards are clickable for details. Browsers cannot play RTSP directly. For live JPEG thumbnails (refreshed ~every 3s), set `VITE_EDGE_SNAPSHOT_BASE` to the edge Flask GUI origin (e.g. `http://192.168.68.50:5000`); the dashboard loads `/api/snapshot/<camera_id>` — camera IDs must match device-service and the running edge pipeline. See `dashboard/.env.example`.
 
 ### Edge AI (Python)
 
@@ -112,7 +113,7 @@ sudo docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
 
 **Docker in nested container gotcha:** The Docker daemon needs to be started manually with `sudo dockerd &`. The daemon config at `/etc/docker/daemon.json` must use `fuse-overlayfs` storage driver, and `iptables-legacy` must be selected via `update-alternatives`. These are pre-configured in the VM snapshot.
 
-**Auth API path convention:** All backend REST endpoints use the `/api/v1/` prefix (e.g. `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/devices`, `/api/v1/alerts`). The Spring Security config permits `/api/v1/auth/**` unauthenticated; all other paths require a `Bearer` JWT token.
+**Auth API path convention:** REST uses the `/api/v1/` prefix (e.g. `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/alerts`). Device inventory is under `/api/v1/nodes`, `/api/v1/cameras`, `/api/v1/zones`, `/api/v1/tags` (not `/devices/...`). Spring Security permits `/api/v1/auth/**` unauthenticated; other paths typically require a `Bearer` JWT (device-service may allow local unauthenticated POST in dev — see service config).
 
 ### Dev credentials (local only)
 

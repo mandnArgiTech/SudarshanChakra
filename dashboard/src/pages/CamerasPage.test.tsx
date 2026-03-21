@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import CamerasPage from './CamerasPage';
@@ -29,5 +29,14 @@ describe('CamerasPage', () => {
   it('shows camera ids in footer line', () => {
     wrap(<CamerasPage />);
     expect(screen.getByText(/CAM-01/)).toBeInTheDocument();
+  });
+
+  it('opens detail dialog when a camera card is clicked', () => {
+    wrap(<CamerasPage />);
+    fireEvent.click(screen.getByRole('button', { name: /Open details for Front Gate/i }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(/No edge preview URL configured/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

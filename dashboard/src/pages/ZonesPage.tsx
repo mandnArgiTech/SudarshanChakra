@@ -51,7 +51,7 @@ export default function ZonesPage() {
         <div className="rounded-xl border border-sc-border bg-sc-surface-alt p-5 space-y-3">
           <h4 className="text-sc-text font-semibold text-sm">New zone (draft)</h4>
           <p className="text-sc-text-dim text-xs font-mono leading-relaxed">
-            Full polygon editor + POST /api/v1/devices/zones will plug in here. For now, define zones via device-service
+            Full polygon editor + POST /api/v1/zones will plug in here. For now, define zones via device-service
             or edge config, then refresh this page.
           </p>
           <button

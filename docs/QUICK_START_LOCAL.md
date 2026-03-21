@@ -93,6 +93,8 @@ Services start on:
   "TP-Link Tapo C110"
 ```
 
+`register_camera.sh` **auto-detects** the API if `API_BASE` is unset: tries **127.0.0.1:8080** (gateway), **:9080** (nginx), **:8082** (device-service direct). Override with `export API_BASE=http://127.0.0.1:8082/api/v1` if needed. It **skips JWT** by default (`SKIP_AUTH=1`). The **node id** must exist in `edge_nodes` (seed uses `edge-node-a`).
+
 ### 5. Start Edge AI
 
 ```bash
@@ -119,7 +121,7 @@ python3 farm_edge_node.py
 ### Backend Health
 
 ```bash
-curl http://localhost:9080/api/v1/devices/nodes
+curl http://localhost:9080/api/v1/nodes
 curl http://localhost:9080/api/v1/cameras
 ```
 
