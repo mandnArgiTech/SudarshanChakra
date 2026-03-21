@@ -4,6 +4,8 @@ import { MOTOR_SCENARIOS } from "./motor";
 import { SIREN_SCENARIOS } from "./siren";
 import { SYSTEM_SCENARIOS } from "./system";
 
+export { ALERT_SCENARIOS };
+
 export const SCENARIOS = {
   alerts: ALERT_SCENARIOS,
   water: WATER_SCENARIOS,

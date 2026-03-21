@@ -38,7 +38,7 @@ fun OfflineBanner(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = Icons.Default.CloudOff,
+                imageVector = Icons.Filled.CloudOff,
                 contentDescription = "Offline",
                 tint = StatusOffline,
                 modifier = Modifier.size(20.dp)

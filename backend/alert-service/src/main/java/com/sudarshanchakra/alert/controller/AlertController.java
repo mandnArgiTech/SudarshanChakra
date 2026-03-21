@@ -1,5 +1,6 @@
 package com.sudarshanchakra.alert.controller;
 
+import com.sudarshanchakra.alert.dto.AlertPayload;
 import com.sudarshanchakra.alert.dto.AlertResponse;
 import com.sudarshanchakra.alert.dto.AlertUpdateRequest;
 import com.sudarshanchakra.alert.service.AlertService;
@@ -10,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +24,13 @@ import java.util.UUID;
 public class AlertController {
 
     private final AlertService alertService;
+
+    @PostMapping
+    @Operation(summary = "Create alert", description = "Ingest an alert (edge, simulator, or integration). Same JSON shape as MQTT alert payload.")
+    public ResponseEntity<AlertResponse> createAlert(@RequestBody AlertPayload payload) {
+        AlertResponse created = alertService.createFromPayload(payload);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
 
     @GetMapping
     @Operation(summary = "Get all alerts", description = "Retrieve paginated and filtered alerts")

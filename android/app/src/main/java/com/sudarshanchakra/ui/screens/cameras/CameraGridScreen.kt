@@ -27,9 +27,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -114,6 +116,7 @@ class CameraViewModel @Inject constructor(
     }
 }
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun CameraGridScreen(
     viewModel: CameraViewModel = androidx.hilt.navigation.compose.hiltViewModel()
@@ -205,30 +208,30 @@ fun CameraGridScreen(
                 }
             }
             else -> {
-                val pullRefreshState = rememberPullToRefreshState()
-                LaunchedEffect(uiState.isRefreshing) {
-                    if (!uiState.isRefreshing) {
-                        pullRefreshState.endRefresh()
-                    }
-                }
-                
-                Box(modifier = Modifier.fillMaxSize()) {
-                    PullToRefreshBox(
-                        isRefreshing = uiState.isRefreshing,
-                        onRefresh = { viewModel.refresh() },
-                        state = pullRefreshState,
+                val pullRefreshState = rememberPullRefreshState(
+                    refreshing = uiState.isRefreshing,
+                    onRefresh = { viewModel.loadCameras() },
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pullRefresh(pullRefreshState),
+                ) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            items(uiState.cameras, key = { it.id }) { camera ->
-                                CameraCard(camera = camera)
-                            }
+                        items(uiState.cameras, key = { it.id }) { camera ->
+                            CameraCard(camera = camera)
                         }
                     }
+                    PullRefreshIndicator(
+                        refreshing = uiState.isRefreshing,
+                        state = pullRefreshState,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
                 }
             }
         }

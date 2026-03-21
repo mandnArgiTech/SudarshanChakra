@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:bg": "CI=true vite",
     "build": "vite build",
     "preview": "vite preview"
   },

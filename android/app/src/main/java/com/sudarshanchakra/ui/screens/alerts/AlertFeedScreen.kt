@@ -22,20 +22,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import com.sudarshanchakra.service.MqttForegroundService
 import androidx.compose.ui.Modifier
@@ -63,6 +64,7 @@ import com.sudarshanchakra.ui.theme.TextPrimary
 import com.sudarshanchakra.ui.theme.TextSecondary
 import com.sudarshanchakra.ui.theme.WarningPriority
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun AlertFeedScreen(
     onAlertClick: (String) -> Unit,
@@ -222,13 +224,10 @@ fun AlertFeedScreen(
                 }
             }
             else -> {
-                val pullRefreshState = rememberPullToRefreshState()
-                LaunchedEffect(uiState.isRefreshing) {
-                    if (!uiState.isRefreshing) {
-                        pullRefreshState.endRefresh()
-                    }
-                }
-                
+                val pullRefreshState = rememberPullRefreshState(
+                    refreshing = uiState.isRefreshing,
+                    onRefresh = { viewModel.refresh() },
+                )
                 Box(modifier = Modifier.fillMaxSize()) {
                     // Water tank strip — tap to navigate to WaterTanksScreen
                     Column(modifier = Modifier.fillMaxSize()) {
@@ -242,11 +241,11 @@ fun AlertFeedScreen(
                         }
 
                         val mqttConnected by MqttForegroundService.mqttConnected.collectAsStateWithLifecycle()
-                        
-                        PullToRefreshBox(
-                            isRefreshing = uiState.isRefreshing,
-                            onRefresh = { viewModel.refresh() },
-                            state = pullRefreshState,
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pullRefresh(pullRefreshState),
                         ) {
                             LazyColumn(
                                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
@@ -267,10 +266,16 @@ fun AlertFeedScreen(
                                 }
                                 item { Spacer(modifier = Modifier.height(16.dp)) }
                             }
+                            PullRefreshIndicator(
+                                refreshing = uiState.isRefreshing,
+                                state = pullRefreshState,
+                                modifier = Modifier.align(Alignment.TopCenter),
+                            )
                         }
                     }
                 }
             }
+        }
         }
     }
 }

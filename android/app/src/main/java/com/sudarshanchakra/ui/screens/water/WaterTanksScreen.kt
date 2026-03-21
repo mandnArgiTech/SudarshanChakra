@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,7 +25,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sudarshanchakra.domain.model.water.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun WaterTanksScreen(
     onMotorClick: (String) -> Unit,
@@ -50,49 +52,64 @@ fun WaterTanksScreen(
             return@Scaffold
         }
 
-        Column(
+        val pullRefreshState = rememberPullRefreshState(
+            refreshing = ui.isRefreshing,
+            onRefresh = { viewModel.refresh() },
+        )
+
+        Box(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .pullRefresh(pullRefreshState),
         ) {
-            // Low alert banner
-            if (ui.hasLowAlert) {
-                AlertBanner()
-            }
-
-            // Farm section
-            if (ui.farmTanks.isNotEmpty()) {
-                LocationSection(
-                    title = "Sangareddy Farm",
-                    icon  = "🌾",
-                    tanks = ui.farmTanks,
-                    motor = ui.motors.find { it.location == "farm" },
-                    onMotorClick = onMotorClick,
-                )
-            }
-
-            // Home section
-            if (ui.homeTanks.isNotEmpty()) {
-                LocationSection(
-                    title = "Home",
-                    icon  = "🏠",
-                    tanks = ui.homeTanks,
-                    motor = ui.motors.find { it.location == "home" },
-                    onMotorClick = onMotorClick,
-                )
-            }
-
-            ui.error?.let { err ->
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
-                    Text(err, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                // Low alert banner
+                if (ui.hasLowAlert) {
+                    AlertBanner()
                 }
-            }
 
-            Spacer(Modifier.height(80.dp))
+                // Farm section
+                if (ui.farmTanks.isNotEmpty()) {
+                    LocationSection(
+                        title = "Sangareddy Farm",
+                        icon = "🌾",
+                        tanks = ui.farmTanks,
+                        motor = ui.motors.find { it.location == "farm" },
+                        onMotorClick = onMotorClick,
+                    )
+                }
+
+                // Home section
+                if (ui.homeTanks.isNotEmpty()) {
+                    LocationSection(
+                        title = "Home",
+                        icon = "🏠",
+                        tanks = ui.homeTanks,
+                        motor = ui.motors.find { it.location == "home" },
+                        onMotorClick = onMotorClick,
+                    )
+                }
+
+                ui.error?.let { err ->
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                        Text(err, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+                    }
+                }
+
+                Spacer(Modifier.height(80.dp))
             }
+            PullRefreshIndicator(
+                refreshing = ui.isRefreshing,
+                state = pullRefreshState,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
     }
 }

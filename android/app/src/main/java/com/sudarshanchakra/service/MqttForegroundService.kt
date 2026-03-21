@@ -370,7 +370,12 @@ class MqttForegroundService : Service() {
             val intent = Intent(context, MqttForegroundService::class.java).apply {
                 action = ACTION_START
             }
-            ContextCompat.startForegroundService(context, intent)
+            try {
+                ContextCompat.startForegroundService(context, intent)
+            } catch (e: Exception) {
+                // Android 12+ may block FGS from background (e.g. BOOT_COMPLETED before user opens app).
+                Log.w(TAG, "Could not start foreground MQTT service", e)
+            }
         }
 
         fun stop(context: Context) {

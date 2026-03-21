@@ -1,17 +1,32 @@
 import mqtt, { type MqttClient as IMqttClient } from "mqtt";
 
+export type MqttAuthOptions = {
+  username?: string;
+  password?: string;
+};
+
 export class SimulatorMqttClient {
   private client: IMqttClient | null = null;
   private readonly topicHandlers = new Map<string, (payload: Buffer) => void>();
 
-  connect(brokerUrl: string): Promise<void> {
+  /**
+   * RabbitMQ MQTT / Web MQTT expects the same user as AMQP (e.g. admin + RABBITMQ_DEFAULT_PASS).
+   */
+  connect(brokerUrl: string, auth?: MqttAuthOptions): Promise<void> {
     return new Promise((resolve, reject) => {
       this.disconnect();
-      const c = mqtt.connect(brokerUrl, {
+      const opts: Parameters<typeof mqtt.connect>[1] = {
         clientId: `simulator-${Date.now()}`,
         clean: true,
         reconnectPeriod: 4000,
-      });
+      };
+      const u = auth?.username?.trim();
+      const p = auth?.password ?? "";
+      if (u) {
+        opts.username = u;
+        opts.password = p;
+      }
+      const c = mqtt.connect(brokerUrl, opts);
       this.client = c;
       const ok = () => {
         c.off("error", fail);

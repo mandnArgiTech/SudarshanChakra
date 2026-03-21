@@ -18,7 +18,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws/alerts")
+        // "/ws/alerts" is the canonical path. "/ws" is kept for older dashboards / SockJS base URLs
+        // that request /ws/info (would otherwise hit static resource handler and spam logs).
+        registry.addEndpoint("/ws/alerts", "/ws")
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
     }

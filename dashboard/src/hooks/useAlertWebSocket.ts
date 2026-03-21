@@ -3,7 +3,10 @@ import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import type { Alert } from '@/types';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8081/ws';
+// Must match alert-service WebSocketConfig: registry.addEndpoint("/ws/alerts").withSockJS()
+const WS_URL =
+  import.meta.env.VITE_WS_URL ||
+  (import.meta.env.DEV ? '/ws/alerts' : 'http://localhost:8081/ws/alerts');
 
 interface UseAlertWebSocketOptions {
   onAlert?: (alert: Alert) => void;

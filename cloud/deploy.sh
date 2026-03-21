@@ -103,8 +103,9 @@ docker compose -f "$(basename "${COMPOSE_FILE}")" up -d
 # 4. Wait for RabbitMQ and run topology init
 # -----------------------------------------------------------------------------
 echo "[WAIT] RabbitMQ..."
+COMPOSE_BASE="$(basename "${COMPOSE_FILE}")"
 for i in {1..30}; do
-  if docker exec rabbitmq rabbitmq-diagnostics check_running &>/dev/null; then
+  if docker compose -f "${COMPOSE_BASE}" exec -T rabbitmq rabbitmq-diagnostics check_running &>/dev/null; then
     break
   fi
   if [[ $i -eq 30 ]]; then

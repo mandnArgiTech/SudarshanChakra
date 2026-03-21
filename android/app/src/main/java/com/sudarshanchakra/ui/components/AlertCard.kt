@@ -20,23 +20,19 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DismissDirection
-import androidx.compose.material3.DismissState
-import androidx.compose.material3.DismissValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SwipeToDismiss
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -85,7 +81,7 @@ fun AlertCard(
     )
 
     LaunchedEffect(alert.id) {
-        if (dismissState.currentValue != SwipeToDismissBoxValue.Default) {
+        if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
             dismissState.reset()
         }
     }
@@ -95,23 +91,23 @@ fun AlertCard(
         backgroundContent = {
             val direction = dismissState.dismissDirection
             val alignment = when (direction) {
-                DismissDirection.StartToEnd -> Alignment.CenterStart
-                DismissDirection.EndToStart -> Alignment.CenterEnd
+                SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
+                SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
                 else -> Alignment.Center
             }
             val icon = when (direction) {
-                DismissDirection.StartToEnd -> Icons.Default.Check
-                DismissDirection.EndToStart -> Icons.Default.Close
+                SwipeToDismissBoxValue.StartToEnd -> Icons.Filled.Check
+                SwipeToDismissBoxValue.EndToStart -> Icons.Filled.Close
                 else -> null
             }
-            val bgColor = when (direction) {
-                DismissDirection.StartToEnd -> Color(0xFF4CAF50)
-                DismissDirection.EndToStart -> Color(0xFFF44336)
+            val bgColor: Color = when (direction) {
+                SwipeToDismissBoxValue.StartToEnd -> Color(0xFF4CAF50)
+                SwipeToDismissBoxValue.EndToStart -> Color(0xFFF44336)
                 else -> Color.Transparent
             }
             val text = when (direction) {
-                DismissDirection.StartToEnd -> "Acknowledge"
-                DismissDirection.EndToStart -> "False Positive"
+                SwipeToDismissBoxValue.StartToEnd -> "Acknowledge"
+                SwipeToDismissBoxValue.EndToStart -> "False Positive"
                 else -> ""
             }
 
@@ -119,7 +115,7 @@ fun AlertCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
-                    .background(bgColor)
+                    .background(color = bgColor)
                     .padding(horizontal = 20.dp),
                 contentAlignment = alignment
             ) {

@@ -30,7 +30,8 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: rabbitmq
+    # No container_name: avoids conflict with an existing `docker run --name rabbitmq` (AGENTS.md).
+    # Other services still reach this broker via the Compose DNS name `rabbitmq`.
     hostname: farm-broker
     ports:
       - "5672:5672"
@@ -146,6 +147,7 @@ services:
 
   simulator:
     profiles: [dev]
+    image: sudarshanchakra/simulator:latest
     build:
       context: ../simulator
       dockerfile: Dockerfile

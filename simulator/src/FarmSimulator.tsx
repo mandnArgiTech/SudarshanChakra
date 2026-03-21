@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { buildAlertPayloadFromZone } from "./api/alertFromZone";
+import {
+  filterZonesForNode,
+  loadDeviceInventory,
+  type DeviceCamera,
+  type DeviceNode,
+  type DeviceZone,
+} from "./api/deviceInventory";
 import { SimulatorMqttClient } from "./mqtt/MqttClient";
-import { SCENARIOS, type ScenarioKey } from "./scenarios";
+import { ALERT_SCENARIOS, SCENARIOS, type ScenarioKey } from "./scenarios";
 import { SEQUENCES } from "./scenarios/sequences";
 import type { LogEntry, ScenarioCategory } from "./types";
 import type { AlertScenario } from "./types";
@@ -10,12 +18,19 @@ import type { SirenScenario } from "./types";
 import type { SystemScenario } from "./types";
 
 const BROKER_DEFAULT = "ws://localhost:15675/ws";
-const API_DEFAULT = "http://localhost:8080";
+/** Dev: empty → fetch `/api/...` via Vite proxy to gateway :8080 */
+const API_DEFAULT = import.meta.env.DEV ? "" : "http://localhost:8080";
+/** Match `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` in cloud/.env or Docker env */
+const MQTT_USER_DEFAULT = "admin";
+const MQTT_PASS_DEFAULT = "devpassword123";
+
+const DOCS_SEED = "/docs/POSTGRES_DOCKER_SQL.md";
 
 const PRIORITY_COLORS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
   critical: { bg: "#3a0a08", border: "#c8553d", text: "#e88070", dot: "#ff4433" },
   high: { bg: "#3a2008", border: "#d4832f", text: "#e8a860", dot: "#ff8833" },
   warning: { bg: "#3a3008", border: "#b8962e", text: "#d4c060", dot: "#eebb33" },
+  info: { bg: "#142428", border: "#3a8acc", text: "#8ac0e8", dot: "#55aaff" },
 };
 
 const CATEGORY_META: Record<ScenarioKey | "custom", { icon: string; color: string; label: string }> = {
@@ -27,42 +42,15 @@ const CATEGORY_META: Record<ScenarioKey | "custom", { icon: string; color: strin
   custom: { icon: "✎", color: "#8a8aaa", label: "Custom" },
 };
 
-function uuid(): string {
-  return "xxxxxxxx-xxxx-4xxx".replace(/x/g, () => ((Math.random() * 16) | 0).toString(16));
-}
-
-function ts(): string {
-  return new Date().toISOString();
-}
+type NonAlertCategory = Exclude<ScenarioCategory, "alerts">;
+type NonAlertScenario = WaterScenario | MotorScenario | SirenScenario | SystemScenario;
 
 function buildPayload(
-  category: ScenarioCategory,
-  scenario: AlertScenario | WaterScenario | MotorScenario | SirenScenario | SystemScenario,
-  nodeId: string,
+  category: NonAlertCategory,
+  scenario: NonAlertScenario,
+  ctx: { nodeId: string; defaultCameraId?: string },
 ): { topic: string; payload: Record<string, unknown> } {
   const now = Date.now() / 1000;
-  if (category === "alerts") {
-    const s = scenario as AlertScenario;
-    return {
-      topic: `farm/alerts/${s.priority}`,
-      payload: {
-        alert_id: uuid(),
-        node_id: nodeId,
-        camera_id: s.cam,
-        zone_id: s.zone.toLowerCase().replace(/ /g, "_"),
-        zone_name: s.zone,
-        zone_type: s.priority === "critical" ? "zero_tolerance" : "intrusion",
-        detection_class: s.cls,
-        confidence: s.conf,
-        priority: s.priority,
-        status: "new",
-        timestamp: now,
-        created_at: ts(),
-        mock: true,
-        simulator: true,
-      },
-    };
-  }
   if (category === "water") {
     const s = scenario as WaterScenario;
     return {
@@ -88,7 +76,7 @@ function buildPayload(
     const s = scenario as MotorScenario;
     return {
       topic: "motor1_sim/motor/status",
-      payload: { motor_id: "motor-1", state: s.state, node_id: nodeId, timestamp: now },
+      payload: { motor_id: "motor-1", state: s.state, node_id: ctx.nodeId, timestamp: now },
     };
   }
   if (category === "siren") {
@@ -98,7 +86,7 @@ function buildPayload(
       topic: `farm/siren/${cmd}`,
       payload: {
         command: cmd,
-        node_id: nodeId,
+        node_id: ctx.nodeId,
         triggered_by: "simulator",
         siren_url: "http://sim/alert.mp3",
         timestamp: now,
@@ -109,14 +97,18 @@ function buildPayload(
     const s = scenario as SystemScenario;
     if (s.id.startsWith("node_")) {
       return {
-        topic: `farm/nodes/${nodeId}/status`,
-        payload: { node_id: nodeId, status: s.id === "node_online" ? "online" : "offline", timestamp: now },
+        topic: `farm/nodes/${ctx.nodeId}/status`,
+        payload: { node_id: ctx.nodeId, status: s.id === "node_online" ? "online" : "offline", timestamp: now },
       };
     }
     if (s.id.startsWith("cam_")) {
+      const cam = ctx.defaultCameraId;
+      if (!cam) {
+        return { topic: "farm/test", payload: { _skip: true, reason: "no_camera_in_inventory" } };
+      }
       return {
         topic: "farm/events/camera_status",
-        payload: { camera_id: "cam-03", event: s.id === "cam_online" ? "online" : "offline", ts: now },
+        payload: { camera_id: cam, event: s.id === "cam_online" ? "online" : "offline", ts: now },
       };
     }
     return {
@@ -129,15 +121,18 @@ function buildPayload(
 
 async function postAlertRest(apiBase: string, token: string | undefined, payload: Record<string, unknown>): Promise<string> {
   const base = apiBase.replace(/\/$/, "");
+  const url = base ? `${base}/api/v1/alerts` : "/api/v1/alerts";
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
-  const res = await fetch(`${base}/api/v1/alerts`, { method: "POST", headers, body: JSON.stringify(payload) });
+  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload) });
   const txt = await res.text().catch(() => "");
   return `${res.status} ${res.statusText}${txt ? ` — ${txt.slice(0, 200)}` : ""}`;
 }
 
 export default function FarmSimulator() {
   const [broker, setBroker] = useState(BROKER_DEFAULT);
+  const [mqttUser, setMqttUser] = useState(MQTT_USER_DEFAULT);
+  const [mqttPassword, setMqttPassword] = useState(MQTT_PASS_DEFAULT);
   const [apiBase, setApiBase] = useState(API_DEFAULT);
   const [bearerToken, setBearerToken] = useState("");
   const [nodeId, setNodeId] = useState("edge-node-a");
@@ -151,22 +146,83 @@ export default function FarmSimulator() {
   const [autoInterval, setAutoInterval] = useState(5);
   const [waterSim, setWaterSim] = useState<"off" | "fill" | "drain" | "fluctuate">("off");
   const [sequenceKey, setSequenceKey] = useState<string>("");
+
+  const [inventoryNodes, setInventoryNodes] = useState<DeviceNode[]>([]);
+  const [inventoryCameras, setInventoryCameras] = useState<DeviceCamera[]>([]);
+  const [inventoryZones, setInventoryZones] = useState<DeviceZone[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
+  const [zoneClassPick, setZoneClassPick] = useState<Record<string, string>>({});
+  const [zoneConfidence, setZoneConfidence] = useState<Record<string, number>>({});
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+
   const clientRef = useRef<SimulatorMqttClient | null>(null);
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const waterRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const seqTimersRef = useRef<number[]>([]);
   const logEndRef = useRef<HTMLDivElement | null>(null);
 
+  const camerasForNode = useMemo(
+    () => inventoryCameras.filter((c) => c.nodeId === nodeId),
+    [inventoryCameras, nodeId],
+  );
+
+  const nodeZones = useMemo(() => filterZonesForNode(camerasForNode, inventoryZones), [camerasForNode, inventoryZones]);
+
+  const defaultCameraId = camerasForNode[0]?.id;
+
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [log]);
+
+  useEffect(() => {
+    setZoneClassPick((prev) => {
+      const next = { ...prev };
+      for (const z of nodeZones) {
+        if (next[z.id] === undefined) {
+          next[z.id] = z.targetClasses?.[0] ?? "";
+        }
+      }
+      return next;
+    });
+    setZoneConfidence((prev) => {
+      const next = { ...prev };
+      for (const z of nodeZones) {
+        if (next[z.id] === undefined) next[z.id] = 0.9;
+      }
+      return next;
+    });
+  }, [nodeZones]);
 
   const addLog = useCallback((entry: Omit<LogEntry, "time">) => {
     setLog((prev) => [...prev.slice(-199), { ...entry, time: new Date().toLocaleTimeString() }]);
   }, []);
 
+  const refreshInventory = useCallback(async () => {
+    setInventoryLoading(true);
+    setInventoryError(null);
+    try {
+      const { nodes, cameras, zones } = await loadDeviceInventory(apiBase, bearerToken || undefined);
+      setInventoryNodes(nodes);
+      setInventoryCameras(cameras);
+      setInventoryZones(zones);
+      addLog({
+        type: "success",
+        msg: `Inventory: ${nodes.length} nodes, ${cameras.length} cameras, ${zones.length} zones`,
+      });
+      setNodeId((prev) => (nodes.length && !nodes.some((n) => n.id === prev) ? nodes[0]!.id : prev));
+    } catch (e) {
+      const msg = (e as Error).message;
+      setInventoryError(msg);
+      addLog({ type: "error", msg: `Inventory load failed: ${msg}` });
+    } finally {
+      setInventoryLoading(false);
+    }
+  }, [apiBase, bearerToken, addLog]);
+
   const publishMqtt = useCallback(
     (topic: string, payload: Record<string, unknown>) => {
+      if (payload._skip === true) return;
       const c = clientRef.current;
       if (!c?.isConnected) {
         addLog({ type: "warn", msg: "Not connected — MQTT publish skipped" });
@@ -180,6 +236,10 @@ export default function FarmSimulator() {
 
   const publish = useCallback(
     async (topic: string, payload: Record<string, unknown>) => {
+      if (payload._skip === true) {
+        addLog({ type: "warn", msg: "Skipped publish (no camera for system event — refresh inventory)" });
+        return;
+      }
       publishMqtt(topic, payload);
       if (topic.startsWith("farm/alerts/")) {
         try {
@@ -193,12 +253,33 @@ export default function FarmSimulator() {
     [addLog, apiBase, bearerToken, publishMqtt],
   );
 
+  const publishZoneAlert = useCallback(
+    async (zone: DeviceZone, detectionClass: string, confidence: number) => {
+      const cls = detectionClass.trim();
+      const targets = zone.targetClasses?.filter(Boolean) ?? [];
+      if (!cls) {
+        addLog({ type: "warn", msg: "Choose or enter a detection class for this zone" });
+        return;
+      }
+      if (targets.length > 0 && !targets.includes(cls)) {
+        addLog({
+          type: "warn",
+          msg: `detection_class "${cls}" must be one of: ${targets.join(", ")}`,
+        });
+        return;
+      }
+      const { topic, payload } = buildAlertPayloadFromZone(zone, nodeId, cls, confidence);
+      await publish(topic, payload);
+    },
+    [nodeId, publish, addLog],
+  );
+
   const fireScenario = useCallback(
-    (category: ScenarioCategory, scenario: (typeof SCENARIOS)[ScenarioKey][number]) => {
-      const { topic, payload } = buildPayload(category, scenario as never, nodeId);
+    (category: NonAlertCategory, scenario: NonAlertScenario) => {
+      const { topic, payload } = buildPayload(category, scenario, { nodeId, defaultCameraId });
       void publish(topic, payload);
     },
-    [nodeId, publish],
+    [nodeId, defaultCameraId, publish],
   );
 
   const doConnect = useCallback(() => {
@@ -206,7 +287,7 @@ export default function FarmSimulator() {
     addLog({ type: "info", msg: `Connecting MQTT ${broker}…` });
     const c = new SimulatorMqttClient();
     clientRef.current = c;
-    c.connect(broker)
+    c.connect(broker, { username: mqttUser, password: mqttPassword })
       .then(() => {
         setConnected(true);
         setConnecting(false);
@@ -220,7 +301,7 @@ export default function FarmSimulator() {
         setConnected(false);
         addLog({ type: "error", msg: `MQTT failed: ${e.message}` });
       });
-  }, [broker, addLog]);
+  }, [broker, mqttUser, mqttPassword, addLog]);
 
   const doDisconnect = useCallback(() => {
     clientRef.current?.disconnect();
@@ -242,12 +323,28 @@ export default function FarmSimulator() {
   }, [addLog]);
 
   const fireRandom = useCallback(() => {
-    const cats = Object.keys(SCENARIOS) as ScenarioKey[];
-    const cat = cats[Math.floor(Math.random() * cats.length)]!;
+    const nonAlertCats = (Object.keys(SCENARIOS) as ScenarioKey[]).filter((k) => k !== "alerts");
+    const pool: ScenarioKey[] = nodeZones.length > 0 ? ([...nonAlertCats, "alerts"] as ScenarioKey[]) : nonAlertCats;
+    if (pool.length === 0) {
+      addLog({ type: "warn", msg: "No scenarios / inventory — load zones first" });
+      return;
+    }
+    const cat = pool[Math.floor(Math.random() * pool.length)]!;
+    if (cat === "alerts") {
+      const z = nodeZones[Math.floor(Math.random() * nodeZones.length)]!;
+      const cls = z.targetClasses?.[0] ?? zoneClassPick[z.id] ?? "";
+      const conf = zoneConfidence[z.id] ?? 0.9;
+      if (!cls.trim()) {
+        addLog({ type: "warn", msg: "Random alert skipped: zone has no target_classes" });
+        return;
+      }
+      void publishZoneAlert(z, cls, conf);
+      return;
+    }
     const items = SCENARIOS[cat];
     const item = items[Math.floor(Math.random() * items.length)]!;
-    fireScenario(cat, item);
-  }, [fireScenario]);
+    fireScenario(cat, item as NonAlertScenario);
+  }, [nodeZones, zoneClassPick, zoneConfidence, publishZoneAlert, fireScenario, addLog]);
 
   const toggleAuto = useCallback(() => {
     if (autoMode) {
@@ -273,12 +370,23 @@ export default function FarmSimulator() {
 
   const fireAll = useCallback(() => {
     addLog({ type: "info", msg: "CHAOS: firing all scenarios…" });
+    let delay = 0;
     (Object.keys(SCENARIOS) as ScenarioKey[]).forEach((cat) => {
-      SCENARIOS[cat].forEach((s, i) => {
-        window.setTimeout(() => fireScenario(cat, s), i * 300);
+      if (cat === "alerts") {
+        nodeZones.forEach((z) => {
+          const cls = z.targetClasses?.[0] ?? zoneClassPick[z.id] ?? "";
+          if (!cls.trim()) return;
+          window.setTimeout(() => void publishZoneAlert(z, cls, zoneConfidence[z.id] ?? 0.9), delay);
+          delay += 300;
+        });
+        return;
+      }
+      SCENARIOS[cat].forEach((s) => {
+        window.setTimeout(() => fireScenario(cat, s as NonAlertScenario), delay);
+        delay += 300;
       });
     });
-  }, [fireScenario, addLog]);
+  }, [fireScenario, publishZoneAlert, nodeZones, zoneClassPick, zoneConfidence, addLog]);
 
   useEffect(() => {
     if (waterSim === "off") {
@@ -302,14 +410,14 @@ export default function FarmSimulator() {
         vol: volFor(pct),
         temp: 26 + Math.random() * 2,
       };
-      const { topic, payload } = buildPayload("water", scenario, nodeId);
+      const { topic, payload } = buildPayload("water", scenario, { nodeId, defaultCameraId });
       publishMqtt(topic, payload);
     }, waterSim === "fluctuate" ? 30000 : 2000);
     return () => {
       if (waterRef.current) clearInterval(waterRef.current);
       waterRef.current = null;
     };
-  }, [waterSim, nodeId, publishMqtt]);
+  }, [waterSim, nodeId, defaultCameraId, publishMqtt]);
 
   const playSequence = useCallback(
     (key: string) => {
@@ -320,14 +428,45 @@ export default function FarmSimulator() {
       addLog({ type: "info", msg: `Sequence: ${seq.label}` });
       seq.steps.forEach((step) => {
         const id = window.setTimeout(() => {
-          const list = SCENARIOS[step.category as ScenarioKey];
+          if (step.category === "alerts") {
+            const z = nodeZones.find((nz) => nz.id === step.zoneId);
+            if (!z) {
+              addLog({ type: "warn", msg: `Sequence skip: zone "${step.zoneId}" not in inventory for node ${nodeId}` });
+              return;
+            }
+            void publishZoneAlert(z, step.detectionClass, zoneConfidence[z.id] ?? 0.9);
+            return;
+          }
+          const list = SCENARIOS[step.category];
           const sc = list.find((x) => x.id === step.scenarioId);
-          if (sc) fireScenario(step.category, sc);
+          if (sc) fireScenario(step.category, sc as NonAlertScenario);
         }, step.delayMs);
         seqTimersRef.current.push(id);
       });
     },
-    [addLog, fireScenario],
+    [addLog, fireScenario, nodeZones, nodeId, publishZoneAlert, zoneConfidence],
+  );
+
+  const applyPresetClass = useCallback(
+    (preset: AlertScenario) => {
+      if (!selectedZoneId) {
+        addLog({ type: "warn", msg: "Select a zone first (click a zone card), then apply a preset class" });
+        return;
+      }
+      const z = nodeZones.find((nz) => nz.id === selectedZoneId);
+      if (!z) return;
+      const targets = z.targetClasses?.filter(Boolean) ?? [];
+      if (targets.length > 0 && !targets.includes(preset.cls)) {
+        addLog({
+          type: "warn",
+          msg: `Preset "${preset.label}" uses class "${preset.cls}" — not in zone targets [${targets.join(", ")}]`,
+        });
+        return;
+      }
+      setZoneClassPick((p) => ({ ...p, [selectedZoneId]: preset.cls }));
+      addLog({ type: "info", msg: `Preset "${preset.label}" → detection_class=${preset.cls} for zone ${z.name}` });
+    },
+    [selectedZoneId, nodeZones, addLog],
   );
 
   return (
@@ -358,7 +497,7 @@ export default function FarmSimulator() {
           </div>
           <div>
             <div style={{ fontFamily: "Outfit", fontWeight: 600, fontSize: 16, color: "#e8e4dc" }}>Farm Event Simulator</div>
-            <div style={{ fontSize: 11, color: "#6a665e" }}>SudarshanChakra — MQTT + REST</div>
+            <div style={{ fontSize: 11, color: "#6a665e" }}>SudarshanChakra — MQTT + REST (inventory-driven alerts)</div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
@@ -376,7 +515,7 @@ export default function FarmSimulator() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 0, minHeight: "calc(100vh - 69px)" }}>
         <div style={{ overflow: "auto", padding: 20 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
             <label style={{ fontSize: 11, color: "#6a665e" }}>
               MQTT (WebSocket)
               <input
@@ -387,8 +526,36 @@ export default function FarmSimulator() {
               />
             </label>
             <label style={{ fontSize: 11, color: "#6a665e" }}>
-              API base (gateway)
-              <input value={apiBase} onChange={(e) => setApiBase(e.target.value)} style={inp} placeholder="http://localhost:8080" />
+              API base (gateway){import.meta.env.DEV && <span style={{ color: "#4a8c5c" }}> · dev: leave empty for /api proxy</span>}
+              <input
+                value={apiBase}
+                onChange={(e) => setApiBase(e.target.value)}
+                style={inp}
+                placeholder={import.meta.env.DEV ? "(empty) or http://host:8080" : "http://localhost:8080"}
+              />
+            </label>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+            <label style={{ fontSize: 11, color: "#6a665e" }}>
+              MQTT user (RabbitMQ)
+              <input
+                value={mqttUser}
+                onChange={(e) => setMqttUser(e.target.value)}
+                style={inp}
+                placeholder="admin"
+                autoComplete="username"
+              />
+            </label>
+            <label style={{ fontSize: 11, color: "#6a665e" }}>
+              MQTT password
+              <input
+                type="password"
+                value={mqttPassword}
+                onChange={(e) => setMqttPassword(e.target.value)}
+                style={inp}
+                placeholder="RABBITMQ_DEFAULT_PASS"
+                autoComplete="current-password"
+              />
             </label>
           </div>
           <input
@@ -397,8 +564,54 @@ export default function FarmSimulator() {
             placeholder="Optional JWT for REST (paste from dashboard login)"
             style={{ ...inp, width: "100%", marginBottom: 8 }}
           />
+
+          <div
+            style={{
+              marginBottom: 16,
+              padding: 12,
+              background: "#141820",
+              border: "1px solid #2a2c34",
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontFamily: "Outfit", fontWeight: 600, fontSize: 12, color: "#8a8680" }}>Device inventory</span>
+              <button type="button" onClick={() => void refreshInventory()} disabled={inventoryLoading} style={btn(false)}>
+                {inventoryLoading ? "Loading…" : "Refresh inventory"}
+              </button>
+              <label style={{ fontSize: 11, color: "#6a665e", display: "flex", alignItems: "center", gap: 6 }}>
+                Node
+                <select
+                  value={nodeId}
+                  onChange={(e) => setNodeId(e.target.value)}
+                  style={{ ...inp, minWidth: 160 }}
+                >
+                  {inventoryNodes.length === 0 && <option value={nodeId}>{nodeId}</option>}
+                  {inventoryNodes.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.displayName || n.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span style={{ fontSize: 11, color: "#5a564e" }}>
+                {camerasForNode.length} cams · {nodeZones.length} zones
+              </span>
+            </div>
+            {inventoryError && <div style={{ fontSize: 11, color: "#c8553d", marginBottom: 6 }}>{inventoryError}</div>}
+            {nodeZones.length === 0 && !inventoryLoading && (
+              <div style={{ fontSize: 11, color: "#6a665e", lineHeight: 1.5 }}>
+                No zones for this node in the API. Seed cameras/zones (see{" "}
+                <code style={{ color: "#8a8680" }}>{DOCS_SEED}</code>) or register via device-service /{" "}
+                <code style={{ color: "#8a8680" }}>scripts/register_camera.sh</code>.
+              </div>
+            )}
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 120px auto", gap: 8, marginBottom: 16 }}>
-            <input value={nodeId} onChange={(e) => setNodeId(e.target.value)} placeholder="Node ID" style={inp} />
+            <div style={{ fontSize: 11, color: "#5a564e", padding: "8px 0" }}>
+              MQTT uses Node ID above; alerts use the same node_id in payloads.
+            </div>
             <button type="button" onClick={connected ? doDisconnect : doConnect} disabled={connecting} style={btn(connected)}>
               {connected ? "Disconnect" : "Connect"}
             </button>
@@ -457,22 +670,122 @@ export default function FarmSimulator() {
             </button>
           </div>
 
-          {activeTab !== "custom" ? (
+          {activeTab === "alerts" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ fontSize: 11, color: "#6a665e" }}>
+                Fire alerts from <strong>real zones</strong> for the selected node (device-service / DB). Select a zone for presets.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 8 }}>
+                {nodeZones.map((z) => {
+                  const pc = PRIORITY_COLORS[z.priority] || PRIORITY_COLORS.info;
+                  const sel = selectedZoneId === z.id;
+                  const targets = z.targetClasses?.filter(Boolean) ?? [];
+                  const clsVal = zoneClassPick[z.id] ?? "";
+                  const confVal = zoneConfidence[z.id] ?? 0.9;
+                  return (
+                    <div
+                      key={z.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedZoneId(z.id)}
+                      onKeyDown={(e) => e.key === "Enter" && setSelectedZoneId(z.id)}
+                      style={{
+                        background: pc.bg,
+                        border: `1px solid ${sel ? "#d4832f" : pc.border}`,
+                        borderRadius: 8,
+                        padding: "12px 14px",
+                        cursor: "pointer",
+                        color: "#c8c4bc",
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 600, color: pc.text }}>{z.name}</div>
+                      <div style={{ fontSize: 10, color: "#5a564e", marginBottom: 8 }}>
+                        {z.id} · cam {z.cameraId} · {z.zoneType} · {z.priority}
+                      </div>
+                      <label style={{ fontSize: 10, color: "#6a665e", display: "block", marginBottom: 4 }}>detection_class</label>
+                      {targets.length > 0 ? (
+                        <select
+                          value={clsVal}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setZoneClassPick((p) => ({ ...p, [z.id]: e.target.value }));
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ ...inp, marginBottom: 8, fontSize: 12 }}
+                        >
+                          {targets.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          value={clsVal}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setZoneClassPick((p) => ({ ...p, [z.id]: e.target.value }));
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder="required (no target_classes in zone)"
+                          style={{ ...inp, marginBottom: 8, fontSize: 12 }}
+                        />
+                      )}
+                      <label style={{ fontSize: 10, color: "#6a665e", display: "block", marginBottom: 4 }}>confidence</label>
+                      <input
+                        type="number"
+                        step={0.01}
+                        min={0}
+                        max={1}
+                        value={confVal}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setZoneConfidence((p) => ({ ...p, [z.id]: +e.target.value }));
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ ...inp, marginBottom: 8, fontSize: 12 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void publishZoneAlert(z, clsVal, confVal);
+                        }}
+                        style={{ ...btn(false), width: "100%", fontSize: 12 }}
+                      >
+                        Fire alert
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {nodeZones.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, color: "#6a665e", marginBottom: 6 }}>
+                    Presets (set <strong>detection_class</strong> for selected zone — must match zone target_classes)
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {ALERT_SCENARIOS.map((p) => (
+                      <button key={p.id} type="button" onClick={() => applyPresetClass(p)} style={{ ...btn(false), fontSize: 11 }}>
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : activeTab !== "custom" ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
               {SCENARIOS[activeTab].map((s) => {
-                const pc =
-                  "priority" in s && s.priority
-                    ? PRIORITY_COLORS[s.priority] || { bg: "#1a1c24", border: "#2a2c34", text: "#c8c4bc", dot: "#888" }
-                    : { bg: "#141620", border: "#2a2c34", text: "#c8c4bc", dot: "#888" };
                 const meta = CATEGORY_META[activeTab];
                 return (
                   <button
                     key={s.id}
                     type="button"
-                    onClick={() => fireScenario(activeTab, s)}
+                    onClick={() => fireScenario(activeTab as NonAlertCategory, s as NonAlertScenario)}
                     style={{
-                      background: activeTab === "alerts" ? pc.bg : "#141620",
-                      border: `1px solid ${activeTab === "alerts" ? pc.border : meta.color}44`,
+                      background: "#141620",
+                      border: `1px solid ${meta.color}44`,
                       borderRadius: 8,
                       padding: "12px 14px",
                       cursor: "pointer",
@@ -481,12 +794,7 @@ export default function FarmSimulator() {
                       fontFamily: "inherit",
                     }}
                   >
-                    <div style={{ fontSize: 13, fontWeight: 500, color: activeTab === "alerts" ? pc.text : "#c8c4bc" }}>{s.label}</div>
-                    {activeTab === "alerts" && "cam" in s && (
-                      <div style={{ fontSize: 11, color: "#5a564e" }}>
-                        {s.cam} · {s.zone} · {(s.conf * 100).toFixed(0)}%
-                      </div>
-                    )}
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "#c8c4bc" }}>{s.label}</div>
                     {activeTab === "water" && "pct" in s && (
                       <div style={{ fontSize: 11, color: "#5a564e" }}>
                         {s.pct}% · {s.vol}L · {s.temp}°C

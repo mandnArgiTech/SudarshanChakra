@@ -1,5 +1,6 @@
 package com.sudarshanchakra.alert.service;
 
+import com.sudarshanchakra.alert.dto.AlertPayload;
 import com.sudarshanchakra.alert.dto.AlertResponse;
 import com.sudarshanchakra.alert.dto.AlertUpdateRequest;
 import com.sudarshanchakra.alert.model.Alert;
@@ -22,6 +23,7 @@ import java.util.UUID;
 public class AlertService {
 
     private final AlertRepository alertRepository;
+    private final WebSocketService webSocketService;
 
     @Transactional(readOnly = true)
     public Page<AlertResponse> getAlerts(String priority, String status, String nodeId, Pageable pageable) {
@@ -34,6 +36,51 @@ public class AlertService {
         Alert alert = alertRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Alert not found: " + id));
         return AlertResponse.fromEntity(alert);
+    }
+
+    /**
+     * Create an alert from REST or simulator JSON (same shape as MQTT {@link AlertPayload}).
+     */
+    @Transactional
+    public AlertResponse createFromPayload(AlertPayload payload) {
+        if (payload.getDetectionClass() == null || payload.getDetectionClass().isBlank()) {
+            throw new IllegalArgumentException("detection_class is required");
+        }
+        if (payload.getPriority() == null || payload.getPriority().isBlank()) {
+            throw new IllegalArgumentException("priority is required");
+        }
+
+        UUID id = UUID.randomUUID();
+        if (payload.getAlertId() != null && !payload.getAlertId().isBlank()) {
+            try {
+                id = UUID.fromString(payload.getAlertId().trim());
+            } catch (IllegalArgumentException e) {
+                log.warn("Ignoring invalid alert_id '{}', using {}", payload.getAlertId(), id);
+            }
+        }
+
+        Alert alert = Alert.builder()
+                .id(id)
+                .nodeId(payload.getNodeId())
+                .cameraId(payload.getCameraId())
+                .zoneId(payload.getZoneId())
+                .zoneName(payload.getZoneName())
+                .zoneType(payload.getZoneType())
+                .priority(payload.getPriority())
+                .detectionClass(payload.getDetectionClass())
+                .confidence(payload.getConfidence())
+                .bbox(payload.getBbox() != null ? payload.getBbox().toArray(new Float[0]) : null)
+                .snapshotUrl(payload.getSnapshotUrl())
+                .workerSuppressed(payload.getWorkerSuppressed() != null ? payload.getWorkerSuppressed() : false)
+                .metadata(payload.getMetadata())
+                .status("new")
+                .build();
+
+        // Flush so FK violations fail here (not after broadcasting to WebSocket clients).
+        Alert saved = alertRepository.saveAndFlush(alert);
+        log.info("Created alert {} via REST (priority={})", saved.getId(), saved.getPriority());
+        webSocketService.broadcastAlert(AlertResponse.fromEntity(saved));
+        return AlertResponse.fromEntity(saved);
     }
 
     @Transactional

@@ -10,8 +10,16 @@
 # See AGENTS.md for stack versions, CI, and Docker gotchas.
 #
 # Components: backend (Java/Spring Boot), dashboard (React/Vite),
-#   edge (Python/YOLO), android (Kotlin/Compose), firmware (ESP32/Arduino),
+#   simulator (React/Vite farm MQTT simulator), edge (Python/YOLO),
+#   android (Kotlin/Compose), firmware (ESP32/Arduino),
 #   cloud (PostgreSQL/RabbitMQ), AlertManagement (Python/Raspberry Pi)
+#
+# Invariants:
+#   - set -uo pipefail: unset vars and pipeline errors abort (use ${var:-} where optional).
+#   - Run from repo root (ensure_repo_root checks required directories).
+#   - --menu / -m is exclusive: other command arguments are ignored with a warning.
+#   - logs/service.pids: deploy-backend appends; removes stale lines for backend ports
+#     before adding new ones. Set RESET_SERVICE_PIDS=1 to truncate the file first.
 # ============================================================================
 
 set -uo pipefail
@@ -62,11 +70,12 @@ fi
 
 _ts() { date '+%H:%M:%S'; }
 
-log_info()    { printf "${BLUE}[%s]${RESET} %s\n" "$(_ts)" "$1"; }
-log_success() { printf "${GREEN}[%s] OK${RESET} %s\n" "$(_ts)" "$1"; }
-log_warn()    { printf "${YELLOW}[%s] WARN${RESET} %s\n" "$(_ts)" "$1" >&2; }
-log_error()   { printf "${RED}[%s] FAIL${RESET} %s\n" "$(_ts)" "$1" >&2; }
-log_debug()   { [[ "${VERBOSE}" -eq 1 ]] && printf "${DIM}[%s] DBG  %s${RESET}\n" "$(_ts)" "$1"; return 0; }
+# [SC] prefix helps grep aggregated CI / nohup logs for this script only.
+log_info()    { printf "${BLUE}[%s]${RESET} [SC] %s\n" "$(_ts)" "$1"; }
+log_success() { printf "${GREEN}[%s] OK${RESET} [SC] %s\n" "$(_ts)" "$1"; }
+log_warn()    { printf "${YELLOW}[%s] WARN${RESET} [SC] %s\n" "$(_ts)" "$1" >&2; }
+log_error()   { printf "${RED}[%s] FAIL${RESET} [SC] %s\n" "$(_ts)" "$1" >&2; }
+log_debug()   { [[ "${VERBOSE}" -eq 1 ]] && printf "${DIM}[%s] DBG${RESET} [SC] %s\n" "$(_ts)" "$1"; return 0; }
 
 die() { log_error "$1"; exit 1; }
 
@@ -112,6 +121,11 @@ RABBITMQ_PASS="${RABBITMQ_PASS:-devpassword123}"
 SKIP_ANDROID="${SKIP_ANDROID:-0}"
 SKIP_FIRMWARE="${SKIP_FIRMWARE:-0}"
 SKIP_DASHBOARD="${SKIP_DASHBOARD:-0}"
+SKIP_SIMULATOR="${SKIP_SIMULATOR:-0}"
+# Set to 1 before deploy-backend to clear logs/service.pids before recording PIDs.
+RESET_SERVICE_PIDS="${RESET_SERVICE_PIDS:-0}"
+
+readonly CLOUD_COMPOSE_FILE="docker-compose.vps.yml"
 
 # Service names and ports (boot order: dependencies first, gateway last)
 BACKEND_SERVICES=(auth-service device-service alert-service siren-service api-gateway)
@@ -216,7 +230,7 @@ require_cmd() {
 }
 
 ensure_repo_root() {
-  for dir in backend dashboard edge cloud; do
+  for dir in backend dashboard edge cloud simulator; do
     [[ -d "${ROOT_DIR}/${dir}" ]] \
       || die "'${dir}/' not found. Run this script from the SudarshanChakra repo root."
   done
@@ -337,7 +351,7 @@ run_pip() {
   if [[ "${PIP_CMD}" == *" -m pip"* ]]; then
     PIP_BREAK_SYSTEM_PACKAGES=1 "${PYTHON_BIN}" -m pip "$@"
   else
-    PIP_BREAK_SYSTEM_PACKAGES=1 ${PIP_CMD} "$@"
+    PIP_BREAK_SYSTEM_PACKAGES=1 "${PIP_CMD}" "$@"
   fi
 }
 
@@ -361,36 +375,44 @@ setup_python_venv() {
   run_pip install --upgrade pip wheel -q || log_warn "pip upgrade failed."
 }
 
+# True (0) if something is listening on TCP port (lsof is exact; avoids :80 vs :8080 ambiguity).
+port_is_listening() {
+  local port=$1
+  [[ "${port}" =~ ^[0-9]+$ ]] || return 1
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
+    return $?
+  fi
+  if command -v ss >/dev/null 2>&1; then
+    if ss -H -ltn "sport = :${port}" 2>/dev/null | grep -q .; then
+      return 0
+    fi
+  fi
+  (echo > "/dev/tcp/127.0.0.1/${port}") 2>/dev/null
+}
+
 check_port_free() {
   local port=$1
-  if command -v ss >/dev/null 2>&1; then
-    ! ss -tlnp 2>/dev/null | grep -q ":${port} "
-  elif command -v lsof >/dev/null 2>&1; then
-    ! lsof -i ":${port}" -sTCP:LISTEN >/dev/null 2>&1
-  else
-    ! (echo > "/dev/tcp/localhost/${port}") 2>/dev/null
-  fi
+  ! port_is_listening "${port}"
 }
 
 wait_for_port() {
   local port=$1 timeout=${2:-60} elapsed=0
   while [[ ${elapsed} -lt ${timeout} ]]; do
-    # Try bash /dev/tcp first, fall back to nc or ss for portability
-    if (echo > "/dev/tcp/localhost/${port}") 2>/dev/null; then
-      return 0
-    elif command -v nc >/dev/null 2>&1 && nc -z localhost "${port}" 2>/dev/null; then
-      return 0
-    elif command -v ss >/dev/null 2>&1 && ss -tlnp 2>/dev/null | grep -q ":${port} "; then
-      return 0
-    fi
+    port_is_listening "${port}" && return 0
     sleep 2
     elapsed=$((elapsed + 2))
   done
   return 1
 }
 
+# After TCP is open, confirm HTTP responds (e.g. nginx still starting).
 wait_for_http() {
   local url=$1 timeout=${2:-90} elapsed=0
+  if ! command -v curl >/dev/null 2>&1; then
+    log_debug "curl not installed — skipping HTTP readiness check."
+    return 1
+  fi
   while [[ ${elapsed} -lt ${timeout} ]]; do
     if curl -sf "${url}" >/dev/null 2>&1; then
       return 0
@@ -418,16 +440,122 @@ ensure_android_home() {
   log_debug "ANDROID_HOME=${ANDROID_HOME}"
 }
 
-# Resolve docker compose command (v2 plugin vs standalone v1)
-resolve_compose_cmd() {
+# Run docker compose against cloud/docker-compose.vps.yml from cloud/ (quoted-safe).
+compose_vps_exec() {
+  local cloud_dir="${ROOT_DIR}/cloud"
+  [[ -d "${cloud_dir}" ]] || { log_error "cloud/ directory not found."; return 1; }
+  (
+    cd "${cloud_dir}" || exit 1
+    if "${DOCKER_BIN}" compose version >/dev/null 2>&1; then
+      "${DOCKER_BIN}" compose -f "${CLOUD_COMPOSE_FILE}" "$@"
+    elif command -v docker-compose >/dev/null 2>&1; then
+      docker-compose -f "${CLOUD_COMPOSE_FILE}" "$@"
+    else
+      log_error "Neither 'docker compose' nor 'docker-compose' found."
+      exit 1
+    fi
+  )
+}
+
+# Human-readable compose hint for help / log lines (matches compose_vps_exec).
+compose_vps_hint() {
   if "${DOCKER_BIN}" compose version >/dev/null 2>&1; then
-    echo "${DOCKER_BIN} compose"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    echo "docker-compose"
+    printf '%s\n' "${DOCKER_BIN} compose -f ${CLOUD_COMPOSE_FILE}"
   else
-    log_error "Neither 'docker compose' (v2) nor 'docker-compose' (v1) found."
+    printf '%s\n' "docker-compose -f ${CLOUD_COMPOSE_FILE}"
+  fi
+}
+
+# Remove stale PID lines for backend ports before re-deploying microservices.
+_strip_backend_lines_from_pid_file() {
+  local pid_file="$1"
+  [[ -f "${pid_file}" ]] || return 0
+  local tmp
+  tmp=$(mktemp "${TMPDIR:-/tmp}/sc-pids.XXXXXX") || return 1
+  local line port skip svc
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    [[ -z "${line}" ]] && continue
+    skip=0
+    port=$(awk '{print $3}' <<< "${line}")
+    for svc in "${BACKEND_SERVICES[@]}"; do
+      if [[ "${port}" == "${SERVICE_PORT[${svc}]}" ]]; then
+        skip=1
+        break
+      fi
+    done
+    [[ ${skip} -eq 0 ]] && printf '%s\n' "${line}" >> "${tmp}"
+  done < "${pid_file}"
+  mv "${tmp}" "${pid_file}"
+}
+
+# npm install + optional lint + npm run build under ROOT_DIR/rel_subdir
+_npm_install_build() {
+  local rel_subdir="$1"
+  local run_lint="${2:-0}"
+  (cd "${ROOT_DIR}/${rel_subdir}" && npm install) \
+    || { log_error "npm install failed in ${rel_subdir}."; return 1; }
+  if [[ "${run_lint}" == "1" ]]; then
+    (cd "${ROOT_DIR}/${rel_subdir}" && npm run lint) \
+      || log_warn "ESLint reported issues (non-fatal)."
+  fi
+  (cd "${ROOT_DIR}/${rel_subdir}" && npm run build) \
+    || { log_error "npm run build failed in ${rel_subdir}."; return 1; }
+}
+
+# Start Vite dev server (dashboard / simulator pattern).
+_deploy_vite_dev() {
+  local svc_name="$1"
+  local rel_subdir="$2"
+  local port="$3"
+  local log_name="$4"
+  local wait_secs="$5"
+  local ok_url="$6"
+
+  ensure_node22 || return 1
+
+  if ! check_port_free "${port}"; then
+    log_warn "Port ${port} already in use — ${svc_name} may already be running."
+    return 0
+  fi
+
+  if [[ ! -d "${ROOT_DIR}/${rel_subdir}/node_modules" ]]; then
+    log_info "Installing ${svc_name} npm dependencies..."
+    (cd "${ROOT_DIR}/${rel_subdir}" && npm install) || return 1
+  fi
+
+  mkdir -p "${LOG_DIR}"
+
+  log_info "Starting Vite dev server for ${svc_name} on port ${port}..."
+  # CI=true: Vite skips readline CLI shortcuts (no stdin reads — avoids EIO on flaky/non-TTY stdin).
+  # </dev/null: background processes must not inherit a closing SSH/terminal fd.
+  (cd "${ROOT_DIR}/${rel_subdir}" && npm run dev:bg) \
+    </dev/null >> "${LOG_DIR}/${log_name}" 2>&1 &
+  local pid=$!
+  echo "${pid} ${svc_name} ${port}" >> "${LOG_DIR}/service.pids"
+
+  if wait_for_port "${port}" "${wait_secs}"; then
+    log_success "${svc_name} running at ${ok_url} (PID ${pid})"
+  else
+    log_error "${svc_name} failed to start. Check ${LOG_DIR}/${log_name}"
     return 1
   fi
+}
+
+# Orchestrator helper: SKIP_* gate + node on PATH, then track_run cmd_fn.
+track_node_optional() {
+  local label="$1"
+  local skip_val="$2"
+  local skip_reason="$3"
+  local cmd_fn="$4"
+
+  if [[ "${skip_val}" == "1" ]]; then
+    track_skip "${label}" "${skip_reason}"
+  elif ! command -v node >/dev/null 2>&1; then
+    track_skip "${label}" "node not found"
+  else
+    track_run "${label}" "${cmd_fn}" || return 1
+  fi
+  return 0
 }
 
 # Ensure cloud/.env exists for docker-compose (DB_PASS, RABBITMQ_PASS, JWT_SECRET)
@@ -829,6 +957,7 @@ _start_infra() {
     -p 5672:5672 \
     -p 1883:1883 \
     -p 15672:15672 \
+    -p 15675:15675 \
     -v "${ROOT_DIR}/cloud/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro" \
     rabbitmq:3-management \
     || { log_error "Failed to create RabbitMQ container."; return 1; }
@@ -862,7 +991,7 @@ _start_infra() {
     log_error "RabbitMQ did not become ready in 3.5 minutes."
     return 1
   fi
-  log_success "RabbitMQ is ready (port 5672, management 15672)."
+  log_success "RabbitMQ is ready (5672, management 15672, web_mqtt 15675)."
 
   # ── MQTT plugins ──
   # Prefer enabled_plugins mount (starts with broker). If not loaded, enable here.
@@ -968,19 +1097,21 @@ cmd_build_backend() {
 cmd_build_dashboard() {
   ensure_node22 || return 1
 
-  log_info "Installing npm dependencies..."
-  (cd "${ROOT_DIR}/dashboard" && npm install) \
-    || { log_error "npm install failed."; return 1; }
-
-  log_info "Running ESLint..."
-  (cd "${ROOT_DIR}/dashboard" && npm run lint) \
-    || { log_warn "ESLint reported issues (non-fatal)."; }
-
-  log_info "Building dashboard (tsc + vite build)..."
-  (cd "${ROOT_DIR}/dashboard" && npm run build) \
-    || { log_error "Dashboard build failed."; return 1; }
+  log_info "Installing npm dependencies (dashboard)..."
+  _npm_install_build "dashboard" 1 || return 1
 
   log_success "Dashboard built to dashboard/dist/."
+}
+
+# -- Simulator (React / Vite — farm MQTT / API simulator) --------------------
+
+cmd_build_simulator() {
+  ensure_node22 || return 1
+
+  log_info "Installing npm dependencies (simulator)..."
+  _npm_install_build "simulator" 0 || return 1
+
+  log_success "Simulator built to simulator/dist/."
 }
 
 # -- Edge AI (Python / YOLO / Flask) -----------------------------------------
@@ -1077,13 +1208,10 @@ cmd_build_all() {
   track_run "BUILD CLOUD"      cmd_build_cloud      || fail=1
   track_run "BUILD BACKEND"    cmd_build_backend    || fail=1
 
-  if [[ "${SKIP_DASHBOARD}" == "1" ]]; then
-    track_skip "BUILD DASHBOARD" "SKIP_DASHBOARD=1"
-  elif ! command -v node >/dev/null 2>&1; then
-    track_skip "BUILD DASHBOARD" "node not found"
-  else
-    track_run "BUILD DASHBOARD" cmd_build_dashboard || fail=1
-  fi
+  track_node_optional "BUILD DASHBOARD" "${SKIP_DASHBOARD}" "SKIP_DASHBOARD=1" cmd_build_dashboard \
+    || fail=1
+  track_node_optional "BUILD SIMULATOR" "${SKIP_SIMULATOR}" "SKIP_SIMULATOR=1" cmd_build_simulator \
+    || fail=1
 
   track_run "BUILD EDGE"       cmd_build_edge       || fail=1
 
@@ -1164,13 +1292,10 @@ cmd_test_all() {
 
   track_run "TEST BACKEND" cmd_test_backend || fail=1
 
-  if [[ "${SKIP_DASHBOARD}" == "1" ]]; then
-    track_skip "TEST DASHBOARD" "SKIP_DASHBOARD=1"
-  elif ! command -v node >/dev/null 2>&1; then
-    track_skip "TEST DASHBOARD" "node not found"
-  else
-    track_run "TEST DASHBOARD" cmd_test_dashboard || fail=1
-  fi
+  track_node_optional "TEST DASHBOARD" "${SKIP_DASHBOARD}" "SKIP_DASHBOARD=1" cmd_test_dashboard \
+    || fail=1
+
+  track_skip "TEST SIMULATOR" "no npm test script in simulator/"
 
   track_run "TEST EDGE" cmd_test_edge || fail=1
 
@@ -1184,7 +1309,12 @@ cmd_test_all() {
 }
 
 cmd_test_full() {
-  bash "${ROOT_DIR}/run_all_tests.sh"
+  local agg="${ROOT_DIR}/run_all_tests.sh"
+  if [[ ! -f "${agg}" ]]; then
+    log_error "run_all_tests.sh not found at repo root (${agg})."
+    return 1
+  fi
+  bash "${agg}"
 }
 
 # ============================================================================
@@ -1199,7 +1329,12 @@ cmd_deploy_backend() {
   ensure_java21 || return 1
 
   mkdir -p "${LOG_DIR}"
-  : > "${LOG_DIR}/service.pids"
+  if [[ "${RESET_SERVICE_PIDS}" == "1" ]]; then
+    log_info "RESET_SERVICE_PIDS=1 — clearing ${LOG_DIR}/service.pids"
+    : > "${LOG_DIR}/service.pids"
+  else
+    _strip_backend_lines_from_pid_file "${LOG_DIR}/service.pids"
+  fi
 
   # Pre-build all services first to avoid Gradle lock contention when
   # multiple bootRun processes compile simultaneously.
@@ -1222,7 +1357,7 @@ cmd_deploy_backend() {
     log_info "Starting ${svc} on port ${port}..."
     (cd "${ROOT_DIR}/backend" && \
      ./gradlew ":${svc}:bootRun" --no-daemon) \
-       >> "${LOG_DIR}/${svc}.log" 2>&1 &
+       </dev/null >> "${LOG_DIR}/${svc}.log" 2>&1 &
     pid=$!
     echo "${pid} ${svc} ${port}" >> "${LOG_DIR}/service.pids"
 
@@ -1251,33 +1386,11 @@ cmd_deploy_backend() {
 }
 
 cmd_deploy_dashboard() {
-  ensure_node22 || return 1
+  _deploy_vite_dev "dashboard" "dashboard" 3000 "dashboard.log" 30 "http://localhost:3000"
+}
 
-  if ! check_port_free 3000; then
-    log_warn "Port 3000 already in use — dashboard may already be running."
-    return 0
-  fi
-
-  # Ensure dependencies are installed
-  if [[ ! -d "${ROOT_DIR}/dashboard/node_modules" ]]; then
-    log_info "Installing dashboard dependencies..."
-    (cd "${ROOT_DIR}/dashboard" && npm install) || return 1
-  fi
-
-  mkdir -p "${LOG_DIR}"
-
-  log_info "Starting Vite dev server on port 3000..."
-  (cd "${ROOT_DIR}/dashboard" && npm run dev) \
-    >> "${LOG_DIR}/dashboard.log" 2>&1 &
-  local pid=$!
-  echo "${pid} dashboard 3000" >> "${LOG_DIR}/service.pids"
-
-  if wait_for_port 3000 30; then
-    log_success "Dashboard running at http://localhost:3000 (PID ${pid})"
-  else
-    log_error "Dashboard failed to start. Check ${LOG_DIR}/dashboard.log"
-    return 1
-  fi
+cmd_deploy_simulator() {
+  _deploy_vite_dev "simulator" "simulator" 3001 "simulator.log" 30 "http://localhost:3001"
 }
 
 cmd_deploy_edge() {
@@ -1292,7 +1405,7 @@ cmd_deploy_edge() {
 
   log_info "Starting edge Flask server on port 5000..."
   (cd "${ROOT_DIR}/edge" && "${PYTHON_EXEC}" edge_gui.py) \
-    >> "${LOG_DIR}/edge.log" 2>&1 &
+    </dev/null >> "${LOG_DIR}/edge.log" 2>&1 &
   local pid=$!
   echo "${pid} edge 5000" >> "${LOG_DIR}/service.pids"
 
@@ -1310,11 +1423,10 @@ cmd_deploy_all() {
   track_run "DEPLOY INFRA"     cmd_deploy_infra     || fail=1
   track_run "DEPLOY BACKEND"   cmd_deploy_backend   || fail=1
 
-  if [[ "${SKIP_DASHBOARD}" == "1" ]] || ! command -v node >/dev/null 2>&1; then
-    track_skip "DEPLOY DASHBOARD" "node not available or SKIP_DASHBOARD=1"
-  else
-    track_run "DEPLOY DASHBOARD" cmd_deploy_dashboard || fail=1
-  fi
+  track_node_optional "DEPLOY DASHBOARD" "${SKIP_DASHBOARD}" "SKIP_DASHBOARD=1" cmd_deploy_dashboard \
+    || fail=1
+  track_node_optional "DEPLOY SIMULATOR" "${SKIP_SIMULATOR}" "SKIP_SIMULATOR=1" cmd_deploy_simulator \
+    || fail=1
 
   track_run "DEPLOY EDGE" cmd_deploy_edge || fail=1
 
@@ -1324,6 +1436,7 @@ cmd_deploy_all() {
   printf "    %-20s %s\n" "RabbitMQ"     "localhost:5672 (mgmt: http://localhost:15672)"
   printf "    %-20s %s\n" "API Gateway"  "http://localhost:8080"
   printf "    %-20s %s\n" "Dashboard"    "http://localhost:3000"
+  printf "    %-20s %s\n" "Simulator"    "http://localhost:3001 (Web MQTT ws://localhost:15675/ws)"
   printf "    %-20s %s\n" "Edge GUI"     "http://localhost:5000"
   printf "\n"
 
@@ -1341,8 +1454,7 @@ cmd_deploy_docker() {
   ensure_docker || return 1
 
   local cloud_dir="${ROOT_DIR}/cloud"
-  local compose_cmd compose_file="${cloud_dir}/docker-compose.vps.yml"
-  compose_cmd=$(resolve_compose_cmd) || return 1
+  local compose_file="${cloud_dir}/${CLOUD_COMPOSE_FILE}"
 
   ensure_cloud_env || return 1
   [[ -f "${compose_file}" ]] \
@@ -1383,9 +1495,25 @@ cmd_deploy_docker() {
       || { log_error "Docker build failed for dashboard"; return 1; }
   fi
 
+  # Build farm simulator image (Compose profile dev)
+  if [[ "${SKIP_SIMULATOR}" != "1" ]] && [[ -f "${ROOT_DIR}/simulator/Dockerfile" ]]; then
+    log_info "  Building image: sudarshanchakra/simulator:latest"
+    "${DOCKER_BIN}" build -t "sudarshanchakra/simulator:latest" \
+      -f "${ROOT_DIR}/simulator/Dockerfile" "${ROOT_DIR}/simulator/" \
+      || { log_error "Docker build failed for simulator"; return 1; }
+  elif [[ "${SKIP_SIMULATOR}" == "1" ]]; then
+    log_info "Skipping simulator image (SKIP_SIMULATOR=1)."
+  fi
+
   # Start everything via Compose (run from cloud/ so .env is loaded)
-  log_info "Starting Docker Compose stack..."
-  (cd "${cloud_dir}" && ${compose_cmd} -f docker-compose.vps.yml up -d) \
+  local compose_profile_args=()
+  if [[ "${SKIP_SIMULATOR}" != "1" ]]; then
+    compose_profile_args+=(--profile dev)
+    log_info "Starting Docker Compose stack (profile dev: farm simulator on :3001)..."
+  else
+    log_info "Starting Docker Compose stack..."
+  fi
+  compose_vps_exec "${compose_profile_args[@]}" up -d \
     || { log_error "docker compose up failed."; return 1; }
 
   # Wait for infrastructure readiness
@@ -1400,10 +1528,18 @@ cmd_deploy_docker() {
   # Initialize RabbitMQ topology (shared helper handles pika install + retries)
   _init_topology || log_warn "Topology init failed — services may start without queues."
 
-  # Wait for nginx / API gateway
+  # Wait for nginx / API gateway (TCP then HTTP — avoids false positive while nginx loads)
   log_info "Waiting for services to come online..."
-  wait_for_port 9080 60 && log_success "Nginx proxy ready on port 9080." \
-    || log_warn "Nginx not responding on port 9080 yet."
+  if wait_for_port 9080 60; then
+    log_success "Nginx proxy listening on port 9080."
+    if wait_for_http "http://127.0.0.1:9080/" 45; then
+      log_success "Nginx HTTP check OK."
+    else
+      log_warn "Nginx port open but HTTP not ready yet — try again in a few seconds."
+    fi
+  else
+    log_warn "Nginx not responding on port 9080 yet."
+  fi
 
   # Print access info
   printf "\n${BOLD}  Docker deployment running:${RESET}\n"
@@ -1411,22 +1547,23 @@ cmd_deploy_docker() {
   printf "    %-20s %s\n" "API"            "http://localhost:9080/api/"
   printf "    %-20s %s\n" "RabbitMQ Mgmt"  "http://localhost:15672"
   printf "    %-20s %s\n" "PostgreSQL"     "localhost:5432"
+  if [[ "${SKIP_SIMULATOR}" != "1" ]]; then
+    printf "    %-20s %s\n" "Simulator"      "http://localhost:3001 (Web MQTT :15675)"
+  fi
   printf "\n"
 
-  log_info "Logs: cd cloud && ${compose_cmd} -f docker-compose.vps.yml logs -f"
-  log_info "Stop: cd cloud && ${compose_cmd} -f docker-compose.vps.yml down"
+  local ch
+  ch=$(compose_vps_hint)
+  log_info "Logs: cd cloud && ${ch} logs -f"
+  log_info "Stop: cd cloud && ${ch} down"
   log_success "Docker deployment complete."
 }
 
 cmd_deploy_docker_stop() {
   ensure_docker || return 1
 
-  local cloud_dir="${ROOT_DIR}/cloud"
-  local compose_cmd compose_file="${cloud_dir}/docker-compose.vps.yml"
-  compose_cmd=$(resolve_compose_cmd) || return 1
-
   log_info "Stopping Docker Compose stack..."
-  (cd "${cloud_dir}" && ${compose_cmd} -f docker-compose.vps.yml down) \
+  compose_vps_exec down \
     || { log_error "docker compose down failed."; return 1; }
 
   log_success "Docker Compose stack stopped."
@@ -1435,12 +1572,8 @@ cmd_deploy_docker_stop() {
 cmd_deploy_docker_logs() {
   ensure_docker || return 1
 
-  local cloud_dir="${ROOT_DIR}/cloud"
-  local compose_cmd compose_file="${cloud_dir}/docker-compose.vps.yml"
-  compose_cmd=$(resolve_compose_cmd) || return 1
-
   log_info "Tailing Docker Compose logs (Ctrl+C to stop)..."
-  (cd "${cloud_dir}" && ${compose_cmd} -f docker-compose.vps.yml logs -f --tail=100)
+  compose_vps_exec logs -f --tail=100
 }
 
 # ============================================================================
@@ -1488,6 +1621,7 @@ cmd_menu() {
     "build-cloud"       "[BUILD]  Validate scripts/nginx + start infra"    OFF \
     "build-backend"     "[BUILD]  5 Spring Boot microservices (Gradle)"     OFF \
     "build-dashboard"   "[BUILD]  Lint + build React dashboard (Vite)"      OFF \
+    "build-simulator"   "[BUILD]  Farm simulator (Vite)"                    OFF \
     "build-edge"        "[BUILD]  Validate Edge AI Python code (flake8)"    OFF \
     "build-android"     "[BUILD]  Android app (Gradle assembleDebug)"       OFF \
     "build-firmware"    "[BUILD]  ESP32 firmware (arduino-cli)"             OFF \
@@ -1501,6 +1635,7 @@ cmd_menu() {
     "deploy-infra"      "[LOCAL]  Start PostgreSQL + RabbitMQ containers"   OFF \
     "deploy-backend"    "[LOCAL]  Start 5 backend services (bootRun)"       OFF \
     "deploy-dashboard"  "[LOCAL]  Start Vite dev server (port 3000)"        OFF \
+    "deploy-simulator"  "[LOCAL]  Start farm simulator Vite (port 3001)"    OFF \
     "deploy-edge"       "[LOCAL]  Start edge Flask server (port 5000)"      OFF \
     "deploy-all"        "[LOCAL]  >> Full local dev stack <<"               OFF \
     "deploy-docker"     "[DOCKER] Build images + docker-compose up"         OFF \
@@ -1536,15 +1671,23 @@ Enterprise Smart Farm Hazard Detection & Security System (IoT + Edge AI + Cloud)
 
 ${BOLD}USAGE:${RESET}
   ./${SCRIPT_NAME} [commands...] [options]
+  ./${SCRIPT_NAME} --menu
 
   When no command is given, ${CYAN}build-all${RESET} is assumed.
   Multiple commands can be chained: ${DIM}./${SCRIPT_NAME} build-backend test-backend${RESET}
+
+${BOLD}INTERACTIVE MENU (terminal UI, not a desktop GUI):${RESET}
+  ${CYAN}-m${RESET} / ${CYAN}--menu${RESET} opens a ${BOLD}text-mode checklist${RESET} (whiptail or dialog) to pick
+  build / test / deploy steps. ${BOLD}Exclusive:${RESET} if ${CYAN}--menu${RESET} is present, other CLI commands on the
+  same line are ignored (with a warning). Requires ${DIM}whiptail${RESET} or ${DIM}dialog${RESET} on PATH, e.g.:
+    ${DIM}sudo apt install whiptail${RESET}
+  In minimal/SSH environments with ${DIM}TERM=dumb${RESET}, the script tries to pick a usable TERM.
 
 ${BOLD}PREREQUISITES:${RESET}
   Ubuntu 22.04 / 24.04 (or Debian-based). Run ${CYAN}install-deps${RESET} to auto-install, or manually:
     Java 21          sudo apt install openjdk-21-jdk
     Node.js 22+      curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-                     (${CYAN}build-dashboard${RESET} / ${CYAN}test-dashboard${RESET} require Node 22+)
+                     (${CYAN}build-dashboard${RESET}, ${CYAN}build-simulator${RESET}, ${CYAN}test-dashboard${RESET} require Node 22+)
     Python 3.10+     (3.12 matches CI / AGENTS.md for edge tooling)
     Docker           sudo apt install docker.io && sudo usermod -aG docker \$USER
     arduino-cli      Installed by ${CYAN}install-deps${RESET} (or Arduino CLI tarball → /usr/local/bin)
@@ -1553,6 +1696,7 @@ ${BOLD}PREREQUISITES:${RESET}
 ${BOLD}COMPONENT STACK:${RESET}
   backend        Java 21, Spring Boot 3.2, Gradle wrapper 8.7 (5 microservices)
   dashboard      React 18, Vite 5, TypeScript, Tailwind CSS 3 (Vitest)
+  simulator      React 18, Vite 5 — farm MQTT / REST simulator (browser Web MQTT)
   edge           Python 3.10+, YOLO, Flask, OpenCV (pytest in edge/tests/)
   android        Kotlin 1.9, Jetpack Compose, Gradle wrapper 8.5, Hilt, Retrofit
   firmware       Arduino CLI, ESP32 (bridge_receiver, lora_tag, worker_beacon sketches)
@@ -1562,6 +1706,7 @@ ${BOLD}COMPONENT STACK:${RESET}
 ${BOLD}SERVICE PORTS:${RESET}
   PostgreSQL       5432        RabbitMQ AMQP    5672
   RabbitMQ Mgmt    15672       RabbitMQ MQTT    1883
+  RabbitMQ WebMQTT 15675      Farm simulator   3001
   API Gateway      8080        Alert Service    8081
   Device Service   8082        Auth Service     8083
   Siren Service    8084        Dashboard (dev)  3000
@@ -1572,45 +1717,60 @@ ${BOLD}SETUP:${RESET}
 
 ${BOLD}BUILD:${RESET}
   ${CYAN}build-backend${RESET}           Gradle clean build -x test (artifacts only; use ${CYAN}test-backend${RESET} for JUnit)
-  ${CYAN}build-dashboard${RESET}         npm install + ESLint + tsc + Vite build → dist/
+  ${CYAN}build-dashboard${RESET}          npm install + ESLint + tsc + Vite build → dist/
+  ${CYAN}build-simulator${RESET}          npm install + Vite build → simulator/dist/
   ${CYAN}build-edge${RESET}              Python venv + pip deps + py_compile + flake8
   ${CYAN}build-android${RESET}           Gradle assembleDebug → app-debug.apk (needs ANDROID_HOME)
   ${CYAN}build-firmware${RESET}          arduino-cli compile: esp32_lora_bridge_receiver, esp32_lora_tag, worker_beacon
   ${CYAN}build-alertmgmt${RESET}         py_compile AlertManagement/scripts/*.py
-  ${CYAN}build-cloud${RESET}             Validate cloud scripts/nginx + start PostgreSQL/RabbitMQ
-  ${CYAN}build-all${RESET}               cloud → backend → dashboard → edge → android → alertmgmt → firmware
-                                        (respects SKIP_DASHBOARD, SKIP_ANDROID, SKIP_FIRMWARE)
+  ${CYAN}build-cloud${RESET}             Validate cloud Python scripts + nginx configs; start Postgres + RabbitMQ + topology
+  ${CYAN}build-all${RESET}               cloud → backend → dashboard → simulator → edge → android → alertmgmt → firmware
+                                        (respects SKIP_DASHBOARD, SKIP_SIMULATOR, SKIP_ANDROID, SKIP_FIRMWARE)
 
 ${BOLD}TEST:${RESET}
   ${CYAN}test-backend${RESET}            Gradle test (JUnit 5; device-service uses Testcontainers where configured)
   ${CYAN}test-dashboard${RESET}          Vitest: npm run test -- --run --passWithNoTests
   ${CYAN}test-edge${RESET}               pytest edge/tests/ -v
   ${CYAN}test-android${RESET}            Gradle testDebugUnitTest (needs ANDROID_HOME unless skipped)
-  ${CYAN}test-all${RESET}                backend + dashboard + edge + android tests (same SKIP_* as build-all)
-  ${CYAN}test-full${RESET}               Delegates to ${DIM}run_all_tests.sh${RESET} if present
+  ${CYAN}test-all${RESET}                backend + dashboard + edge + android tests (simulator: no test script; same SKIP_* as build-all)
+  ${CYAN}test-full${RESET}               Runs ${DIM}run_all_tests.sh${RESET} at repo root (fails with a clear error if missing)
 
 ${BOLD}DEPLOY (Local / Non-Docker):${RESET}
   ${CYAN}deploy-infra${RESET}            Start PostgreSQL + RabbitMQ containers + topology
-  ${CYAN}deploy-backend${RESET}          Pre-build, then bootRun 5 services (background, PID tracked)
+  ${CYAN}deploy-backend${RESET}          Pre-build, then bootRun 5 services (appends PIDs; strips stale backend ports)
   ${CYAN}deploy-dashboard${RESET}        Vite dev server on :3000 (background)
+  ${CYAN}deploy-simulator${RESET}        Vite dev server on :3001 (background; use Web MQTT :15675)
   ${CYAN}deploy-edge${RESET}             Flask server on :5000 (background)
-  ${CYAN}deploy-all${RESET}              Start full local dev stack (infra + backend + dashboard + edge)
+  ${CYAN}deploy-all${RESET}              Full local stack (infra + backend + dashboard + simulator + edge)
 
 ${BOLD}DEPLOY (Docker / Production):${RESET}
-  ${CYAN}deploy-docker${RESET}           Build Docker images + docker-compose.vps.yml up
-  ${CYAN}deploy-docker-stop${RESET}      docker compose down
-  ${CYAN}deploy-docker-logs${RESET}      docker compose logs -f --tail=100
+  ${CYAN}deploy-docker${RESET}           Pre-build JARs + images, then ${DIM}docker compose -f docker-compose.vps.yml${RESET} up from ${DIM}cloud/${RESET}
+                                        (${CYAN}--profile dev${RESET} starts simulator on host :3001 unless ${CYAN}SKIP_SIMULATOR=1${RESET})
+  ${CYAN}deploy-docker-stop${RESET}      ${DIM}docker compose -f docker-compose.vps.yml down${RESET} in ${DIM}cloud/${RESET}
+  ${CYAN}deploy-docker-logs${RESET}      Tail compose logs (${DIM}--tail=100${RESET}) from ${DIM}cloud/${RESET}
+
+${BOLD}ALL COMMANDS (same names as in ${CYAN}--menu${RESET}):${RESET}
+  ${CYAN}install-deps${RESET}
+  ${CYAN}build-cloud${RESET} ${CYAN}build-backend${RESET} ${CYAN}build-dashboard${RESET} ${CYAN}build-simulator${RESET}
+  ${CYAN}build-edge${RESET} ${CYAN}build-android${RESET} ${CYAN}build-firmware${RESET} ${CYAN}build-alertmgmt${RESET} ${CYAN}build-all${RESET}
+  ${CYAN}test-backend${RESET} ${CYAN}test-dashboard${RESET} ${CYAN}test-edge${RESET} ${CYAN}test-android${RESET} ${CYAN}test-all${RESET} ${CYAN}test-full${RESET}
+  ${CYAN}deploy-infra${RESET} ${CYAN}deploy-backend${RESET} ${CYAN}deploy-dashboard${RESET} ${CYAN}deploy-simulator${RESET}
+  ${CYAN}deploy-edge${RESET} ${CYAN}deploy-all${RESET}
+  ${CYAN}deploy-docker${RESET} ${CYAN}deploy-docker-stop${RESET} ${CYAN}deploy-docker-logs${RESET}
+  Docker commands use ${DIM}cloud/docker-compose.vps.yml${RESET} from the ${DIM}cloud/${RESET} directory.
 
 ${BOLD}OPTIONS:${RESET}
   ${CYAN}-h, --help${RESET}              Show this help
-  ${CYAN}-m, --menu${RESET}              Interactive TUI checklist (whiptail/dialog)
-  ${CYAN}-v, --verbose${RESET}           Show extra debug output
+  ${CYAN}-m, --menu${RESET}              Interactive checklist (whiptail/dialog TUI — see above)
+  ${CYAN}-v, --verbose${RESET}           Extra debug output
   ${CYAN}--no-color${RESET}              Disable colored output
 
 ${BOLD}ENVIRONMENT VARIABLES:${RESET}
   SKIP_ANDROID=1          Skip Android in build-all / test-all
   SKIP_FIRMWARE=1         Skip firmware in build-all
   SKIP_DASHBOARD=1        Skip dashboard in build-all / test-all / deploy-all
+  SKIP_SIMULATOR=1        Skip simulator in build-all / deploy-all / deploy-docker (no ${CYAN}--profile dev${RESET})
+  RESET_SERVICE_PIDS=1    With ${CYAN}deploy-backend${RESET}: clear ${DIM}logs/service.pids${RESET} before recording (default: append / dedupe backend ports only)
   ANDROID_HOME            Android SDK root (default: ${DIM}<repo>/android-sdk${RESET} then ${DIM}/opt/android-sdk${RESET})
   DB_PASS                 PostgreSQL password     (default: devpassword123)
   RABBITMQ_PASS           RabbitMQ password       (default: devpassword123)
@@ -1628,6 +1788,9 @@ ${BOLD}EXAMPLES:${RESET}
 
   ${DIM}# Build everything (default when no command given)${RESET}
   ./${SCRIPT_NAME}
+
+  ${DIM}# Interactive checklist (whiptail/dialog)${RESET}
+  ./${SCRIPT_NAME} --menu
 
   ${DIM}# Work on a single component${RESET}
   ./${SCRIPT_NAME} build-backend test-backend
@@ -1647,6 +1810,7 @@ ${BOLD}EXAMPLES:${RESET}
 
   ${DIM}# Skip optional components${RESET}
   SKIP_ANDROID=1 SKIP_FIRMWARE=1 ./${SCRIPT_NAME} build-all test-all
+  SKIP_SIMULATOR=1 ./${SCRIPT_NAME} deploy-docker   # compose without --profile dev
 
   ${DIM}# Android: use repo-local SDK and install APK on USB device${RESET}
   ${DIM}export ANDROID_HOME=\$(pwd)/android-sdk${RESET}
@@ -1668,6 +1832,36 @@ EOF
 main() {
   ensure_repo_root
 
+  local arg
+  for arg in "$@"; do
+    if [[ "${arg}" == "-h" || "${arg}" == "--help" ]]; then
+      show_help
+      exit 0
+    fi
+  done
+
+  local want_menu=0
+  for arg in "$@"; do
+    if [[ "${arg}" == "-m" || "${arg}" == "--menu" ]]; then
+      want_menu=1
+      break
+    fi
+  done
+
+  if [[ ${want_menu} -eq 1 ]]; then
+    local non_menu=0
+    for arg in "$@"; do
+      case "${arg}" in
+        -h|--help|-m|--menu|-v|--verbose|--no-color) ;;
+        *) non_menu=$((non_menu + 1)) ;;
+      esac
+    done
+    [[ ${non_menu} -gt 0 ]] && \
+      log_warn "--menu is exclusive; ignoring other arguments (run menu or CLI, not both)."
+    cmd_menu
+    exit 0
+  fi
+
   local commands=()
 
   # Parse arguments into commands and options
@@ -1677,16 +1871,13 @@ main() {
         show_help
         exit 0
         ;;
-      -m|--menu)
-        cmd_menu
-        ;;
       -v|--verbose|--no-color)
         # Already parsed in pre-scan
         ;;
-      install-deps|build-backend|build-dashboard|build-edge|build-android|\
+      install-deps|build-backend|build-dashboard|build-simulator|build-edge|build-android|\
       build-firmware|build-alertmgmt|build-cloud|build-all|\
       test-backend|test-dashboard|test-edge|test-android|test-all|test-full|\
-      deploy-infra|deploy-backend|deploy-dashboard|deploy-edge|deploy-all|\
+      deploy-infra|deploy-backend|deploy-dashboard|deploy-simulator|deploy-edge|deploy-all|\
       deploy-docker|deploy-docker-stop|deploy-docker-logs)
         commands+=("${arg}")
         ;;
@@ -1713,6 +1904,7 @@ main() {
       build-cloud)       track_run "BUILD CLOUD"       cmd_build_cloud       ;;
       build-backend)     track_run "BUILD BACKEND"     cmd_build_backend     ;;
       build-dashboard)   track_run "BUILD DASHBOARD"   cmd_build_dashboard   ;;
+      build-simulator)    track_run "BUILD SIMULATOR"   cmd_build_simulator   ;;
       build-edge)        track_run "BUILD EDGE"        cmd_build_edge        ;;
       build-android)     track_run "BUILD ANDROID"     cmd_build_android     ;;
       build-firmware)    track_run "BUILD FIRMWARE"     cmd_build_firmware    ;;
@@ -1727,6 +1919,7 @@ main() {
       deploy-infra)      track_run "DEPLOY INFRA"      cmd_deploy_infra      ;;
       deploy-backend)    track_run "DEPLOY BACKEND"    cmd_deploy_backend    ;;
       deploy-dashboard)  track_run "DEPLOY DASHBOARD"  cmd_deploy_dashboard  ;;
+      deploy-simulator)   track_run "DEPLOY SIMULATOR"  cmd_deploy_simulator  ;;
       deploy-edge)       track_run "DEPLOY EDGE"       cmd_deploy_edge       ;;
       deploy-all)        cmd_deploy_all                                      ;;
       deploy-docker)     track_run "DEPLOY DOCKER"     cmd_deploy_docker     ;;

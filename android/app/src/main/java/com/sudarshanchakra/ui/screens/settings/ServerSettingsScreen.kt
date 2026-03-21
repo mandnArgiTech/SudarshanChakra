@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.sudarshanchakra.ui.theme.CreamBackground
+import com.sudarshanchakra.ui.theme.CriticalRed
 import com.sudarshanchakra.ui.theme.DividerColor
 import com.sudarshanchakra.ui.theme.Terracotta
 import com.sudarshanchakra.ui.theme.TextMuted

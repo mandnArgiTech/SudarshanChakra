@@ -37,6 +37,8 @@ docker ps
 ./setup_and_build_all.sh deploy-infra
 ```
 
+`setup_and_build_all.sh --menu` is exclusive (other args on the same command line are ignored). `deploy-backend` appends to `logs/service.pids` and removes stale backend port lines; use `RESET_SERVICE_PIDS=1` to clear the file first.
+
 This starts:
 - PostgreSQL on `localhost:5432`
 - RabbitMQ on `localhost:5672` (AMQP) and `localhost:1883` (MQTT)
@@ -149,13 +151,24 @@ Open `http://localhost:15672` (admin / devpassword123) and check:
 | **Camera RTSP fails** | Enable RTSP in Tapo app: Settings → Advanced → Device Account |
 | **Backend 502 Bad Gateway** | Verify API Gateway: `curl http://localhost:8080/actuator/health` |
 | **Nginx 502** | Check nginx error log: `sudo tail -f /var/log/nginx/error.log` |
+| **Vite crashes with `Error: read EIO` (readline)** | Often a flaky SSH/tmux TTY. Use **`npm run dev:bg`** in `dashboard/` or `simulator/` (sets `CI=true` so Vite skips keyboard shortcuts), or run `CI=true npm run dev`. `setup_and_build_all.sh` deploy-dashboard uses `dev:bg` automatically. |
 
 ## Next Steps
 
 1. **Create zones** for the camera: `POST /api/v1/zones`
 2. **Configure alert rules**: Edit `edge/config/zones.json`
 3. **Test inference**: Trigger an alert and verify in dashboard
-4. **Monitor logs**: `tail -f logs/service-*.log` (backend) or edge console output
+4. **Monitor logs** — see below
+
+### Tailing local logs (`logs/`)
+
+Follow everything started by `setup_and_build_all.sh deploy-*`:
+
+```bash
+tail -f logs/*.log
+```
+
+**Gradle `Input/output error` / Node `EIO` on `read`:** Background `bootRun` should use **stdin from `/dev/null`** (setup script does this). **Vite** also registers readline for `h`/`q` shortcuts when stdin looks like a TTY; a half-broken TTY can still throw `EIO`. The script starts dashboard/simulator with **`npm run dev:bg`** (`CI=true vite`), which skips that path. For manual `npm run dev`, switch to **`npm run dev:bg`** if you hit EIO. **Stop and re-run** deploy if logs still show old stack traces.
 
 ## Files Modified
 

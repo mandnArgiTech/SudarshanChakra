@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -31,6 +32,32 @@ class AlertControllerTest {
 
     @MockBean
     AlertService alertService;
+
+    @Test
+    void createAlert_created() throws Exception {
+        UUID id = UUID.randomUUID();
+        var body = """
+                {"alert_id":"%s","node_id":"n1","camera_id":"cam-1","zone_id":"z","zone_name":"Z","zone_type":"t",\
+                "detection_class":"person","confidence":0.9,"priority":"high"}\
+                """.formatted(id);
+        when(alertService.createFromPayload(any())).thenAnswer(inv -> {
+            com.sudarshanchakra.alert.dto.AlertPayload p = inv.getArgument(0);
+            return AlertResponse.builder()
+                    .id(UUID.fromString(p.getAlertId()))
+                    .priority(p.getPriority())
+                    .detectionClass(p.getDetectionClass())
+                    .nodeId(p.getNodeId())
+                    .status("new")
+                    .build();
+        });
+        mockMvc.perform(post("/api/v1/alerts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.priority").value("high"));
+        verify(alertService).createFromPayload(any());
+    }
 
     @Test
     void getAlerts_ok() throws Exception {
