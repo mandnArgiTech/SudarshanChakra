@@ -1,0 +1,52 @@
+# ═══════════════════════════════════════════════════════════════
+# SudarshanChakra — E2E Test Configuration
+# ═══════════════════════════════════════════════════════════════
+# Copy this file and fill in your actual IPs/credentials.
+# DO NOT commit credentials to git — add to .gitignore.
+
+backend:
+  api_base: http://192.168.1.100:8080         # VM1 API gateway
+  dashboard_url: http://192.168.1.100:3000     # VM1 dashboard
+  simulator_url: http://192.168.1.100:3001     # VM1 simulator
+  mqtt_broker: 192.168.1.100                   # VM1 RabbitMQ MQTT
+  mqtt_port: 1883
+  ws_mqtt_port: 15675
+
+edge:
+  flask_url: http://192.168.1.101:5000         # VM2 edge Flask GUI
+  cameras:
+    - id: cam-01
+      rtsp: rtsp://farmadmin:YourPassword@192.168.1.201:554/stream2
+      onvif_host: 192.168.1.201
+      onvif_port: 2020
+      has_ptz: true
+    - id: cam-02
+      rtsp: rtsp://farmadmin:YourPassword@192.168.1.202:554/stream2
+      onvif_host: 192.168.1.202
+      onvif_port: 2020
+      has_ptz: true
+
+water:
+  esp8266_ip: 192.168.1.150
+  device_tag: tank1_a9ad51
+  topic_prefix: water
+  level_topic: tank1_a9ad51/water/level
+  status_topic: tank1_a9ad51/water/status
+  command_topic: tank1_a9ad51/water/command
+  motor_command_topic: tank1_a9ad51/water/motor/command
+  http_api: http://192.168.1.150/api
+  poll_interval_sec: 60
+
+siren:
+  audio_device: hw:0,0
+  verify_method: mqtt_ack       # or 'audio_capture'
+
+auth:
+  admin_user: testadmin
+  admin_pass: TestPass123!
+  viewer_user: testviewer
+  viewer_pass: ViewerPass!
+
+android:
+  emulator_name: Pixel_7_API_34
+  apk_path: android/app/build/outputs/apk/debug/app-debug.apk

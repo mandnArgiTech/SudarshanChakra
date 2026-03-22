@@ -1,143 +1,128 @@
-# ============================================================================
-# SudarshanChakra — Monorepo .gitignore
-# Components: backend (Java/Spring Boot/Gradle), dashboard (React/Vite),
-#   edge (Python/YOLO), android (Kotlin/Compose), firmware (ESP32/Arduino),
-#   cloud (Docker/PostgreSQL/RabbitMQ), AlertManagement (Python)
-# ============================================================================
 
-# ── Java / Gradle (backend + android) ───────────────────────────────────────
-.gradle/
-build/
-!gradle/wrapper/gradle-wrapper.jar
 !**/gradle/wrapper/gradle-wrapper.jar
-*.class
-*.jar
-!gradle/wrapper/*.jar
-*.war
-*.nar
-*.ear
-*.hprof
-hs_err_pid*
-replay_pid*
-
-# ── Android ─────────────────────────────────────────────────────────────────
-local.properties
-*.apk
-*.aab
-*.dex
-*.ap_
-captures/
-.externalNativeBuild/
-.cxx/
-*.jks
-*.keystore
-
-# ── Node.js / React / Vite (dashboard) ─────────────────────────────────────
-node_modules/
-dist/
-.next/
-*.local
-.eslintcache
-.cache/
-
-# ── Python (edge, AlertManagement, cloud scripts) ──────────────────────────
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-*.egg
-.venv/
-venv/
-env/
-.python-version
-*.pyo
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-coverage.xml
-*.cover
-.mypy_cache/
-.ruff_cache/
-.flake8_cache/
-.tox/
-pip-log.txt
-pip-delete-this-directory.txt
-
-# ── ESP32 / Arduino (firmware) ──────────────────────────────────────────────
-*.elf
-*.bin
-*.hex
-*.map
-
-# ── ML Models (too large for git) ──────────────────────────────────────────
-*.engine
-*.pt
-*.onnx
-*.tflite
-*.pb
-edge/models/
-runs/
-
-# ── Environment & Secrets ──────────────────────────────────────────────────
-.env
-.env.*
-*.env
-!.env.example
 !*.env.example
+!.env.example
+!gradle/wrapper/*.jar
+!gradle/wrapper/gradle-wrapper.jar
 !pa.env.example
-
+#   cloud (Docker/PostgreSQL/RabbitMQ), AlertManagement (Python)
+#   edge (Python/YOLO), android (Kotlin/Compose), firmware (ESP32/Arduino),
+# ============================================================================
+# Components: backend (Java/Spring Boot/Gradle), dashboard (React/Vite),
+# SudarshanChakra — Monorepo .gitignore
+# ── Android SDK (downloaded by setup script) ───────────────────────────────
+# ── Android ─────────────────────────────────────────────────────────────────
+# ── Audio files (AlertManagement PA — too large for git) ───────────────────
+# ── Docker ─────────────────────────────────────────────────────────────────
+# ── ESP32 / Arduino (firmware) ──────────────────────────────────────────────
+# ── Environment & Secrets ──────────────────────────────────────────────────
+# ── IDE / Editors ──────────────────────────────────────────────────────────
+# ── Java / Gradle (backend + android) ───────────────────────────────────────
+# ── Logs ───────────────────────────────────────────────────────────────────
+# ── ML Models (too large for git) ──────────────────────────────────────────
+# ── Misc generated / downloaded files ──────────────────────────────────────
+# ── Node.js / React / Vite (dashboard) ─────────────────────────────────────
+# ── OS ─────────────────────────────────────────────────────────────────────
+# ── Python (edge, AlertManagement, cloud scripts) ──────────────────────────
+# ── Snapshots ──────────────────────────────────────────────────────────────
 # ── TLS Certificates & VPN ─────────────────────────────────────────────────
-certs/
-*.pem
-*.key
+*$py.class
+*.aab
+*.ap_
+*.apk
+*.bin
+*.class
+*.cover
 *.crt
 *.csr
-*.p12
-vpn/*.ovpn
-
-# ── IDE / Editors ──────────────────────────────────────────────────────────
-.idea/
-.vscode/
-.cursor/
+*.dex
+*.ear
+*.egg
+*.egg-info/
+*.elf
+*.engine
+*.env
+*.flac
+*.hex
+*.hprof
 *.iml
-*.swp
-*.swo
-*~
-.project
-.classpath
-.settings/
+*.jar
+*.jks
+*.key
+*.keystore
+*.local
+*.log
+*.map
+*.mp3
+*.nar
+*.ogg
+*.onnx
+*.p12
+*.pb
+*.pem
+*.pt
+*.py[cod]
+*.pyo
 *.sublime-project
 *.sublime-workspace
-.history/
-
-# ── OS ─────────────────────────────────────────────────────────────────────
+*.swo
+*.swp
+*.tflite
+*.war
+*.wav
+*~
 .DS_Store
-Thumbs.db
+.cache/
+.classpath
+.coverage
+.coverage.*
+.cursor/
+.cxx/
+.env
+.env.*
+.eslintcache
+.externalNativeBuild/
+.flake8_cache/
+.get-pip.py
+.gradle/
+.history/
+.idea/
+.mypy_cache/
+.next/
+.project
+.pytest_cache/
+.python-version
+.ruff_cache/
+.settings/
+.tox/
+.venv/
+.vscode/
+/tmp/farm-snapshots/
+/tmp/snapshots/
 Desktop.ini
+Thumbs.db
+[Dd]esktop.ini
+__pycache__/
+android-sdk/
+build/
+captures/
+certs/
+coverage.xml
+dist/
+docker-compose.override.yml
+e2e/config/e2e_config.yml
+edge/models/
 ehthumbs.db
 ehthumbs_vista.db
-[Dd]esktop.ini
-
-# ── Docker ─────────────────────────────────────────────────────────────────
-docker-compose.override.yml
-
-# ── Logs ───────────────────────────────────────────────────────────────────
-*.log
+env/
+hs_err_pid*
+htmlcov/
+local.properties
 logs/
-
-# ── Audio files (AlertManagement PA — too large for git) ───────────────────
-*.mp3
-*.wav
-*.flac
-*.ogg
-
-# ── Android SDK (downloaded by setup script) ───────────────────────────────
-android-sdk/
-
-# ── Misc generated / downloaded files ──────────────────────────────────────
-.get-pip.py
-
-# ── Snapshots ──────────────────────────────────────────────────────────────
-/tmp/snapshots/
-/tmp/farm-snapshots/
+node_modules/
+pip-delete-this-directory.txt
+pip-log.txt
+replay_pid*
+runs/
+venv/
+vpn/*.ovpn
