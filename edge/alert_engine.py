@@ -58,6 +58,10 @@ class AlertDecisionEngine:
         self.snapshot_dir = os.getenv("SNAPSHOT_DIR", "/tmp/snapshots")
         os.makedirs(self.snapshot_dir, exist_ok=True)
 
+        self.video_base = os.getenv("VIDEO_BASE_PATH", "/data/video")
+        self.clips_dir = os.path.join(self.video_base, "clips")
+        os.makedirs(self.clips_dir, exist_ok=True)
+
         self.vpn_ip = os.getenv("VPN_IP", self._default_vpn_ip())
 
         self.stats = {
@@ -148,6 +152,8 @@ class AlertDecisionEngine:
         if frame is not None:
             snapshot_url = self._save_snapshot(alert_id, frame, detection)
 
+        clip_path = self._extract_clip(alert_id, detection["camera_id"], now)
+
         alert = {
             "alert_id": alert_id,
             "correlation_id": correlation_id,
@@ -167,6 +173,7 @@ class AlertDecisionEngine:
             "metadata": {
                 "lora_workers_nearby": self.lora.get_nearby_workers(),
                 "frame_number": detection.get("frame_number", 0),
+                "clip_path": clip_path,
             },
         }
 
@@ -229,6 +236,57 @@ class AlertDecisionEngine:
         except Exception as e:
             log.warning("Failed to save snapshot: %s", e)
             return ""
+
+    def _extract_clip(self, alert_id: str, camera_id: str,
+                       timestamp: float) -> str:
+        """
+        Extract a ~30s clip (15s before + 15s after) from recorded segments.
+        Runs ffmpeg in a background thread to avoid blocking the alert pipeline.
+        Returns the clip filename (relative) or empty string if extraction is skipped.
+        """
+        import glob as _glob
+        import datetime
+
+        cam_base = os.path.join(self.video_base, camera_id)
+        if not os.path.isdir(cam_base):
+            return ""
+
+        dt = datetime.datetime.fromtimestamp(timestamp)
+        date_str = dt.strftime("%Y-%m-%d")
+        hour_str = dt.strftime("%H")
+
+        hour_dir = os.path.join(cam_base, date_str, hour_str)
+        if not os.path.isdir(hour_dir):
+            return ""
+
+        segments = sorted(_glob.glob(os.path.join(hour_dir, "*.mp4")))
+        if not segments:
+            return ""
+
+        src = segments[-1]
+        clip_file = f"{alert_id}.mp4"
+        clip_out = os.path.join(self.clips_dir, clip_file)
+
+        def _run():
+            try:
+                cmd = [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error",
+                    "-sseof", "-30",
+                    "-i", src,
+                    "-c", "copy",
+                    "-t", "30",
+                    clip_out,
+                ]
+                subprocess.run(cmd, timeout=30, check=False)
+                if os.path.isfile(clip_out):
+                    log.info("Clip extracted: %s", clip_out)
+            except Exception as e:
+                log.warning("Clip extraction failed for %s: %s", alert_id, e)
+
+        t = threading.Thread(target=_run, daemon=True, name=f"clip-{alert_id[:8]}")
+        t.start()
+
+        return clip_file
 
     def process_fall_event(self, tag_id: str, packet_data: dict):
         """

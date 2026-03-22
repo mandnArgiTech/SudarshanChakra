@@ -9,8 +9,9 @@ import com.sudarshanchakra.device.repository.CameraRepository;
 import com.sudarshanchakra.device.repository.EdgeNodeRepository;
 import com.sudarshanchakra.device.repository.WorkerTagRepository;
 import com.sudarshanchakra.device.repository.ZoneRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,13 +20,25 @@ import java.util.UUID;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class DeviceService {
 
     private final EdgeNodeRepository edgeNodeRepository;
     private final CameraRepository cameraRepository;
     private final ZoneRepository zoneRepository;
     private final WorkerTagRepository workerTagRepository;
+    private final ObjectProvider<RabbitTemplate> rabbitTemplate;
+
+    public DeviceService(EdgeNodeRepository edgeNodeRepository,
+                         CameraRepository cameraRepository,
+                         ZoneRepository zoneRepository,
+                         WorkerTagRepository workerTagRepository,
+                         ObjectProvider<RabbitTemplate> rabbitTemplate) {
+        this.edgeNodeRepository = edgeNodeRepository;
+        this.cameraRepository = cameraRepository;
+        this.zoneRepository = zoneRepository;
+        this.workerTagRepository = workerTagRepository;
+        this.rabbitTemplate = rabbitTemplate;
+    }
 
     // Edge Nodes
     public List<EdgeNode> getAllNodes() {
@@ -106,16 +119,32 @@ public class DeviceService {
                 .orElseThrow(() -> new IllegalArgumentException("Camera not found: " + zone.getCameraId()));
         verifyNodeInTenant(cam.getNodeId());
         log.info("Creating zone: {}", zone.getId());
-        return zoneRepository.save(zone);
+        Zone saved = zoneRepository.save(zone);
+        publishZoneReload("zone_created", saved.getId(), saved.getCameraId());
+        return saved;
     }
 
     @Transactional
     public void deleteZone(String id) {
-        if (!zoneRepository.existsById(id)) {
-            throw new IllegalArgumentException("Zone not found: " + id);
-        }
+        Zone zone = zoneRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Zone not found: " + id));
+        String cameraId = zone.getCameraId();
         zoneRepository.deleteById(id);
         log.info("Deleted zone: {}", id);
+        publishZoneReload("zone_deleted", id, cameraId);
+    }
+
+    private void publishZoneReload(String event, String zoneId, String cameraId) {
+        RabbitTemplate rt = rabbitTemplate.getIfAvailable();
+        if (rt == null) {
+            log.warn("RabbitMQ not available — zone reload not published for {}", zoneId);
+            return;
+        }
+        String payload = String.format(
+                "{\"event\":\"%s\",\"zone_id\":\"%s\",\"camera_id\":\"%s\"}",
+                event, zoneId, cameraId);
+        rt.convertAndSend("amq.topic", "farm.admin.reload_config", payload);
+        log.info("Zone reload published → farm/admin/reload_config : {}", payload);
     }
 
     // Worker Tags

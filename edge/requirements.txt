@@ -19,6 +19,9 @@ shapely==2.*
 # Image processing (already in base image, pinned for safety)
 Pillow>=10.0
 
+# ONVIF PTZ camera control (discovery + pan/tilt/zoom)
+onvif-zeep>=0.2
+
 # Production WSGI server (Flask runs in a thread, not standalone)
 gunicorn==23.*
 

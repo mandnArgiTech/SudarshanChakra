@@ -30,7 +30,8 @@ def update_snapshot(camera_id: str, frame):
 
 
 def create_app(zone_engine, cameras, config_dir, mqtt_client=None, pipeline=None,
-               model_pt_path=None, node_id=None, alert_engine=None):
+               model_pt_path=None, node_id=None, alert_engine=None,
+               video_recorder=None, storage_manager=None):
     """Factory function — creates and returns Flask app."""
     app = Flask(__name__)
 
@@ -725,5 +726,178 @@ def create_app(zone_engine, cameras, config_dir, mqtt_client=None, pipeline=None
     @app.route("/alerts")
     def alerts_page():
         return render_template_string(ALERTS_HTML)
+
+    # ── MJPEG Live Stream ──
+    @app.route("/api/live/<camera_id>")
+    def live_stream(camera_id):
+        """MJPEG multipart stream from latest inference frames."""
+        def generate():
+            while True:
+                with _snapshot_lock:
+                    entry = _snapshot_cache.get(camera_id)
+                if entry:
+                    _ts, jpeg_bytes = entry
+                    yield (
+                        b"--frame\r\n"
+                        b"Content-Type: image/jpeg\r\n"
+                        b"Content-Length: " + str(len(jpeg_bytes)).encode() + b"\r\n"
+                        b"\r\n" + jpeg_bytes + b"\r\n"
+                    )
+                time.sleep(0.33)
+
+        return Response(
+            generate(),
+            mimetype="multipart/x-mixed-replace; boundary=frame",
+        )
+
+    # ── Serve recorded video segments with Range support ──
+    @app.route("/api/video/<camera_id>/<path:subpath>")
+    def serve_video(camera_id, subpath):
+        """Serve MP4 segment with HTTP Range support for seeking."""
+        if video_recorder is None:
+            abort(503, description="Video recorder not available")
+        base = video_recorder.get_base_path(camera_id)
+        safe_path = os.path.normpath(os.path.join(base, subpath))
+        if not safe_path.startswith(os.path.abspath(base)):
+            abort(403)
+        if not os.path.isfile(safe_path):
+            abort(404)
+        return send_file(safe_path, mimetype="video/mp4", conditional=True)
+
+    # ── List recordings ──
+    @app.route("/api/recordings/<camera_id>")
+    def list_recordings(camera_id):
+        """List recording dates/hours/segments for a camera."""
+        if video_recorder is None:
+            return jsonify({"dates": []})
+        base = video_recorder.get_base_path(camera_id)
+        date_filter = request.args.get("date")
+        result = {"camera_id": camera_id, "dates": []}
+        if not os.path.isdir(base):
+            return jsonify(result)
+        for date_dir in sorted(os.listdir(base)):
+            date_path = os.path.join(base, date_dir)
+            if not os.path.isdir(date_path) or len(date_dir) != 10:
+                continue
+            if date_filter and date_dir != date_filter:
+                continue
+            date_entry = {"date": date_dir, "hours": []}
+            for hour_dir in sorted(os.listdir(date_path)):
+                hour_path = os.path.join(date_path, hour_dir)
+                if not os.path.isdir(hour_path):
+                    continue
+                segments = sorted([
+                    f for f in os.listdir(hour_path) if f.endswith(".mp4")
+                ])
+                if segments:
+                    date_entry["hours"].append({
+                        "hour": hour_dir,
+                        "segments": segments,
+                    })
+            result["dates"].append(date_entry)
+        return jsonify(result)
+
+    # ── Alert clips ──
+    @app.route("/api/clips/<alert_id>.mp4")
+    def serve_clip(alert_id):
+        """Serve a 30-second alert clip."""
+        clips_dir = os.path.join(
+            os.getenv("VIDEO_BASE_PATH", "/data/video"), "clips"
+        )
+        clip_path = os.path.join(clips_dir, f"{alert_id}.mp4")
+        if not os.path.isfile(clip_path):
+            abort(404)
+        return send_file(clip_path, mimetype="video/mp4", conditional=True)
+
+    # ── Storage status ──
+    @app.route("/api/storage/status")
+    def storage_status():
+        """Return disk usage stats from StorageManager."""
+        if storage_manager is None:
+            return jsonify({"error": "Storage manager not available"}), 503
+        return jsonify(storage_manager.get_status())
+
+    # ── PTZ Control Routes ──
+    _onvif_mgr = None
+    try:
+        from onvif_controller import OnvifManager
+        _onvif_mgr = OnvifManager()
+    except ImportError:
+        pass
+
+    def _get_onvif(camera_id):
+        if _onvif_mgr is None:
+            return None
+        return _onvif_mgr.get(camera_id)
+
+    @app.route("/api/ptz/<camera_id>/capabilities")
+    def ptz_capabilities(camera_id):
+        ctrl = _get_onvif(camera_id)
+        if ctrl is None:
+            return jsonify({"camera_id": camera_id, "supported": False,
+                            "message": "ONVIF not configured for this camera"})
+        return jsonify({"camera_id": camera_id, **ctrl.get_capabilities()})
+
+    @app.route("/api/ptz/<camera_id>/move", methods=["POST"])
+    def ptz_move(camera_id):
+        ctrl = _get_onvif(camera_id)
+        if ctrl is None:
+            return jsonify({"ok": False, "error": "No ONVIF"}), 404
+        body = request.json or {}
+        ok = ctrl.continuous_move(
+            pan=float(body.get("pan", 0)),
+            tilt=float(body.get("tilt", 0)),
+            zoom=float(body.get("zoom", 0)),
+        )
+        return jsonify({"ok": ok})
+
+    @app.route("/api/ptz/<camera_id>/stop", methods=["POST"])
+    def ptz_stop(camera_id):
+        ctrl = _get_onvif(camera_id)
+        if ctrl is None:
+            return jsonify({"ok": False, "error": "No ONVIF"}), 404
+        return jsonify({"ok": ctrl.stop()})
+
+    @app.route("/api/ptz/<camera_id>/absolute", methods=["POST"])
+    def ptz_absolute(camera_id):
+        ctrl = _get_onvif(camera_id)
+        if ctrl is None:
+            return jsonify({"ok": False, "error": "No ONVIF"}), 404
+        body = request.json or {}
+        ok = ctrl.absolute_move(
+            x=float(body.get("x", 0)),
+            y=float(body.get("y", 0)),
+            z=float(body.get("z", 0)),
+        )
+        return jsonify({"ok": ok})
+
+    @app.route("/api/ptz/<camera_id>/presets")
+    def ptz_presets(camera_id):
+        ctrl = _get_onvif(camera_id)
+        if ctrl is None:
+            return jsonify([])
+        return jsonify(ctrl.get_presets())
+
+    @app.route("/api/ptz/<camera_id>/preset/goto", methods=["POST"])
+    def ptz_goto_preset(camera_id):
+        ctrl = _get_onvif(camera_id)
+        if ctrl is None:
+            return jsonify({"ok": False, "error": "No ONVIF"}), 404
+        body = request.json or {}
+        token = body.get("token", "")
+        return jsonify({"ok": ctrl.goto_preset(token)})
+
+    @app.route("/api/ptz/<camera_id>/preset/save", methods=["PUT"])
+    def ptz_save_preset(camera_id):
+        ctrl = _get_onvif(camera_id)
+        if ctrl is None:
+            return jsonify({"ok": False, "error": "No ONVIF"}), 404
+        body = request.json or {}
+        name = body.get("name", "")
+        token = ctrl.set_preset(name)
+        return jsonify({"ok": token is not None, "token": token})
+
+    # Expose ONVIF manager for farm_edge_node to register cameras
+    app.onvif_manager = _onvif_mgr
 
     return app

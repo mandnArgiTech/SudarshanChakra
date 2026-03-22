@@ -13,9 +13,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
 import java.util.Optional;
@@ -37,8 +38,9 @@ class DeviceServiceTest {
     ZoneRepository zoneRepository;
     @Mock
     WorkerTagRepository workerTagRepository;
+    @Mock
+    ObjectProvider<RabbitTemplate> rabbitTemplateProvider;
 
-    @InjectMocks
     DeviceService deviceService;
 
     UUID farmId;
@@ -49,6 +51,9 @@ class DeviceServiceTest {
         farmId = UUID.fromString("a0000000-0000-0000-0000-000000000001");
         node = EdgeNode.builder().id("e1").farmId(farmId).displayName("E1").build();
         TenantContext.set(farmId, false);
+        deviceService = new DeviceService(
+                edgeNodeRepository, cameraRepository, zoneRepository,
+                workerTagRepository, rabbitTemplateProvider);
     }
 
     @AfterEach
@@ -136,14 +141,15 @@ class DeviceServiceTest {
 
     @Test
     void deleteZone_success() {
-        when(zoneRepository.existsById("z1")).thenReturn(true);
+        Zone z = Zone.builder().id("z1").cameraId("cam-1").name("Z").zoneType("line").priority("high").polygon("{}").build();
+        when(zoneRepository.findById("z1")).thenReturn(Optional.of(z));
         deviceService.deleteZone("z1");
         verify(zoneRepository).deleteById("z1");
     }
 
     @Test
     void deleteZone_missing() {
-        when(zoneRepository.existsById("z1")).thenReturn(false);
+        when(zoneRepository.findById("z1")).thenReturn(Optional.empty());
         assertThatThrownBy(() -> deviceService.deleteZone("z1"))
                 .hasMessageContaining("not found");
     }

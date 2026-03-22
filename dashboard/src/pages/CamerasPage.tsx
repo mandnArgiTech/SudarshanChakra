@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { clsx } from 'clsx';
-import { Camera as CameraIcon, ExternalLink, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Camera as CameraIcon, ExternalLink, Film, Joystick, MapPin, Plus, X } from 'lucide-react';
 import { useCameras } from '@/api/devices';
 import type { Camera } from '@/types';
 import { edgeSnapshotUrl, getEdgeSnapshotBase, maskRtspUrl } from '@/lib/edgeSnapshot';
@@ -101,6 +102,7 @@ export default function CamerasPage() {
   const cameraList = cameras ?? fallbackCameras;
   const edgeBase = getEdgeSnapshotBase();
   const hasEdgePreview = Boolean(edgeBase);
+  const navigate = useNavigate();
 
   const [selected, setSelected] = useState<Camera | null>(null);
   const [tick, setTick] = useState(0);
@@ -124,6 +126,15 @@ export default function CamerasPage() {
 
   return (
     <>
+      <div className="flex justify-end mb-3">
+        <button
+          type="button"
+          onClick={() => navigate('/cameras/add')}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-sc-accent/10 border border-sc-accent/30 text-sc-accent hover:bg-sc-accent/20 transition-colors"
+        >
+          <Plus size={16} /> Add Camera
+        </button>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {cameraList.map((cam) => {
           const isAlert = cam.status === 'alert';
@@ -186,6 +197,32 @@ export default function CamerasPage() {
                 </div>
                 <div className="text-sc-text-muted text-[11px] font-mono mt-1">
                   {cam.id} · {cam.nodeId}
+                </div>
+                <div className="flex gap-1.5 mt-2">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); navigate(`/cameras/${cam.id}/video`); }}
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded bg-sc-surface-alt text-sc-text-muted hover:text-sc-accent hover:border-sc-accent/30 border border-sc-border transition-colors"
+                    title="Recordings"
+                  >
+                    <Film size={12} /> Recordings
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); navigate(`/cameras/${cam.id}/ptz`); }}
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded bg-sc-surface-alt text-sc-text-muted hover:text-sc-accent hover:border-sc-accent/30 border border-sc-border transition-colors"
+                    title="PTZ Control"
+                  >
+                    <Joystick size={12} /> PTZ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); navigate(`/cameras/${cam.id}/zones`); }}
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded bg-sc-surface-alt text-sc-text-muted hover:text-sc-accent hover:border-sc-accent/30 border border-sc-border transition-colors"
+                    title="Zones"
+                  >
+                    <MapPin size={12} /> Zones
+                  </button>
                 </div>
               </div>
             </div>

@@ -38,6 +38,8 @@ if not (DEV_MODE or MOCK_CAMERAS):
     from pipeline import InferencePipeline, load_model  # noqa: E402
 
 from zone_engine import ZoneEngine  # noqa: E402
+from video_recorder import VideoRecorder  # noqa: E402
+from storage_manager import StorageManager  # noqa: E402
 if not (DEV_MODE or MOCK_LORA):
     from lora_receiver import LoRaReceiver  # noqa: E402
 from alert_engine import AlertDecisionEngine  # noqa: E402
@@ -462,11 +464,26 @@ def main():
 
     pipeline_holder["pipeline"] = pipeline
 
+    # ── Step 8b: Start video recorder + storage manager ──
+    video_recorder = None
+    storage_manager = None
+    recording_enabled = os.getenv("RECORDING_ENABLED", "true").lower() == "true"
+    if recording_enabled:
+        video_recorder = VideoRecorder(cameras)
+        video_recorder.start()
+        storage_manager = StorageManager()
+        storage_manager.start()
+        log.info("Video recorder + storage manager started")
+    else:
+        log.info("Video recording disabled (RECORDING_ENABLED=false)")
+
     flask_app = create_app(
         zone_engine, cameras, CONFIG_DIR,
         mqtt_client=mqtt_client, pipeline=pipeline,
         model_pt_path=pt_path, node_id=NODE_ID,
         alert_engine=alert_engine,
+        video_recorder=video_recorder,
+        storage_manager=storage_manager,
     )
     flask_thread = threading.Thread(
         target=lambda: flask_app.run(host="0.0.0.0", port=FLASK_PORT, debug=False),
@@ -481,6 +498,10 @@ def main():
     # Graceful shutdown
     def shutdown(signum, frame):
         log.info("Shutting down edge node...")
+        if video_recorder:
+            video_recorder.stop()
+        if storage_manager:
+            storage_manager.stop()
         mqtt_client.loop_stop()
         mqtt_client.disconnect()
         sys.exit(0)

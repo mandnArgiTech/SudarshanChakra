@@ -18,6 +18,10 @@ import RoleRoute from '@/components/RoleRoute';
 import AdminFarmsPage from '@/pages/AdminFarmsPage';
 import AdminUsersPage from '@/pages/AdminUsersPage';
 import AdminAuditPage from '@/pages/AdminAuditPage';
+import VideoPlayerPage from '@/pages/VideoPlayerPage';
+import PtzControlPage from '@/pages/PtzControlPage';
+import ZoneDrawPage from '@/pages/ZoneDrawPage';
+import AddCameraPage from '@/pages/AddCameraPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -58,6 +62,38 @@ export default function App() {
           element={
             <ModuleRoute module="cameras">
               <CamerasPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="cameras/:cameraId/video"
+          element={
+            <ModuleRoute module="cameras">
+              <VideoPlayerPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="cameras/:cameraId/ptz"
+          element={
+            <ModuleRoute module="cameras">
+              <PtzControlPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="cameras/:cameraId/zones"
+          element={
+            <ModuleRoute module="cameras">
+              <ZoneDrawPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="cameras/add"
+          element={
+            <ModuleRoute module="cameras">
+              <AddCameraPage />
             </ModuleRoute>
           }
         />

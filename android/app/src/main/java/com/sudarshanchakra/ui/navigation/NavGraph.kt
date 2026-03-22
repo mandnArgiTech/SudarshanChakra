@@ -21,6 +21,10 @@ import com.sudarshanchakra.ui.components.BottomNavBar
 import com.sudarshanchakra.ui.screens.alerts.AlertDetailScreen
 import com.sudarshanchakra.ui.screens.alerts.AlertFeedScreen
 import com.sudarshanchakra.ui.screens.cameras.CameraGridScreen
+import com.sudarshanchakra.ui.screens.cameras.AddCameraScreen
+import com.sudarshanchakra.ui.screens.cameras.PtzControlScreen
+import com.sudarshanchakra.ui.screens.zones.ZoneDrawerScreen
+import com.sudarshanchakra.ui.screens.cameras.VideoPlayerScreen
 import com.sudarshanchakra.ui.screens.devices.DeviceStatusScreen
 import com.sudarshanchakra.ui.screens.login.LoginScreen
 import com.sudarshanchakra.ui.screens.settings.ServerSettingsScreen
@@ -40,9 +44,16 @@ object Routes {
     const val PROFILE = "profile"
     const val WATER_TANKS = "water_tanks"
     const val MOTOR_CONTROL = "motor_control/{motorId}"
+    const val CAMERA_VIDEO = "camera_video/{cameraId}"
+    const val CAMERA_PTZ = "camera_ptz/{cameraId}"
+    const val ZONE_DRAWER = "zone_drawer/{cameraId}"
+    const val ADD_CAMERA = "add_camera"
 
     fun alertDetail(id: String) = "alertDetail/$id"
     fun motorControl(motorId: String) = "motor_control/$motorId"
+    fun cameraVideo(cameraId: String) = "camera_video/$cameraId"
+    fun cameraPtz(cameraId: String) = "camera_ptz/$cameraId"
+    fun zoneDrawer(cameraId: String) = "zone_drawer/$cameraId"
 
     /** Bottom-nav root for back stack when switching tabs (first enabled module). */
     fun defaultStartTab(enabledModules: Set<String>): String = when {
@@ -58,7 +69,9 @@ object Routes {
         if (route == null) return null
         return when {
             route == ALERTS || route.startsWith("alertDetail") -> "alerts"
-            route == CAMERAS -> "cameras"
+            route == CAMERAS || route.startsWith("camera_video")
+                || route.startsWith("camera_ptz") || route.startsWith("zone_drawer")
+                || route == ADD_CAMERA -> "cameras"
             route == SIREN -> "sirens"
             route == DEVICES -> "devices"
             route == WATER_TANKS -> "water"
@@ -190,6 +203,42 @@ fun NavGraph(
             }
 
             composable(Routes.CAMERAS) { CameraGridScreen() }
+
+            composable(
+                route = Routes.CAMERA_VIDEO,
+                arguments = listOf(navArgument("cameraId") { type = NavType.StringType }),
+            ) { back ->
+                VideoPlayerScreen(
+                    cameraId = back.arguments?.getString("cameraId") ?: "",
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = Routes.CAMERA_PTZ,
+                arguments = listOf(navArgument("cameraId") { type = NavType.StringType }),
+            ) { back ->
+                PtzControlScreen(
+                    cameraId = back.arguments?.getString("cameraId") ?: "",
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = Routes.ZONE_DRAWER,
+                arguments = listOf(navArgument("cameraId") { type = NavType.StringType }),
+            ) { back ->
+                ZoneDrawerScreen(
+                    cameraId = back.arguments?.getString("cameraId") ?: "",
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.ADD_CAMERA) {
+                AddCameraScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
             composable(Routes.SIREN) { SirenControlScreen() }
             composable(Routes.DEVICES) { DeviceStatusScreen() }
             composable(Routes.PROFILE) {

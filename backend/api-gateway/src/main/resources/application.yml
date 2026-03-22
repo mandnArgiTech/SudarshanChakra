@@ -20,6 +20,13 @@ spring:
           uri: ${SIREN_SERVICE_URL:http://localhost:8084}
           predicates:
             - Path=/api/v1/siren/**
+        - id: edge-proxy
+          uri: ${EDGE_FLASK_BASE_URL:http://localhost:5000}
+          predicates:
+            - Path=/edge/**
+          filters:
+            - StripPrefix=1
+            - RemoveRequestHeader=Authorization
       globalcors:
         corsConfigurations:
           '[/**]':

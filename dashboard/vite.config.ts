@@ -23,6 +23,10 @@ export default defineConfig({
         target: 'http://localhost:8081',
         ws: true,
       },
+      '/edge': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
 });

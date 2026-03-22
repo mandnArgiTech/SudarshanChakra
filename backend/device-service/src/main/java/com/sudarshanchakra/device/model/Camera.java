@@ -54,6 +54,34 @@ public class Camera {
     @Builder.Default
     private String status = "unknown";
 
+    @Column(name = "source_type", length = 20)
+    @Builder.Default
+    private String sourceType = "rtsp";
+
+    @Column(name = "source_url")
+    private String sourceUrl;
+
+    @Column(name = "recording_enabled")
+    @Builder.Default
+    private Boolean recordingEnabled = true;
+
+    @Column(name = "has_ptz")
+    @Builder.Default
+    private Boolean hasPtz = false;
+
+    @Column(name = "onvif_host")
+    private String onvifHost;
+
+    @Column(name = "onvif_port")
+    @Builder.Default
+    private Integer onvifPort = 80;
+
+    @Column(name = "onvif_user", length = 100)
+    private String onvifUser;
+
+    @Column(name = "onvif_pass")
+    private String onvifPass;
+
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
 

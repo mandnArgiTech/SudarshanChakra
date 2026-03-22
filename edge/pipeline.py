@@ -95,6 +95,35 @@ class FramePacket:
     frame_number: int
 
 
+def create_grabber(config: 'CameraConfig', queue: 'Queue') -> threading.Thread:
+    """
+    Factory: returns the appropriate grabber based on source_type.
+    Defaults to CameraGrabber (RTSP) if source_type is not set.
+    """
+    source_type = getattr(config, "source_type", "rtsp")
+    source_url = getattr(config, "source_url", None) or config.rtsp_url
+
+    if source_type == "file":
+        from grabbers.file_grabber import FileGrabber
+        return FileGrabber(
+            camera_id=config.id,
+            file_path=source_url,
+            queue=queue,
+            fps=config.fps,
+            loop=getattr(config, "loop", False),
+        )
+    elif source_type == "http":
+        from grabbers.http_grabber import HttpGrabber
+        return HttpGrabber(
+            camera_id=config.id,
+            url=source_url,
+            queue=queue,
+            fps=config.fps,
+        )
+    else:
+        return CameraGrabber(config, queue)
+
+
 class CameraGrabber(threading.Thread):
     """
     Grabs frames from a single RTSP camera at the configured FPS.

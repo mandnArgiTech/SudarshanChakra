@@ -47,6 +47,9 @@ interface ApiService {
     @GET("cameras")
     suspend fun getCameras(): Response<List<Camera>>
 
+    @POST("cameras")
+    suspend fun createCamera(@Body camera: Camera): Response<Camera>
+
     @GET("zones")
     suspend fun getZones(): Response<List<Zone>>
 
