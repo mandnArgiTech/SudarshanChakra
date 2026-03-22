@@ -1,0 +1,15 @@
+# SudarshanChakra — optional overlay: monitoring / observability.
+# Add Prometheus scrape configs, Grafana, or OpenTelemetry collectors alongside core services.
+#
+# Backend services already expose actuator/prometheus where configured (alert/siren).
+# Point Prometheus at:
+#   - alert-service:8081/actuator/prometheus
+#   - device-service:8082/actuator/prometheus (if enabled)
+#   - siren-service:8084/actuator/prometheus
+#
+# Example:
+#   docker compose -f docker-compose.yml -f docker-compose.profile-monitoring.yml up -d
+#
+# For a minimal local stack, run Prometheus as a sidecar with a static scrape config file.
+
+services: {}

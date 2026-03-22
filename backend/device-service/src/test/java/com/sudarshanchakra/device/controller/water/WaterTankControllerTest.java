@@ -4,11 +4,14 @@ import com.sudarshanchakra.device.config.SecurityConfig;
 import com.sudarshanchakra.device.dto.water.WaterTankResponse;
 import com.sudarshanchakra.device.model.water.WaterLevelReading;
 import com.sudarshanchakra.device.service.water.WaterService;
+import com.sudarshanchakra.jwt.ResourceServerJwtAuthFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -20,7 +23,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(WaterTankController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import(SecurityConfig.class)
+@WithMockUser(username = "t1", authorities = {"PERMISSION_water:view"})
 class WaterTankControllerTest {
 
     @Autowired
@@ -28,6 +33,10 @@ class WaterTankControllerTest {
 
     @MockBean
     private WaterService waterService;
+
+    @MockBean
+    @SuppressWarnings("unused")
+    private ResourceServerJwtAuthFilter resourceServerJwtAuthFilter;
 
     @Test
     void getAllTanks() throws Exception {

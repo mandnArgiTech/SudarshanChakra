@@ -5,6 +5,9 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.Filter;
+import org.hibernate.annotations.FilterDef;
+import org.hibernate.annotations.ParamDef;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -15,6 +18,8 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(name = "edge_nodes")
+@FilterDef(name = "tenantFilter", parameters = @ParamDef(name = "farmId", type = UUID.class))
+@Filter(name = "tenantFilter", condition = "farm_id = :farmId")
 public class EdgeNode {
 
     @Id

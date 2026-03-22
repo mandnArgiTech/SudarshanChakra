@@ -8,6 +8,7 @@ pluginManagement {
 }
 
 include(
+    "jwt-support",
     "alert-service",
     "device-service",
     "auth-service",

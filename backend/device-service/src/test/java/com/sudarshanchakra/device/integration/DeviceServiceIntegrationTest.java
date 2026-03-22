@@ -5,8 +5,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -23,6 +26,11 @@ class DeviceServiceIntegrationTest extends AbstractDeviceIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder withAuth(
+            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder req) {
+        return req.header(HttpHeaders.AUTHORIZATION, DeviceTestJwt.bearerForFarm(UUID.fromString(FARM)));
+    }
+
     @Test
     void createNode_list_getById() throws Exception {
         String id = "edge-it-" + System.currentTimeMillis();
@@ -30,17 +38,17 @@ class DeviceServiceIntegrationTest extends AbstractDeviceIntegrationTest {
                 "{\"id\":\"%s\",\"farmId\":\"%s\",\"displayName\":\"IT Node\",\"status\":\"online\"}",
                 id, FARM);
 
-        mockMvc.perform(post("/api/v1/nodes")
+        mockMvc.perform(withAuth(post("/api/v1/nodes")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
+                        .content(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id));
 
-        mockMvc.perform(get("/api/v1/nodes"))
+        mockMvc.perform(withAuth(get("/api/v1/nodes")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.id=='" + id + "')]").exists());
 
-        mockMvc.perform(get("/api/v1/nodes/" + id))
+        mockMvc.perform(withAuth(get("/api/v1/nodes/" + id)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.displayName").value("IT Node"));
     }
@@ -48,30 +56,30 @@ class DeviceServiceIntegrationTest extends AbstractDeviceIntegrationTest {
     @Test
     void createCamera_onNode() throws Exception {
         String nodeId = "edge-cam-" + System.currentTimeMillis();
-        mockMvc.perform(post("/api/v1/nodes")
+        mockMvc.perform(withAuth(post("/api/v1/nodes")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(String.format(
-                                "{\"id\":\"%s\",\"farmId\":\"%s\",\"displayName\":\"N\"}", nodeId, FARM)))
+                                "{\"id\":\"%s\",\"farmId\":\"%s\",\"displayName\":\"N\"}", nodeId, FARM))))
                 .andExpect(status().isOk());
 
         String camId = "cam-it-1";
         String camBody = String.format(
                 "{\"id\":\"%s\",\"nodeId\":\"%s\",\"name\":\"Gate\",\"rtspUrl\":\"rtsp://x/stream\",\"enabled\":true}",
                 camId, nodeId);
-        mockMvc.perform(post("/api/v1/cameras")
+        mockMvc.perform(withAuth(post("/api/v1/cameras")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(camBody))
+                        .content(camBody)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Gate"));
 
-        mockMvc.perform(get("/api/v1/cameras").param("nodeId", nodeId))
+        mockMvc.perform(withAuth(get("/api/v1/cameras").param("nodeId", nodeId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(camId));
     }
 
     @Test
     void waterTanks_listFromSeedData() throws Exception {
-        mockMvc.perform(get("/api/v1/water/tanks"))
+        mockMvc.perform(withAuth(get("/api/v1/water/tanks")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.id=='farm_tank1')]").exists())
                 .andExpect(jsonPath("$[?(@.displayName=='Farm Tank 1')]").exists());
@@ -79,7 +87,7 @@ class DeviceServiceIntegrationTest extends AbstractDeviceIntegrationTest {
 
     @Test
     void waterMotors_listFromSeedData() throws Exception {
-        mockMvc.perform(get("/api/v1/water/motors"))
+        mockMvc.perform(withAuth(get("/api/v1/water/motors")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
     }

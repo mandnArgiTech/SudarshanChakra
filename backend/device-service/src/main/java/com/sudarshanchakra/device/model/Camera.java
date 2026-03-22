@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.Filter;
 
 import java.time.OffsetDateTime;
 
@@ -14,6 +15,9 @@ import java.time.OffsetDateTime;
 @AllArgsConstructor
 @Entity
 @Table(name = "cameras")
+@Filter(
+        name = "tenantFilter",
+        condition = "node_id in (select en.id from edge_nodes en where en.farm_id = :farmId)")
 public class Camera {
 
     @Id

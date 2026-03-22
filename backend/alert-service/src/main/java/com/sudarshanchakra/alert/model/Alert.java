@@ -2,7 +2,10 @@ package com.sudarshanchakra.alert.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.Filter;
+import org.hibernate.annotations.FilterDef;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.ParamDef;
 import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
@@ -14,6 +17,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@FilterDef(name = "tenantFilter", parameters = @ParamDef(name = "farmId", type = UUID.class))
+@Filter(
+        name = "tenantFilter",
+        condition = "node_id in (select en.id from edge_nodes en where en.farm_id = :farmId)")
 public class Alert {
 
     @Id

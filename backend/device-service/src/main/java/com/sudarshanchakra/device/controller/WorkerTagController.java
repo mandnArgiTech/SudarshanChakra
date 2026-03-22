@@ -8,10 +8,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
 
 @Slf4j
 @RestController
@@ -23,24 +23,21 @@ public class WorkerTagController {
     private final DeviceService deviceService;
 
     @GetMapping
-    @Operation(summary = "List all worker tags")
+    @PreAuthorize("hasAuthority('PERMISSION_devices:view')")
+    @Operation(summary = "List worker tags for the current tenant (Hibernate tenant filter)")
     public ResponseEntity<List<WorkerTag>> getAllTags() {
         return ResponseEntity.ok(deviceService.getAllTags());
     }
 
-    @GetMapping(params = "farmId")
-    @Operation(summary = "List worker tags by farm ID")
-    public ResponseEntity<List<WorkerTag>> getTagsByFarmId(@RequestParam UUID farmId) {
-        return ResponseEntity.ok(deviceService.getTagsByFarmId(farmId));
-    }
-
     @GetMapping("/{tagId}")
+    @PreAuthorize("hasAuthority('PERMISSION_devices:view')")
     @Operation(summary = "Get worker tag by ID")
     public ResponseEntity<WorkerTag> getTagById(@PathVariable String tagId) {
         return ResponseEntity.ok(deviceService.getTagById(tagId));
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('PERMISSION_devices:manage')")
     @Operation(summary = "Register a new worker tag")
     public ResponseEntity<WorkerTag> createTag(@Valid @RequestBody WorkerTag tag) {
         return ResponseEntity.ok(deviceService.createTag(tag));

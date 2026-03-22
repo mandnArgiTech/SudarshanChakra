@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,6 +23,7 @@ public class CameraController {
     private final DeviceService deviceService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('PERMISSION_cameras:view')")
     @Operation(summary = "List all cameras")
     public ResponseEntity<List<Camera>> getAllCameras() {
         return ResponseEntity.ok(deviceService.getAllCameras());
@@ -34,12 +36,14 @@ public class CameraController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERMISSION_cameras:view')")
     @Operation(summary = "Get camera by ID")
     public ResponseEntity<Camera> getCameraById(@PathVariable String id) {
         return ResponseEntity.ok(deviceService.getCameraById(id));
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('PERMISSION_cameras:manage')")
     @Operation(summary = "Register a new camera")
     public ResponseEntity<Camera> createCamera(@Valid @RequestBody Camera camera) {
         return ResponseEntity.ok(deviceService.createCamera(camera));

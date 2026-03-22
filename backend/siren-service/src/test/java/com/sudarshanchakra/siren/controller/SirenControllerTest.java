@@ -4,15 +4,18 @@ import com.sudarshanchakra.siren.dto.SirenRequest;
 import com.sudarshanchakra.siren.dto.SirenResponse;
 import com.sudarshanchakra.siren.model.SirenAction;
 import com.sudarshanchakra.siren.service.SirenCommandService;
+import com.sudarshanchakra.jwt.ResourceServerJwtAuthFilter;
 import org.junit.jupiter.api.Test;
 import com.sudarshanchakra.siren.config.SecurityConfig;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -26,7 +29,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(SirenController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import(SecurityConfig.class)
+@WithMockUser(
+        username = "t1",
+        authorities = {"PERMISSION_sirens:view", "PERMISSION_sirens:trigger"})
 class SirenControllerTest {
 
     @Autowired
@@ -34,6 +41,10 @@ class SirenControllerTest {
 
     @MockBean
     SirenCommandService sirenCommandService;
+
+    @MockBean
+    @SuppressWarnings("unused")
+    ResourceServerJwtAuthFilter resourceServerJwtAuthFilter;
 
     @Test
     void trigger_ok() throws Exception {

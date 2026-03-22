@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.Filter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -16,6 +17,10 @@ import java.time.OffsetDateTime;
 @AllArgsConstructor
 @Entity
 @Table(name = "zones")
+@Filter(
+        name = "tenantFilter",
+        condition =
+                "camera_id in (select c.id from cameras c join edge_nodes en on c.node_id = en.id where en.farm_id = :farmId)")
 public class Zone {
 
     @Id

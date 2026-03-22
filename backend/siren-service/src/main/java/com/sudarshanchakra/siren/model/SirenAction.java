@@ -2,6 +2,9 @@ package com.sudarshanchakra.siren.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.Filter;
+import org.hibernate.annotations.FilterDef;
+import org.hibernate.annotations.ParamDef;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -12,6 +15,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@FilterDef(name = "tenantFilter", parameters = @ParamDef(name = "farmId", type = UUID.class))
+@Filter(
+        name = "tenantFilter",
+        condition = "target_node in (select en.id from edge_nodes en where en.farm_id = :farmId)")
 public class SirenAction {
 
     @Id

@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -26,6 +27,7 @@ public class AlertController {
     private final AlertService alertService;
 
     @PostMapping
+    @PreAuthorize("hasAuthority('PERMISSION_alerts:acknowledge')")
     @Operation(summary = "Create alert", description = "Ingest an alert (edge, simulator, or integration). Same JSON shape as MQTT alert payload.")
     public ResponseEntity<AlertResponse> createAlert(@RequestBody AlertPayload payload) {
         AlertResponse created = alertService.createFromPayload(payload);
@@ -33,6 +35,7 @@ public class AlertController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority('PERMISSION_alerts:view')")
     @Operation(summary = "Get all alerts", description = "Retrieve paginated and filtered alerts")
     public ResponseEntity<Page<AlertResponse>> getAlerts(
             @Parameter(description = "Filter by priority") @RequestParam(required = false) String priority,
@@ -43,12 +46,14 @@ public class AlertController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERMISSION_alerts:view')")
     @Operation(summary = "Get alert by ID")
     public ResponseEntity<AlertResponse> getAlert(@PathVariable UUID id) {
         return ResponseEntity.ok(alertService.getById(id));
     }
 
     @PatchMapping("/{id}/acknowledge")
+    @PreAuthorize("hasAuthority('PERMISSION_alerts:acknowledge')")
     @Operation(summary = "Acknowledge an alert")
     public ResponseEntity<AlertResponse> acknowledgeAlert(
             @PathVariable UUID id,
@@ -57,6 +62,7 @@ public class AlertController {
     }
 
     @PatchMapping("/{id}/resolve")
+    @PreAuthorize("hasAuthority('PERMISSION_alerts:resolve')")
     @Operation(summary = "Resolve an alert")
     public ResponseEntity<AlertResponse> resolveAlert(
             @PathVariable UUID id,
@@ -65,6 +71,7 @@ public class AlertController {
     }
 
     @PatchMapping("/{id}/false-positive")
+    @PreAuthorize("hasAuthority('PERMISSION_alerts:resolve')")
     @Operation(summary = "Mark alert as false positive")
     public ResponseEntity<AlertResponse> markFalsePositive(
             @PathVariable UUID id,

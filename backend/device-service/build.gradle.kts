@@ -1,4 +1,5 @@
 dependencies {
+    implementation(project(":jwt-support"))
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-amqp")
     implementation("org.springframework.boot:spring-boot-starter-security")
@@ -7,4 +8,8 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
+    testImplementation("org.springframework.security:spring-security-test")
+    testImplementation("io.jsonwebtoken:jjwt-api:0.12.5")
+    testRuntimeOnly("io.jsonwebtoken:jjwt-impl:0.12.5")
+    testRuntimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.5")
 }

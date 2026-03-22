@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,24 +23,28 @@ public class EdgeNodeController {
     private final DeviceService deviceService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('PERMISSION_devices:view')")
     @Operation(summary = "List all edge nodes")
     public ResponseEntity<List<EdgeNode>> getAllNodes() {
         return ResponseEntity.ok(deviceService.getAllNodes());
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERMISSION_devices:view')")
     @Operation(summary = "Get edge node by ID")
     public ResponseEntity<EdgeNode> getNodeById(@PathVariable String id) {
         return ResponseEntity.ok(deviceService.getNodeById(id));
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('PERMISSION_devices:manage')")
     @Operation(summary = "Register a new edge node")
     public ResponseEntity<EdgeNode> createNode(@Valid @RequestBody EdgeNode node) {
         return ResponseEntity.ok(deviceService.createNode(node));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERMISSION_devices:manage')")
     @Operation(summary = "Update an edge node")
     public ResponseEntity<EdgeNode> updateNode(@PathVariable String id, @RequestBody EdgeNode updates) {
         return ResponseEntity.ok(deviceService.updateNode(id, updates));

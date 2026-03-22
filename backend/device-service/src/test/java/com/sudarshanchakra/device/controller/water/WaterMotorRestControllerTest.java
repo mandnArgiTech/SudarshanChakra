@@ -3,14 +3,17 @@ package com.sudarshanchakra.device.controller.water;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sudarshanchakra.device.config.SecurityConfig;
 import com.sudarshanchakra.device.dto.water.MotorUpdateRequest;
+import com.sudarshanchakra.jwt.ResourceServerJwtAuthFilter;
 import com.sudarshanchakra.device.model.water.WaterMotorController;
 import com.sudarshanchakra.device.service.water.WaterService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -27,7 +30,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(WaterMotorRestController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import(SecurityConfig.class)
+@WithMockUser(
+        username = "t1",
+        authorities = {"PERMISSION_pumps:view", "PERMISSION_pumps:control", "PERMISSION_water:manage"})
 class WaterMotorRestControllerTest {
 
     @Autowired
@@ -38,6 +45,10 @@ class WaterMotorRestControllerTest {
 
     @MockBean
     private WaterService waterService;
+
+    @MockBean
+    @SuppressWarnings("unused")
+    private ResourceServerJwtAuthFilter resourceServerJwtAuthFilter;
 
     @Test
     void getAllMotors() throws Exception {

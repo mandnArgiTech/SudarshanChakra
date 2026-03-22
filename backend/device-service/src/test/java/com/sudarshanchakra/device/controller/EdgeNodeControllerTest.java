@@ -6,11 +6,14 @@ import com.sudarshanchakra.device.service.DeviceService;
 import org.junit.jupiter.api.Test;
 import com.sudarshanchakra.device.config.SecurityConfig;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import com.sudarshanchakra.jwt.ResourceServerJwtAuthFilter;
 
 import java.util.List;
 import java.util.UUID;
@@ -22,7 +25,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(EdgeNodeController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import(SecurityConfig.class)
+@WithMockUser(
+        username = "t1",
+        authorities = {"PERMISSION_devices:view", "PERMISSION_devices:manage"})
 class EdgeNodeControllerTest {
 
     @Autowired
@@ -33,6 +40,10 @@ class EdgeNodeControllerTest {
 
     @MockBean
     DeviceService deviceService;
+
+    @MockBean
+    @SuppressWarnings("unused")
+    ResourceServerJwtAuthFilter resourceServerJwtAuthFilter;
 
     @Test
     void listNodes() throws Exception {

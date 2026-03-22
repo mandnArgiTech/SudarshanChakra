@@ -2,6 +2,7 @@ package com.sudarshanchakra.device.model.water;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.Filter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -9,6 +10,9 @@ import java.time.OffsetDateTime;
 
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
 @Entity @Table(name = "water_level_readings")
+@Filter(
+        name = "tenantFilter",
+        condition = "tank_id in (select wt.id from water_tanks wt where wt.farm_id = :farmId)")
 public class WaterLevelReading {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)

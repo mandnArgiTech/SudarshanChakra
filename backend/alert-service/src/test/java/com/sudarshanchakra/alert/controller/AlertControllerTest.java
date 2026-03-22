@@ -2,9 +2,11 @@ package com.sudarshanchakra.alert.controller;
 
 import com.sudarshanchakra.alert.dto.AlertResponse;
 import com.sudarshanchakra.alert.service.AlertService;
+import com.sudarshanchakra.jwt.ResourceServerJwtAuthFilter;
 import org.junit.jupiter.api.Test;
 import com.sudarshanchakra.alert.config.SecurityConfig;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
@@ -12,6 +14,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -24,7 +27,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AlertController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import(SecurityConfig.class)
+@WithMockUser(
+        username = "t1",
+        authorities = {
+                "PERMISSION_alerts:view",
+                "PERMISSION_alerts:acknowledge",
+                "PERMISSION_alerts:resolve"
+        })
 class AlertControllerTest {
 
     @Autowired
@@ -32,6 +43,10 @@ class AlertControllerTest {
 
     @MockBean
     AlertService alertService;
+
+    @MockBean
+    @SuppressWarnings("unused")
+    ResourceServerJwtAuthFilter resourceServerJwtAuthFilter;
 
     @Test
     void createAlert_created() throws Exception {

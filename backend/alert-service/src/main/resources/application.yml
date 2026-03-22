@@ -11,7 +11,7 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-    open-in-view: false
+    open-in-view: true
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672
@@ -22,7 +22,11 @@ server:
   port: 8081
 
 jwt:
-  secret: ${JWT_SECRET:default-dev-secret-change-in-production}
+  secret: ${JWT_SECRET:default-dev-secret-change-in-production-must-be-at-least-256-bits-long-for-hs256}
+
+tenant:
+  filter:
+    enabled: ${TENANT_FILTER_ENABLED:true}
 
 management:
   endpoints:

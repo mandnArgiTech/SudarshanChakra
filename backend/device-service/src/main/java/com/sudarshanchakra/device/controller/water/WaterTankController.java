@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,18 +21,21 @@ public class WaterTankController {
     private final WaterService waterService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('PERMISSION_water:view')")
     @Operation(summary = "List all water tanks with latest readings")
     public ResponseEntity<List<WaterTankResponse>> getAllTanks() {
         return ResponseEntity.ok(waterService.getAllTanks());
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERMISSION_water:view')")
     @Operation(summary = "Get a single tank with current level")
     public ResponseEntity<WaterTankResponse> getTank(@PathVariable String id) {
         return ResponseEntity.ok(waterService.getTank(id));
     }
 
     @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('PERMISSION_water:view')")
     @Operation(summary = "Get level readings for the last N hours (default 24)")
     public ResponseEntity<List<WaterLevelReading>> getHistory(
             @PathVariable String id,

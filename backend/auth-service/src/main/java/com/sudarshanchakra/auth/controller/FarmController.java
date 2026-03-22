@@ -1,5 +1,6 @@
 package com.sudarshanchakra.auth.controller;
 
+import com.sudarshanchakra.auth.audit.Auditable;
 import com.sudarshanchakra.auth.dto.FarmRequest;
 import com.sudarshanchakra.auth.dto.FarmResponse;
 import com.sudarshanchakra.auth.service.FarmService;
@@ -37,6 +38,7 @@ public class FarmController {
     }
 
     @PostMapping
+    @Auditable(action = "farm.create", entityType = "farm")
     @Operation(summary = "Create farm (optional initial admin user)")
     public ResponseEntity<FarmResponse> create(
             @Validated(FarmRequest.Create.class) @RequestBody FarmRequest request) {
@@ -44,18 +46,21 @@ public class FarmController {
     }
 
     @PutMapping("/{id}")
+    @Auditable(action = "farm.update", entityType = "farm", entityId = "#id.toString()")
     @Operation(summary = "Update farm")
     public ResponseEntity<FarmResponse> update(@PathVariable UUID id, @Valid @RequestBody FarmRequest request) {
         return ResponseEntity.ok(farmService.update(id, request));
     }
 
     @PatchMapping("/{id}/suspend")
+    @Auditable(action = "farm.suspend", entityType = "farm", entityId = "#id.toString()")
     @Operation(summary = "Suspend farm")
     public ResponseEntity<FarmResponse> suspend(@PathVariable UUID id) {
         return ResponseEntity.ok(farmService.suspend(id));
     }
 
     @PatchMapping("/{id}/activate")
+    @Auditable(action = "farm.activate", entityType = "farm", entityId = "#id.toString()")
     @Operation(summary = "Activate farm")
     public ResponseEntity<FarmResponse> activate(@PathVariable UUID id) {
         return ResponseEntity.ok(farmService.activate(id));

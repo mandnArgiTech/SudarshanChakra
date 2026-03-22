@@ -8,6 +8,8 @@ import com.sudarshanchakra.device.repository.CameraRepository;
 import com.sudarshanchakra.device.repository.EdgeNodeRepository;
 import com.sudarshanchakra.device.repository.WorkerTagRepository;
 import com.sudarshanchakra.device.repository.ZoneRepository;
+import com.sudarshanchakra.jwt.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +48,12 @@ class DeviceServiceTest {
     void setUp() {
         farmId = UUID.fromString("a0000000-0000-0000-0000-000000000001");
         node = EdgeNode.builder().id("e1").farmId(farmId).displayName("E1").build();
+        TenantContext.set(farmId, false);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
     }
 
     @Test
@@ -95,6 +103,7 @@ class DeviceServiceTest {
     @Test
     void createCamera_success() {
         Camera c = Camera.builder().id("cam-1").nodeId("e1").name("C").rtspUrl("rtsp://x").build();
+        when(edgeNodeRepository.findById("e1")).thenReturn(Optional.of(node));
         when(cameraRepository.existsById("cam-1")).thenReturn(false);
         when(cameraRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         assertThat(deviceService.createCamera(c).getId()).isEqualTo("cam-1");
@@ -109,7 +118,17 @@ class DeviceServiceTest {
 
     @Test
     void createZone_success() {
-        Zone z = Zone.builder().id("z1").cameraId("cam-1").name("Z").build();
+        Zone z = Zone.builder()
+                .id("z1")
+                .cameraId("cam-1")
+                .name("Z")
+                .zoneType("line")
+                .priority("high")
+                .polygon("{}")
+                .build();
+        Camera cam = Camera.builder().id("cam-1").nodeId("e1").name("C").rtspUrl("rtsp://x").build();
+        when(cameraRepository.findById("cam-1")).thenReturn(Optional.of(cam));
+        when(edgeNodeRepository.findById("e1")).thenReturn(Optional.of(node));
         when(zoneRepository.existsById("z1")).thenReturn(false);
         when(zoneRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         assertThat(deviceService.createZone(z).getId()).isEqualTo("z1");

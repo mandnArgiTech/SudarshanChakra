@@ -2,3 +2,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+
+jwt:
+  secret: integration-test-jwt-secret-32bytes-minimum!!
+
+tenant:
+  filter:
+    enabled: true

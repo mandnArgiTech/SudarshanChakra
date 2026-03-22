@@ -2,11 +2,13 @@ package com.sudarshanchakra.device.model.water;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.Filter;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
 @Entity @Table(name = "water_tanks")
+@Filter(name = "tenantFilter", condition = "farm_id = :farmId")
 public class WaterTank {
 
     @Id @Column(length = 50)

@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,30 +23,35 @@ public class ZoneController {
     private final DeviceService deviceService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('PERMISSION_zones:view')")
     @Operation(summary = "List all zones")
     public ResponseEntity<List<Zone>> getAllZones() {
         return ResponseEntity.ok(deviceService.getAllZones());
     }
 
     @GetMapping(params = "cameraId")
+    @PreAuthorize("hasAuthority('PERMISSION_zones:view')")
     @Operation(summary = "List zones by camera ID")
     public ResponseEntity<List<Zone>> getZonesByCameraId(@RequestParam String cameraId) {
         return ResponseEntity.ok(deviceService.getZonesByCameraId(cameraId));
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERMISSION_zones:view')")
     @Operation(summary = "Get zone by ID")
     public ResponseEntity<Zone> getZoneById(@PathVariable String id) {
         return ResponseEntity.ok(deviceService.getZoneById(id));
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('PERMISSION_zones:manage')")
     @Operation(summary = "Create a new zone")
     public ResponseEntity<Zone> createZone(@Valid @RequestBody Zone zone) {
         return ResponseEntity.ok(deviceService.createZone(zone));
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERMISSION_zones:manage')")
     @Operation(summary = "Delete a zone")
     public ResponseEntity<Void> deleteZone(@PathVariable String id) {
         deviceService.deleteZone(id);

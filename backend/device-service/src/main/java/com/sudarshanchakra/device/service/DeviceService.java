@@ -4,6 +4,7 @@ import com.sudarshanchakra.device.model.Camera;
 import com.sudarshanchakra.device.model.EdgeNode;
 import com.sudarshanchakra.device.model.WorkerTag;
 import com.sudarshanchakra.device.model.Zone;
+import com.sudarshanchakra.jwt.TenantContext;
 import com.sudarshanchakra.device.repository.CameraRepository;
 import com.sudarshanchakra.device.repository.EdgeNodeRepository;
 import com.sudarshanchakra.device.repository.WorkerTagRepository;
@@ -41,6 +42,7 @@ public class DeviceService {
         if (edgeNodeRepository.existsById(node.getId())) {
             throw new IllegalArgumentException("Edge node already exists: " + node.getId());
         }
+        applyTenantFarmIdToNode(node);
         log.info("Creating edge node: {}", node.getId());
         return edgeNodeRepository.save(node);
     }
@@ -76,6 +78,7 @@ public class DeviceService {
         if (cameraRepository.existsById(camera.getId())) {
             throw new IllegalArgumentException("Camera already exists: " + camera.getId());
         }
+        verifyNodeInTenant(camera.getNodeId());
         log.info("Creating camera: {}", camera.getId());
         return cameraRepository.save(camera);
     }
@@ -99,6 +102,9 @@ public class DeviceService {
         if (zoneRepository.existsById(zone.getId())) {
             throw new IllegalArgumentException("Zone already exists: " + zone.getId());
         }
+        Camera cam = cameraRepository.findById(zone.getCameraId())
+                .orElseThrow(() -> new IllegalArgumentException("Camera not found: " + zone.getCameraId()));
+        verifyNodeInTenant(cam.getNodeId());
         log.info("Creating zone: {}", zone.getId());
         return zoneRepository.save(zone);
     }
@@ -117,10 +123,6 @@ public class DeviceService {
         return workerTagRepository.findAll();
     }
 
-    public List<WorkerTag> getTagsByFarmId(UUID farmId) {
-        return workerTagRepository.findByFarmId(farmId);
-    }
-
     public WorkerTag getTagById(String tagId) {
         return workerTagRepository.findById(tagId)
                 .orElseThrow(() -> new IllegalArgumentException("Worker tag not found: " + tagId));
@@ -131,7 +133,43 @@ public class DeviceService {
         if (workerTagRepository.existsById(tag.getTagId())) {
             throw new IllegalArgumentException("Worker tag already exists: " + tag.getTagId());
         }
+        if (!TenantContext.isSuperAdmin()) {
+            UUID farmId = TenantContext.getFarmId();
+            if (farmId == null) {
+                throw new IllegalStateException("Missing tenant context");
+            }
+            tag.setFarmId(farmId);
+        } else if (tag.getFarmId() == null) {
+            throw new IllegalArgumentException("farmId is required for platform operator");
+        }
         log.info("Creating worker tag: {}", tag.getTagId());
         return workerTagRepository.save(tag);
+    }
+
+    private void applyTenantFarmIdToNode(EdgeNode node) {
+        if (!TenantContext.isSuperAdmin()) {
+            UUID farmId = TenantContext.getFarmId();
+            if (farmId == null) {
+                throw new IllegalStateException("Missing tenant context");
+            }
+            node.setFarmId(farmId);
+        } else if (node.getFarmId() == null) {
+            throw new IllegalArgumentException("farmId is required for platform operator");
+        }
+    }
+
+    private void verifyNodeInTenant(String nodeId) {
+        if (nodeId == null || nodeId.isBlank()) {
+            throw new IllegalArgumentException("nodeId is required");
+        }
+        if (TenantContext.isSuperAdmin()) {
+            return;
+        }
+        EdgeNode n = edgeNodeRepository.findById(nodeId)
+                .orElseThrow(() -> new IllegalArgumentException("Edge node not found: " + nodeId));
+        UUID ctxFarm = TenantContext.getFarmId();
+        if (ctxFarm == null || !ctxFarm.equals(n.getFarmId())) {
+            throw new IllegalArgumentException("Edge node not in tenant scope: " + nodeId);
+        }
     }
 }
