@@ -5,6 +5,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,6 +43,29 @@ object Routes {
 
     fun alertDetail(id: String) = "alertDetail/$id"
     fun motorControl(motorId: String) = "motor_control/$motorId"
+
+    /** Bottom-nav root for back stack when switching tabs (first enabled module). */
+    fun defaultStartTab(enabledModules: Set<String>): String = when {
+        enabledModules.contains("alerts") -> ALERTS
+        enabledModules.contains("water") -> WATER_TANKS
+        enabledModules.contains("cameras") -> CAMERAS
+        enabledModules.contains("devices") -> DEVICES
+        enabledModules.contains("sirens") -> SIREN
+        else -> PROFILE
+    }
+
+    fun requiredModuleForRoute(route: String?): String? {
+        if (route == null) return null
+        return when {
+            route == ALERTS || route.startsWith("alertDetail") -> "alerts"
+            route == CAMERAS -> "cameras"
+            route == SIREN -> "sirens"
+            route == DEVICES -> "devices"
+            route == WATER_TANKS -> "water"
+            route.startsWith("motor_control") -> "pumps"
+            else -> null
+        }
+    }
 }
 
 @Composable
@@ -52,9 +76,11 @@ fun NavGraph(
     val context = LocalContext.current
     val navController = rememberNavController()
     val isLoggedIn by sessionViewModel.isLoggedIn.collectAsStateWithLifecycle()
+    val enabledModules by sessionViewModel.enabledModules.collectAsStateWithLifecycle()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val pendingAlertId by mainNavViewModel.pendingAlertId.collectAsStateWithLifecycle()
+    val graphStartRoute = remember(enabledModules) { Routes.defaultStartTab(enabledModules) }
 
     LaunchedEffect(isLoggedIn) {
         if (isLoggedIn) {
@@ -62,10 +88,10 @@ fun NavGraph(
         }
     }
 
-    LaunchedEffect(isLoggedIn, currentRoute) {
+    LaunchedEffect(isLoggedIn, currentRoute, graphStartRoute) {
         if (isLoggedIn) {
             if (currentRoute == Routes.LOGIN) {
-                navController.navigate(Routes.ALERTS) {
+                navController.navigate(graphStartRoute) {
                     popUpTo(Routes.LOGIN) { inclusive = true }
                 }
             }
@@ -78,6 +104,18 @@ fun NavGraph(
                     popUpTo(navController.graph.id) { inclusive = true }
                     launchSingleTop = true
                 }
+            }
+        }
+    }
+
+    LaunchedEffect(isLoggedIn, currentRoute, enabledModules, graphStartRoute) {
+        if (!isLoggedIn || currentRoute == null) return@LaunchedEffect
+        if (currentRoute == Routes.LOGIN || currentRoute == Routes.SERVER_SETTINGS) return@LaunchedEffect
+        val required = Routes.requiredModuleForRoute(currentRoute) ?: return@LaunchedEffect
+        if (!enabledModules.contains(required)) {
+            navController.navigate(graphStartRoute) {
+                popUpTo(navController.graph.id) { inclusive = false }
+                launchSingleTop = true
             }
         }
     }
@@ -97,10 +135,11 @@ fun NavGraph(
         bottomBar = {
             if (showBottomBar) {
                 BottomNavBar(
-                    currentRoute = currentRoute ?: Routes.ALERTS,
+                    currentRoute = currentRoute ?: graphStartRoute,
+                    enabledModules = enabledModules,
                     onNavigate = { route ->
                         navController.navigate(route) {
-                            popUpTo(Routes.ALERTS) { saveState = true }
+                            popUpTo(graphStartRoute) { saveState = true }
                             launchSingleTop = true
                             restoreState = true
                         }
@@ -117,7 +156,7 @@ fun NavGraph(
             composable(Routes.LOGIN) {
                 LoginScreen(
                     onLoginSuccess = {
-                        navController.navigate(Routes.ALERTS) {
+                        navController.navigate(graphStartRoute) {
                             popUpTo(Routes.LOGIN) { inclusive = true }
                         }
                     },

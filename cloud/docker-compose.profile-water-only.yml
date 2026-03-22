@@ -1,0 +1,12 @@
+# SudarshanChakra — optional profile: water + pumps + alerts (no camera/siren edge stack).
+# Use as a reference with your main compose file: merge services you need per tenant plan.
+#
+# Typical stack: postgres, rabbitmq, auth-service, device-service, alert-service, api-gateway, dashboard.
+# Omit: siren-service, edge-ai, when customer has no cameras/sirens.
+#
+# Example (conceptual):
+#   docker compose -f docker-compose.yml -f docker-compose.profile-water-only.yml up -d
+#
+# Ensure farm `modules_enabled` in DB matches (e.g. water_only plan).
+
+services: {}

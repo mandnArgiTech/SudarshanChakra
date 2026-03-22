@@ -2,9 +2,13 @@ package com.sudarshanchakra.auth.service;
 
 import com.sudarshanchakra.auth.dto.LoginRequest;
 import com.sudarshanchakra.auth.dto.RegisterRequest;
+import com.sudarshanchakra.auth.model.Farm;
 import com.sudarshanchakra.auth.model.Role;
 import com.sudarshanchakra.auth.model.User;
+import com.sudarshanchakra.auth.repository.FarmRepository;
 import com.sudarshanchakra.auth.repository.UserRepository;
+import com.sudarshanchakra.auth.support.ModuleConstants;
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,12 +18,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,10 +36,22 @@ class AuthServiceTest {
     UserRepository userRepository;
 
     @Mock
+    FarmRepository farmRepository;
+
+    @Mock
     JwtService jwtService;
 
     @Mock
     PasswordEncoder passwordEncoder;
+
+    @Mock
+    ModuleResolutionService moduleResolutionService;
+
+    @Mock
+    PermissionService permissionService;
+
+    @Mock
+    AuditService auditService;
 
     @InjectMocks
     AuthService authService;
@@ -54,22 +73,28 @@ class AuthServiceTest {
 
     @Test
     void login_success() {
+        Farm farm = Farm.builder().id(user.getFarmId()).status("active").build();
         when(userRepository.findByUsername("tester")).thenReturn(Optional.of(user));
+        when(farmRepository.findById(user.getFarmId())).thenReturn(Optional.of(farm));
         when(passwordEncoder.matches("secret", "hash")).thenReturn(true);
-        when(jwtService.generateToken(any(), any())).thenReturn("tok");
+        when(moduleResolutionService.resolveModules(any(User.class))).thenReturn(ModuleConstants.ALL_MODULES);
+        when(permissionService.effectivePermissions(any(), any())).thenReturn(List.of("alerts:view"));
+        when(jwtService.generateToken(any(), any(), any(), any(), any())).thenReturn("tok");
         when(jwtService.generateRefreshToken(any())).thenReturn("ref");
         when(userRepository.save(any(User.class))).thenReturn(user);
 
-        var res = authService.login(new LoginRequest("tester", "secret"));
+        var res = authService.login(new LoginRequest("tester", "secret"), mock(HttpServletRequest.class));
         assertThat(res.getToken()).isEqualTo("tok");
         assertThat(res.getUser().getUsername()).isEqualTo("tester");
+        verify(auditService).log(eq(user.getFarmId()), eq(user.getId()), eq("user.login"), eq("user"),
+                eq(user.getId().toString()), isNull(), isNull());
     }
 
     @Test
     void login_badPassword() {
         when(userRepository.findByUsername("tester")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches(any(), any())).thenReturn(false);
-        assertThatThrownBy(() -> authService.login(new LoginRequest("tester", "wrong")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("tester", "wrong"), null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid");
     }
@@ -77,7 +102,7 @@ class AuthServiceTest {
     @Test
     void login_unknownUser() {
         when(userRepository.findByUsername("nobody")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> authService.login(new LoginRequest("nobody", "x")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("nobody", "x"), null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -86,7 +111,7 @@ class AuthServiceTest {
         user.setActive(false);
         when(userRepository.findByUsername("tester")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches(any(), any())).thenReturn(true);
-        assertThatThrownBy(() -> authService.login(new LoginRequest("tester", "secret")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("tester", "secret"), null))
                 .hasMessageContaining("deactivated");
     }
 
@@ -94,13 +119,16 @@ class AuthServiceTest {
     void register_success() {
         when(userRepository.existsByUsername("newu")).thenReturn(false);
         when(userRepository.existsByEmail(any())).thenReturn(false);
+        when(farmRepository.existsById(any(UUID.class))).thenReturn(true);
         when(passwordEncoder.encode("p")).thenReturn("enc");
         when(userRepository.save(any(User.class))).thenAnswer(i -> {
             User u = i.getArgument(0);
             u.setId(UUID.randomUUID());
             return u;
         });
-        when(jwtService.generateToken(any(), any())).thenReturn("t");
+        when(moduleResolutionService.resolveModules(any(User.class))).thenReturn(ModuleConstants.ALL_MODULES);
+        when(permissionService.effectivePermissions(any(), any())).thenReturn(List.of());
+        when(jwtService.generateToken(any(), any(), any(), any(), any())).thenReturn("t");
         when(jwtService.generateRefreshToken(any())).thenReturn("r");
 
         var req = new RegisterRequest();
@@ -124,13 +152,16 @@ class AuthServiceTest {
     @Test
     void register_nullEmail_skipsEmailDuplicateCheck() {
         when(userRepository.existsByUsername("noemail")).thenReturn(false);
+        when(farmRepository.existsById(any(UUID.class))).thenReturn(true);
         when(passwordEncoder.encode("pw")).thenReturn("enc");
         when(userRepository.save(any(User.class))).thenAnswer(i -> {
             User u = i.getArgument(0);
             u.setId(UUID.randomUUID());
             return u;
         });
-        when(jwtService.generateToken(any(), any())).thenReturn("t");
+        when(moduleResolutionService.resolveModules(any(User.class))).thenReturn(ModuleConstants.ALL_MODULES);
+        when(permissionService.effectivePermissions(any(), any())).thenReturn(List.of());
+        when(jwtService.generateToken(any(), any(), any(), any(), any())).thenReturn("t");
         when(jwtService.generateRefreshToken(any())).thenReturn("r");
 
         var req = new RegisterRequest();

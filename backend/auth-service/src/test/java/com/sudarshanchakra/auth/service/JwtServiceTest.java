@@ -3,6 +3,9 @@ package com.sudarshanchakra.auth.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class JwtServiceTest {
@@ -16,9 +19,12 @@ class JwtServiceTest {
 
     @Test
     void generateToken_containsSubjectAndRole() {
-        String t = jwtService.generateToken("alice", "admin");
+        UUID farm = UUID.fromString("a0000000-0000-0000-0000-000000000001");
+        String t = jwtService.generateToken("alice", "admin", farm, List.of("alerts", "water"), List.of());
         assertThat(jwtService.extractUsername(t)).isEqualTo("alice");
         assertThat(jwtService.validateToken(t)).isTrue();
+        assertThat(jwtService.extractFarmId(t)).contains(farm);
+        assertThat(jwtService.extractModules(t)).containsExactly("alerts", "water");
     }
 
     @Test
@@ -41,7 +47,8 @@ class JwtServiceTest {
     @Test
     void shortSecret_padded() {
         JwtService shortKey = new JwtService("short", 1000L);
-        String t = shortKey.generateToken("u", "viewer");
+        UUID farm = UUID.fromString("a0000000-0000-0000-0000-000000000001");
+        String t = shortKey.generateToken("u", "viewer", farm, List.of(), List.of());
         assertThat(shortKey.validateToken(t)).isTrue();
     }
 }

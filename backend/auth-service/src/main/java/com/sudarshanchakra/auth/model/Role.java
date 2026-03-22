@@ -1,8 +1,10 @@
 package com.sudarshanchakra.auth.model;
 
 public enum Role {
+    SUPER_ADMIN("super_admin"),
     ADMIN("admin"),
     MANAGER("manager"),
+    OPERATOR("operator"),
     VIEWER("viewer");
 
     private final String value;

@@ -59,9 +59,9 @@ CREATE TABLE farms (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Seed your own farm (existing data keeps working)
+-- Seed your own farm (existing data keeps working — id must match `farm_id` in seed data)
 INSERT INTO farms (id, name, slug, owner_name, subscription_plan)
-VALUES ('00000000-0000-0000-0000-000000000001', 'Sanga Reddy Farm', 'sanga-reddy', 'Devi Prasad', 'full');
+VALUES ('a0000000-0000-0000-0000-000000000001', 'Sanga Reddy Farm', 'sanga-reddy', 'Devi Prasad', 'full');
 ```
 
 **Key:** `modules_enabled` is a JSON array of module names. The frontend reads this to show/hide entire sections.
@@ -146,7 +146,7 @@ audit:view              ✓            ✓
 ```json
 {
     "sub": "deviprasad",
-    "farm_id": "00000000-0000-0000-0000-000000000001",
+    "farm_id": "a0000000-0000-0000-0000-000000000001",
     "role": "admin",
     "modules": ["alerts","cameras","sirens","water","pumps","zones","devices","workers","analytics"],
     "permissions": [],
@@ -550,12 +550,12 @@ Each release includes:
 ```sql
 -- Your existing data keeps working
 INSERT INTO farms (id, name, slug, subscription_plan, modules_enabled)
-VALUES ('00000000-0000-0000-0000-000000000001', 'Sanga Reddy Farm', 'sanga-reddy', 'full',
+VALUES ('a0000000-0000-0000-0000-000000000001', 'Sanga Reddy Farm', 'sanga-reddy', 'full',
         '["alerts","cameras","sirens","water","pumps","zones","devices","workers","analytics"]');
 
 -- Point existing users/nodes/tanks to this farm
 -- (They already have farm_id, just ensure it matches)
-UPDATE users SET farm_id = '00000000-0000-0000-0000-000000000001' WHERE farm_id IS NULL;
+UPDATE users SET farm_id = 'a0000000-0000-0000-0000-000000000001' WHERE farm_id IS NULL;
 ```
 
 ### Step 2: Add SUPER_ADMIN role
@@ -641,6 +641,35 @@ Turn on per service once verified. Rollback = set to `false`.
 | 18 | Flyway migration scripts | Replaces manual SQL |
 
 **Total: 18 tasks, 10 days, zero breaking changes.**
+
+---
+
+## Implementation status (codebase sync)
+
+| Area | Status | Location / notes |
+|:-----|:-------|:-------------------|
+| `farms` table + default tenant row | Done | `cloud/db/init.sql`; existing seed `farm_id` = `a0000000-0000-0000-0000-000000000001` |
+| DB migration for existing DBs | Done | `cloud/db/migration_002_saas_multitenant.sql` |
+| `users` extended roles + `display_name`, `permissions`, `modules_override` | Done | `init.sql` + JPA `User` |
+| `audit_log` table | Done | `init.sql`; writes on login + user admin actions |
+| SUPER_ADMIN, OPERATOR roles + permission matrix service | Done | `Role`, `PermissionService` |
+| JWT `farm_id`, `modules`, `permissions` | Done | `JwtService`, `AuthService` |
+| `TenantContext` from JWT filter | Done | `JwtAuthFilter` + `TenantContext` (Hibernate `@Filter` not enabled — optional later) |
+| Farm CRUD + suspend/activate | Done | `FarmController` / `FarmService` — `ROLE_SUPER_ADMIN` |
+| User list/create/update/deactivate | Done | `UserController` / `UserService` |
+| `GET /api/v1/me/modules`, `/me/permissions` | Done | `MeController` |
+| `GET /api/v1/audit` (paged) | Done | `AuditController` |
+| API Gateway module filter | Done | `ModuleAccessGatewayFilter`; `jwt.secret` + `sc.gateway.module-filter.enabled` |
+| Gateway routes for farms/audit/me | Done | `api-gateway/application.yml` |
+| Dashboard dynamic sidebar + module routes | Done | `Sidebar`, `ModuleRoute`, `useAuth.hasModule` |
+| Dashboard admin pages (farms / users / audit) | Done | `AdminFarmsPage`, `AdminUsersPage`, `AdminAuditPage` + `api/saas.ts` |
+| Android dynamic bottom nav | Done | `BottomNavBar` + `AuthRepository.enabledModules` from login `user.modules` |
+| Mockup `saas-screens-mockup.jsx` | Reference | Real UI: `/admin/farms`, `/admin/users`, `/admin/audit`; water-only = JWT modules hide nav |
+| `@Auditable` AOP aspect | Not done | Partial: explicit `AuditService.log` calls; full aspect optional |
+| Hibernate tenant `@Filter` | Not done | Planned opt-in; `TenantContext` ready |
+| Flyway | Not done | Use `migration_002_saas_multitenant.sql` + `init.sql` for greenfield |
+| Compose profiles + `deploy.sh` + GHCR matrix | Partial | See `cloud/docker-compose.profile-water-only.yml`, `scripts/deploy_saas_farm.sh` |
+| Auth-service tests | Done | H2 in `application-test.yml`; integration tests still `@Tag("integration")` + Docker |
 
 ---
 

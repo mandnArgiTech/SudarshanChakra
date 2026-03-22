@@ -7,15 +7,59 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";  -- for gen_random_uuid()
 
 -- ============================================================================
+-- Tenant (Farm) — multi-tenant SaaS
+-- ============================================================================
+CREATE TABLE farms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(200) NOT NULL,
+    slug VARCHAR(50) UNIQUE NOT NULL,
+    owner_name VARCHAR(200),
+    contact_phone VARCHAR(20),
+    contact_email VARCHAR(255),
+    address TEXT,
+    location_lat REAL,
+    location_lng REAL,
+    timezone VARCHAR(50) DEFAULT 'Asia/Kolkata',
+    status VARCHAR(20) DEFAULT 'active'
+        CHECK (status IN ('active', 'suspended', 'trial')),
+    subscription_plan VARCHAR(50) DEFAULT 'full',
+    modules_enabled JSONB DEFAULT '["alerts","cameras","sirens","water","pumps","zones","devices","workers","analytics"]'::jsonb,
+    max_cameras INT DEFAULT 8,
+    max_nodes INT DEFAULT 2,
+    max_users INT DEFAULT 10,
+    trial_ends_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_farms_slug ON farms(slug);
+CREATE INDEX idx_farms_status ON farms(status);
+
+-- Default tenant — id must match farm_id in seed data (edge_nodes, water_*, worker_tags, etc.)
+INSERT INTO farms (id, name, slug, owner_name, subscription_plan, modules_enabled)
+VALUES (
+    'a0000000-0000-0000-0000-000000000001',
+    'Sanga Reddy Farm',
+    'sanga-reddy',
+    'Devi Prasad',
+    'full',
+    '["alerts","cameras","sirens","water","pumps","zones","devices","workers","analytics"]'::jsonb
+);
+
+-- ============================================================================
 -- Users & Authentication
 -- ============================================================================
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    farm_id UUID NOT NULL,
+    farm_id UUID NOT NULL REFERENCES farms(id),
     username VARCHAR(100) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'manager', 'viewer')),
+    role VARCHAR(20) NOT NULL
+        CHECK (role IN ('super_admin', 'admin', 'manager', 'operator', 'viewer')),
+    display_name VARCHAR(200),
+    permissions JSONB DEFAULT '[]'::jsonb,
+    modules_override JSONB,
     mqtt_client_id VARCHAR(100),
     last_login TIMESTAMPTZ,
     active BOOLEAN DEFAULT TRUE,
@@ -24,6 +68,24 @@ CREATE TABLE users (
 );
 
 CREATE INDEX idx_users_farm ON users(farm_id);
+
+-- ============================================================================
+-- Audit log (SaaS / compliance)
+-- ============================================================================
+CREATE TABLE audit_log (
+    id BIGSERIAL PRIMARY KEY,
+    farm_id UUID NOT NULL REFERENCES farms(id),
+    user_id UUID REFERENCES users(id),
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id VARCHAR(100),
+    details JSONB,
+    ip_address VARCHAR(45),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_farm_time ON audit_log(farm_id, created_at DESC);
+CREATE INDEX idx_audit_action ON audit_log(action);
 
 -- ============================================================================
 -- Edge Nodes
@@ -233,6 +295,9 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_farms_updated_at BEFORE UPDATE ON farms
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

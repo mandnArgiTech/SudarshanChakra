@@ -1,3 +1,10 @@
+/**
+ * Reference mockup for SaaS admin UX. Production dashboard maps to:
+ *   Farm management → /admin/farms
+ *   User management → /admin/users
+ *   Audit log → /admin/audit
+ *   Water-only nav → JWT `modules` from auth-service (see docs/MULTI_TENANT_SAAS_PLAN.md).
+ */
 import { useState } from "react";
 
 const plans = {

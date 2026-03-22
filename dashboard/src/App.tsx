@@ -13,6 +13,11 @@ import AnalyticsPage from '@/pages/AnalyticsPage';
 import SettingsPage from '@/pages/SettingsPage';
 import WaterPage from '@/pages/WaterPage';
 import MotorControlPage from '@/pages/MotorControlPage';
+import ModuleRoute from '@/components/ModuleRoute';
+import RoleRoute from '@/components/RoleRoute';
+import AdminFarmsPage from '@/pages/AdminFarmsPage';
+import AdminUsersPage from '@/pages/AdminUsersPage';
+import AdminAuditPage from '@/pages/AdminAuditPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -32,17 +37,111 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<DashboardPage />} />
-        <Route path="alerts" element={<AlertsPage />} />
-        <Route path="cameras" element={<CamerasPage />} />
-        <Route path="zones" element={<ZonesPage />} />
-        <Route path="devices" element={<DevicesPage />} />
-        <Route path="siren" element={<SirenPage />} />
-        <Route path="workers" element={<WorkersPage />} />
-        <Route path="analytics" element={<AnalyticsPage />} />
+        <Route
+          index
+          element={
+            <ModuleRoute module="alerts">
+              <DashboardPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="alerts"
+          element={
+            <ModuleRoute module="alerts">
+              <AlertsPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="cameras"
+          element={
+            <ModuleRoute module="cameras">
+              <CamerasPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="zones"
+          element={
+            <ModuleRoute module="zones">
+              <ZonesPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="devices"
+          element={
+            <ModuleRoute module="devices">
+              <DevicesPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="siren"
+          element={
+            <ModuleRoute module="sirens">
+              <SirenPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="workers"
+          element={
+            <ModuleRoute module="workers">
+              <WorkersPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="analytics"
+          element={
+            <ModuleRoute module="analytics">
+              <AnalyticsPage />
+            </ModuleRoute>
+          }
+        />
         <Route path="settings" element={<SettingsPage />} />
-        <Route path="water" element={<WaterPage />} />
-        <Route path="water/motors" element={<MotorControlPage />} />
+        <Route
+          path="water"
+          element={
+            <ModuleRoute module="water">
+              <WaterPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="water/motors"
+          element={
+            <ModuleRoute module="pumps">
+              <MotorControlPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="admin/farms"
+          element={
+            <RoleRoute roles={['super_admin']}>
+              <AdminFarmsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="admin/users"
+          element={
+            <RoleRoute roles={['super_admin', 'admin']}>
+              <AdminUsersPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="admin/audit"
+          element={
+            <RoleRoute roles={['super_admin', 'admin', 'manager']}>
+              <AdminAuditPage />
+            </RoleRoute>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

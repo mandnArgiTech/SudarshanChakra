@@ -4,6 +4,23 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Sidebar from './Sidebar';
 
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({
+    token: 't',
+    user: {
+      id: '1',
+      username: 'u',
+      email: '',
+      role: 'admin' as const,
+      farmId: 'f1',
+      active: true,
+    },
+    login: vi.fn(),
+    logout: vi.fn(),
+    hasModule: () => true,
+  }),
+}));
+
 vi.mock('@/api/devices', () => ({
   useNodes: () => ({ data: [] }),
 }));

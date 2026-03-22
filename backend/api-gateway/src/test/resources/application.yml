@@ -1,0 +1,14 @@
+# Tests: avoid JWT module gate side effects on unrelated routes
+jwt:
+  secret: test-secret-key-that-is-long-enough-for-hmac-sha256-algorithm
+
+sc:
+  gateway:
+    module-filter:
+      enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

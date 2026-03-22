@@ -13,21 +13,42 @@ import {
   Settings,
   Droplets,
   Zap,
+  Building2,
+  ScrollText,
 } from 'lucide-react';
 import { useNodes } from '@/api/devices';
+import { useAuth } from '@/hooks/useAuth';
+import type { UserRole } from '@/types';
 
-const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/alerts', icon: AlertTriangle, label: 'Alerts', badge: true },
-  { to: '/cameras', icon: Camera, label: 'Cameras' },
-  { to: '/zones', icon: Hexagon, label: 'Zones' },
-  { to: '/devices', icon: Cpu, label: 'Devices' },
-  { to: '/siren', icon: Siren, label: 'Siren' },
-  { to: '/workers', icon: Users, label: 'Workers' },
-  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-  { to: '/water', icon: Droplets, label: 'Water' },
-  { to: '/water/motors', icon: Zap, label: 'Pumps' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
+const mainNavItems: {
+  to: string;
+  icon: typeof LayoutDashboard;
+  label: string;
+  badge?: boolean;
+  module: string | null;
+}[] = [
+  { to: '/', icon: LayoutDashboard, label: 'Dashboard', module: 'alerts', badge: true },
+  { to: '/alerts', icon: AlertTriangle, label: 'Alerts', module: 'alerts', badge: true },
+  { to: '/cameras', icon: Camera, label: 'Cameras', module: 'cameras' },
+  { to: '/zones', icon: Hexagon, label: 'Zones', module: 'zones' },
+  { to: '/devices', icon: Cpu, label: 'Devices', module: 'devices' },
+  { to: '/siren', icon: Siren, label: 'Siren', module: 'sirens' },
+  { to: '/workers', icon: Users, label: 'Workers', module: 'workers' },
+  { to: '/analytics', icon: BarChart3, label: 'Analytics', module: 'analytics' },
+  { to: '/water', icon: Droplets, label: 'Water', module: 'water' },
+  { to: '/water/motors', icon: Zap, label: 'Pumps', module: 'pumps' },
+  { to: '/settings', icon: Settings, label: 'Settings', module: null },
+];
+
+const adminNavItems: {
+  to: string;
+  icon: typeof Building2;
+  label: string;
+  roles: readonly UserRole[];
+}[] = [
+  { to: '/admin/farms', icon: Building2, label: 'Farms', roles: ['super_admin'] },
+  { to: '/admin/users', icon: Users, label: 'Users', roles: ['super_admin', 'admin'] },
+  { to: '/admin/audit', icon: ScrollText, label: 'Audit', roles: ['super_admin', 'admin', 'manager'] },
 ];
 
 export interface SidebarProps {
@@ -38,6 +59,10 @@ export interface SidebarProps {
 
 export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const { data: nodes } = useNodes();
+  const { user, hasModule } = useAuth();
+
+  const visibleMain = mainNavItems.filter((item) => hasModule(item.module));
+  const visibleAdmin = adminNavItems.filter((item) => user?.role && item.roles.includes(user.role));
 
   const closeIfMobile = () => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
@@ -104,7 +129,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
         </div>
 
         <nav className="flex-1 py-3 px-2 overflow-y-auto overscroll-y-contain touch-pan-y">
-          {navItems.map((item) => (
+          {visibleMain.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -154,6 +179,58 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
               )}
             </NavLink>
           ))}
+
+          {visibleAdmin.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-sc-border">
+              <div
+                className={clsx(
+                  'px-3 mb-2 text-[10px] font-mono uppercase tracking-wider text-sc-text-muted',
+                  'md:max-lg:hidden md:max-lg:group-hover/aside:block',
+                )}
+              >
+                Admin
+              </div>
+              {visibleAdmin.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={closeIfMobile}
+                  title={item.label}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg mb-0.5 transition-all duration-150 group min-h-[44px]',
+                      'md:max-lg:justify-center md:max-lg:group-hover/aside:justify-start',
+                      isActive
+                        ? 'bg-sc-accent/10 border-l-[3px] border-sc-accent'
+                        : 'border-l-[3px] border-transparent hover:bg-white/5',
+                    )
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <item.icon
+                        size={18}
+                        className={clsx(
+                          'shrink-0',
+                          isActive ? 'text-sc-accent' : 'text-sc-text-muted group-hover:text-sc-text-dim',
+                        )}
+                      />
+                      <span
+                        className={clsx(
+                          'text-sm whitespace-nowrap overflow-hidden',
+                          'md:max-lg:max-w-0 md:max-lg:opacity-0 md:max-lg:group-hover/aside:max-w-[200px] md:max-lg:group-hover/aside:opacity-100',
+                          'md:max-lg:transition-all md:max-lg:duration-200',
+                          isActive ? 'text-sc-text font-semibold' : 'text-sc-text-dim',
+                        )}
+                      >
+                        {item.label}
+                      </span>
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          )}
         </nav>
 
         <div

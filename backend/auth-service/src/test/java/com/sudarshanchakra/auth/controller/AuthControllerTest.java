@@ -9,6 +9,7 @@ import com.sudarshanchakra.auth.config.GlobalExceptionHandler;
 import com.sudarshanchakra.auth.service.AuthService;
 import com.sudarshanchakra.auth.repository.UserRepository;
 import com.sudarshanchakra.auth.service.JwtService;
+import com.sudarshanchakra.auth.service.ModuleResolutionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -46,9 +47,12 @@ class AuthControllerTest {
     @MockBean
     UserRepository userRepository;
 
+    @MockBean
+    ModuleResolutionService moduleResolutionService;
+
     @Test
     void login_ok() throws Exception {
-        when(authService.login(any(LoginRequest.class)))
+        when(authService.login(any(LoginRequest.class), any()))
                 .thenReturn(AuthResponse.builder()
                         .token("jwt")
                         .refreshToken("ref")
@@ -96,7 +100,7 @@ class AuthControllerTest {
 
     @Test
     void login_serviceError_returnsBadRequest() throws Exception {
-        when(authService.login(any())).thenThrow(new IllegalArgumentException("bad creds"));
+        when(authService.login(any(), any())).thenThrow(new IllegalArgumentException("bad creds"));
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"x\",\"password\":\"y\"}"))

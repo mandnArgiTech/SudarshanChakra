@@ -30,7 +30,10 @@ public class RegisterRequest {
     @Schema(description = "Email address", example = "user@farm.com")
     private String email;
 
-    @Schema(description = "User role", example = "viewer", allowableValues = {"admin", "manager", "viewer"})
+    @Schema(
+            description = "User role (super_admin not allowed via public register)",
+            example = "viewer",
+            allowableValues = {"admin", "manager", "operator", "viewer"})
     private String role;
 
     @Schema(description = "Farm ID (UUID)", example = "a0000000-0000-0000-0000-000000000001")

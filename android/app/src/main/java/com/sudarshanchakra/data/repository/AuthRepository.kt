@@ -12,10 +12,12 @@ import com.sudarshanchakra.data.security.SecureCredentialStore
 import com.sudarshanchakra.domain.model.AuthResponse
 import com.sudarshanchakra.domain.model.LoginRequest
 import com.sudarshanchakra.domain.model.RegisterRequest
+import com.sudarshanchakra.domain.model.SaasModules
 import com.sudarshanchakra.domain.model.User
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,6 +41,7 @@ class AuthRepository @Inject constructor(
         private val USERNAME_KEY = stringPreferencesKey("username")
         private val EMAIL_KEY = stringPreferencesKey("email")
         private val ROLE_KEY = stringPreferencesKey("role")
+        private val MODULES_JSON_KEY = stringPreferencesKey("modules_json")
 
         /** Last username/password form when "Remember me" is enabled (separate from session username). */
         private val REMEMBER_ME_KEY = booleanPreferencesKey("login_remember_me")
@@ -71,6 +74,21 @@ class AuthRepository @Inject constructor(
             email = prefs[EMAIL_KEY] ?: "",
             role = prefs[ROLE_KEY] ?: "",
         )
+    }
+
+    /** Enabled SaaS modules from last login; absent or invalid → full platform (backward compatible). */
+    val enabledModules: Flow<Set<String>> = dataStore.data.map { prefs ->
+        val raw = prefs[MODULES_JSON_KEY] ?: return@map SaasModules.ALL
+        try {
+            val arr = JSONArray(raw)
+            buildSet {
+                for (i in 0 until arr.length()) {
+                    add(arr.getString(i))
+                }
+            }.ifEmpty { SaasModules.ALL }
+        } catch (_: Exception) {
+            SaasModules.ALL
+        }
     }
 
     suspend fun getRememberedLoginForm(): RememberedLoginForm {
@@ -119,6 +137,7 @@ class AuthRepository @Inject constructor(
             prefs.remove(USERNAME_KEY)
             prefs.remove(EMAIL_KEY)
             prefs.remove(ROLE_KEY)
+            prefs.remove(MODULES_JSON_KEY)
         }
         tokenCache.setBearerToken(null)
     }
@@ -131,6 +150,12 @@ class AuthRepository @Inject constructor(
             prefs[USERNAME_KEY] = auth.user.username
             prefs[EMAIL_KEY] = auth.user.email
             prefs[ROLE_KEY] = auth.user.role
+            val mods = auth.user.modules
+            if (!mods.isNullOrEmpty()) {
+                prefs[MODULES_JSON_KEY] = JSONArray(mods).toString()
+            } else {
+                prefs.remove(MODULES_JSON_KEY)
+            }
         }
         tokenCache.setBearerToken(auth.token)
     }

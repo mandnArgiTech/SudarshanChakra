@@ -6,6 +6,7 @@ import com.sudarshanchakra.auth.dto.RegisterRequest;
 import com.sudarshanchakra.auth.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,9 +27,11 @@ public class AuthController {
 
     @PostMapping("/login")
     @Operation(summary = "Login", description = "Authenticate user and return JWT tokens")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<AuthResponse> login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletRequest httpRequest) {
         log.info("Login attempt for user: {}", request.getUsername());
-        AuthResponse response = authService.login(request);
+        AuthResponse response = authService.login(request, httpRequest);
         return ResponseEntity.ok(response);
     }
 

@@ -4,6 +4,7 @@ import com.sudarshanchakra.auth.model.Role;
 import com.sudarshanchakra.auth.model.User;
 import com.sudarshanchakra.auth.repository.UserRepository;
 import com.sudarshanchakra.auth.service.JwtService;
+import com.sudarshanchakra.auth.service.ModuleResolutionService;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +16,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -34,6 +36,9 @@ class JwtAuthFilterTest {
     private UserRepository userRepository;
 
     @Mock
+    private ModuleResolutionService moduleResolutionService;
+
+    @Mock
     private FilterChain filterChain;
 
     private JwtAuthFilter filter;
@@ -41,7 +46,7 @@ class JwtAuthFilterTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
-        filter = new JwtAuthFilter(jwtService, userRepository);
+        filter = new JwtAuthFilter(jwtService, userRepository, moduleResolutionService);
     }
 
     @AfterEach
@@ -87,6 +92,7 @@ class JwtAuthFilterTest {
                 .active(true)
                 .build();
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(u));
+        when(moduleResolutionService.resolveModules(u)).thenReturn(List.of("alerts"));
 
         filter.doFilterInternal(req, res, filterChain);
 

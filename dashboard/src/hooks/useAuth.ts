@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
 import React from 'react';
 import type { User } from '@/types';
 
@@ -7,6 +7,8 @@ interface AuthContextType {
   user: User | null;
   login: (token: string, refreshToken: string, user: User) => void;
   logout: () => void;
+  /** If user has no modules array (legacy), treat as full access. */
+  hasModule: (moduleId: string | null) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,11 +34,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  return React.createElement(
-    AuthContext.Provider,
-    { value: { token, user, login, logout } },
-    children,
+  const hasModule = useCallback(
+    (moduleId: string | null) => {
+      if (moduleId === null) return true;
+      const m = user?.modules;
+      if (!m || m.length === 0) return true;
+      return m.includes(moduleId);
+    },
+    [user],
   );
+
+  const value = useMemo(
+    () => ({ token, user, login, logout, hasModule }),
+    [token, user, login, logout, hasModule],
+  );
+
+  return React.createElement(AuthContext.Provider, { value }, children);
 }
 
 export function useAuth(): AuthContextType {

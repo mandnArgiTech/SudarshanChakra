@@ -93,13 +93,49 @@ export interface SirenAction {
   createdAt: string;
 }
 
+export type UserRole = 'super_admin' | 'admin' | 'manager' | 'operator' | 'viewer';
+
 export interface User {
   id: string;
   username: string;
   email: string;
-  role: 'admin' | 'manager' | 'viewer';
+  role: UserRole;
   farmId: string;
   active: boolean;
+  displayName?: string | null;
+  /** Enabled SaaS modules from auth-service (farm plan + overrides). */
+  modules?: string[];
+  permissions?: string[];
+}
+
+export interface Farm {
+  id: string;
+  name: string;
+  slug: string;
+  ownerName?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  status: string;
+  subscriptionPlan: string;
+  modulesEnabled?: string[];
+  maxCameras?: number;
+  maxNodes?: number;
+  maxUsers?: number;
+  trialEndsAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AuditLogRow {
+  id: number;
+  farmId: string;
+  userId?: string | null;
+  action: string;
+  entityType?: string | null;
+  entityId?: string | null;
+  details?: Record<string, unknown> | null;
+  ipAddress?: string | null;
+  createdAt: string;
 }
 
 export interface AuthResponse {

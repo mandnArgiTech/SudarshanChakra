@@ -17,6 +17,7 @@ vi.mock('@/hooks/useAuth', () => ({
     },
     login: vi.fn(),
     logout: vi.fn(),
+    hasModule: () => true,
   }),
 }));
 

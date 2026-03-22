@@ -7,6 +7,7 @@ import com.sudarshanchakra.data.repository.AuthRepository
 import com.sudarshanchakra.service.MqttForegroundService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.sudarshanchakra.domain.model.SaasModules
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -22,6 +23,12 @@ class SessionViewModel @Inject constructor(
         viewModelScope,
         SharingStarted.Eagerly,
         false,
+    )
+
+    val enabledModules = authRepository.enabledModules.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        SaasModules.ALL,
     )
 
     fun logout() {

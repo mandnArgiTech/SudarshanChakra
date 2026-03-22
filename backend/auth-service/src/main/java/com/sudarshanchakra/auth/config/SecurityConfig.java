@@ -37,7 +37,19 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/users").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/users/me/**").authenticated()
+                        .requestMatchers("/api/v1/farms/**").hasAuthority("ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/audit/**").hasAnyAuthority(
+                                "ROLE_SUPER_ADMIN", "ROLE_ADMIN", "ROLE_MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/me/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/users").hasAnyAuthority(
+                                "ROLE_SUPER_ADMIN", "ROLE_ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/users/**").hasAnyAuthority(
+                                "ROLE_SUPER_ADMIN", "ROLE_ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/users/*/deactivate").hasAnyAuthority(
+                                "ROLE_SUPER_ADMIN", "ROLE_ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/users", "/api/v1/users/**")
+                                .hasAnyAuthority("ROLE_SUPER_ADMIN", "ROLE_ADMIN", "ROLE_MANAGER")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

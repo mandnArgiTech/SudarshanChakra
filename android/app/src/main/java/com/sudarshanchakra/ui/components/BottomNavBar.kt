@@ -37,22 +37,26 @@ data class NavItem(
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
     val isSiren: Boolean = false,
+    /** SaaS module id; null = always visible (e.g. Settings). */
+    val moduleId: String? = null,
 )
 
 @Composable
 fun BottomNavBar(
     currentRoute: String,
     onNavigate: (String) -> Unit,
+    enabledModules: Set<String>,
     modifier: Modifier = Modifier,
 ) {
-    val items = listOf(
-        NavItem(Routes.ALERTS, "Alerts", Icons.Filled.NotificationsActive, Icons.Outlined.Notifications),
-        NavItem(Routes.CAMERAS, "Cameras", Icons.Filled.Videocam, Icons.Outlined.Videocam),
-        NavItem(Routes.SIREN, "Siren", Icons.Filled.Campaign, Icons.Outlined.Campaign, isSiren = true),
-        NavItem(Routes.DEVICES, "Devices", Icons.Filled.Sensors, Icons.Outlined.Sensors),
-        NavItem(Routes.WATER_TANKS, "Water", Icons.Filled.WaterDrop, Icons.Outlined.WaterDrop),
-        NavItem(Routes.PROFILE, "Settings", Icons.Filled.Settings, Icons.Outlined.Settings),
+    val allItems = listOf(
+        NavItem(Routes.ALERTS, "Alerts", Icons.Filled.NotificationsActive, Icons.Outlined.Notifications, moduleId = "alerts"),
+        NavItem(Routes.CAMERAS, "Cameras", Icons.Filled.Videocam, Icons.Outlined.Videocam, moduleId = "cameras"),
+        NavItem(Routes.SIREN, "Siren", Icons.Filled.Campaign, Icons.Outlined.Campaign, isSiren = true, moduleId = "sirens"),
+        NavItem(Routes.DEVICES, "Devices", Icons.Filled.Sensors, Icons.Outlined.Sensors, moduleId = "devices"),
+        NavItem(Routes.WATER_TANKS, "Water", Icons.Filled.WaterDrop, Icons.Outlined.WaterDrop, moduleId = "water"),
+        NavItem(Routes.PROFILE, "Settings", Icons.Filled.Settings, Icons.Outlined.Settings, moduleId = null),
     )
+    val items = allItems.filter { it.moduleId == null || enabledModules.contains(it.moduleId) }
 
     NavigationBar(
         modifier = modifier.height(64.dp),
