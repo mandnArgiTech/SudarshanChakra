@@ -1,156 +1,168 @@
-# SudarshanChakra — Progress Review (Excluding Training)
+# SudarshanChakra — Progress Review
 
-**Date:** March 20, 2026
-**Repo:** 399 files, 65 commits, 114 Java + 44 Kotlin + 34 Python + 43 TSX
+**Date:** March 22, 2026
+**Repo:** 477 files, 72 commits
+**Stack:** 118 Java + 64 Kotlin + 34 Python + 59 Dashboard TS/TSX + 15 Simulator TS/TSX
 
 ---
 
 ## Phase Completion
 
-| Phase | Status | Score | Notes |
-|:------|:-------|:------|:------|
-| 1. Backend (5 services) | ✅ | 95% | 114 Java files, 102 unit + 17 integration @Test methods |
-| 2. React Dashboard | ✅ | **95%** | 12 pages, mobile responsive DONE, 22 test files (80 tests) |
-| 3. Android App | ✅ | 92% | 44 Kotlin files, 8 screens (incl. MotorControl + WaterTanks) |
-| 4. CI/CD | ✅ | 100% | 4 workflows (backend, dashboard, edge, test) |
-| 5. Cloud VPS | ✅ | 100% | VPS compose, deploy.sh, nginx, DB schema, RabbitMQ |
-| 6. Edge AI | ✅ | 92% | 14 modules, 92 pytest tests, dev mode, health/metrics |
-| 7. ESP32 Firmware | ✅ | 100% | Worker beacon, fall detector, LoRa bridge |
-| 8. PA System | ⚡ | **80%** | Up from 60% — scheduler, TTS, audio cache, self-test now substantial |
-| 9. Water/Motor | ✅ | 85% | Backend + Android + DB + queues done, **tests missing** |
+| Phase | Status | Score |
+|:------|:-------|:------|
+| 1. Backend (5 Spring Boot services) | ✅ | 96% |
+| 2. React Dashboard | ✅ | 95% |
+| 3. Android App | ✅ | **92% (major overhaul complete)** |
+| 4. CI/CD | ✅ | 100% |
+| 5. Cloud VPS | ✅ | 100% |
+| 6. Edge AI | ✅ | 92% |
+| 7. ESP32 Firmware | ✅ | 100% |
+| 8. PA System | ⚡ | 80% |
+| 9. Water/Motor Integration | ✅ | **95%** |
+| 10. Farm Simulator | ✅ | **90% (new)** |
 
 ---
 
-## What Commit 0dbd87a Fixed (63 files, 2,980 lines added)
+## Android Overhaul — Scorecard (ANDROID_PRODUCTION_OVERHAUL.md)
 
-### Mobile Responsive — NOW DONE ✅
+The app went from 43 Kotlin files / 4,519 lines to **64 files / 6,253 lines** — a 38% expansion. Every critical issue fixed:
 
-Previously the biggest gap. Now fully implemented:
+### Critical Issues (5/5 FIXED)
 
-| Component | What Changed | Verification |
-|:----------|:-------------|:-------------|
-| **Sidebar** | Collapsible drawer with `open`/`onClose` props. Phone: full-screen drawer. Tablet: icon-only with hover expand. Desktop: always visible | `lg:flex`, `max-md:flex`, `mobileOpen` state |
-| **Header** | Hamburger menu button (`<Menu>` icon, `lg:hidden`) + `onMenuToggle` prop | Visible on mobile, hidden on desktop |
-| **Layout** | `useState(sidebarOpen)` wired between Layout → Sidebar → Header. Padding: `p-4 sm:p-6` | State management confirmed |
-| **DashboardPage** | `grid-cols-2 lg:grid-cols-4` stat cards. `grid-cols-1 lg:grid-cols-[2fr_1fr]` feed+status | 3 responsive breakpoints |
-| **CamerasPage** | `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4` | 4-tier responsive |
-| **AnalyticsPage** | `grid-cols-1 lg:grid-cols-2` charts | Stacks on mobile |
-| **SirenPage** | Touch-friendly responsive grid | Confirmed |
-| **AlertTable** | Dual-mode: `hidden lg:block` table + `lg:hidden` card stack with `AlertCardMobile` component (37 lines) | Desktop table preserved, mobile cards added |
-| **Global CSS** | `safe-area-inset`, `overscroll-behavior-y: contain`, `font-size: 16px` on inputs, `touch-action: manipulation` | 5 mobile CSS rules |
+| Issue | Status | Evidence |
+|:------|:-------|:---------|
+| C1: Back press kills app | ✅ | `BackHandler { moveTaskToBack(true) }` in AlertFeedScreen |
+| C2: No logout | ✅ | SettingsScreen with logout confirmation dialog, SessionViewModel.logout() clears tokens + stops MQTT |
+| C3: Notification tap goes nowhere | ✅ | `EXTRA_ALERT_ID` + `EXTRA_NAVIGATE_TO` in PendingIntent, `onNewIntent` in MainActivity deep links to AlertDetailScreen |
+| C4: No critical alert sound | ✅ | TYPE_ALARM sound, vibration pattern `[0,500,200,500,200,500]`, VISIBILITY_PUBLIC, lockscreen display |
+| C5: Service dies on reboot | ✅ | BootReceiver + RECEIVE_BOOT_COMPLETED permission, auto-starts MQTT if user was logged in |
 
-### Dashboard Tests — Massively Expanded
+### High Issues (5/6 FIXED, 1 MISSING)
 
-From 6 test files → **22 test files, 80 test functions.** Every page and major component now has tests:
+| Issue | Status | Evidence |
+|:------|:-------|:---------|
+| H1: Emoji icons | ✅ | Material Icons (6 refs), zero emojis remaining |
+| H2: Profile placeholder | ✅ | SettingsScreen.kt + SettingsViewModel.kt + ServerSettingsScreen for broker config |
+| H3: Pull-to-refresh | ❌ **NOT DONE** | 0 refs to PullToRefresh anywhere |
+| H4: Dark theme | ✅ | darkColorScheme defined, isSystemInDarkTheme wired |
+| H5: Haptic feedback | ✅ | 13 refs across siren, alert acknowledge, motor control |
+| H6: Connection banner | ✅ | ConnectionBanner.kt + OfflineBanner.kt both exist |
 
-| Category | Files | Tests | New in This Commit |
-|:---------|:------|:------|:---|
-| Layout | Sidebar, Header, Layout | 12 | Header.test, Layout.test (NEW) |
-| Components | AlertCard, AlertTable, SirenButton, WaterTankGauge, NodeStatusCard | 23 | AlertTable.test, NodeStatusCard.test (NEW) |
-| Hooks | useAuth, useAlerts, useDevices | 9 | useAlerts.test, useDevices.test (NEW) |
-| Pages | All 10 pages | 36 | Alerts, Analytics, Cameras, Dashboard, Devices, Settings, Siren, Water, Workers, Zones — **ALL NEW** |
+### Medium Issues (2/8)
 
-### Backend Tests — Filled Gaps
+| Issue | Status |
+|:------|:-------|
+| M4: Relative timestamps | ✅ RelativeTimeFormatter.kt |
+| M7: Swipe actions on alerts | ✅ SwipeToDismissBox in AlertCard.kt |
+| M1: Badge count | ❌ |
+| M2: Biometric/PIN | ❌ |
+| M3: Offline indicator | ✅ OfflineBanner exists (partial) |
+| M5: Sound preview | ❌ |
+| M6: Siren confirmation | ✅ (2 AlertDialog refs in siren) |
+| M8: Camera auto-refresh | ❌ |
 
-| New Test File | @Tests | What It Covers |
-|:-------------|:-------|:---------------|
-| WaterLevelConsumerTest.java | 3 | Threshold alerts (critical/low/overflow) |
-| RabbitMQConfigTest.java | 2 | Queue declarations verified |
-| AlertResponseTest.java | 3 | DTO serialization |
-| WebSocketServiceTest.java | 2 | WebSocket broadcast |
-| GatewayWebTest.java | 3 | API gateway routing |
-| JwtAuthFilterTest.java | 4 | JWT filter chain |
-| UserServiceTest.java | 5 | User CRUD |
-| CameraControllerTest.java | 2 | Camera REST endpoints |
-| WorkerTagControllerTest.java | 3 | Tag CRUD |
-| ZoneControllerTest.java | 3 | Zone CRUD |
+### Beyond the Plan — New Features Not Originally Requested
 
-Backend total: **102 unit + 17 integration = 119 @Test methods** (up from ~75).
-
-### PA System — Substantially Expanded
-
-Files went from stubs to real implementations:
-
-| File | Before | After | Status |
-|:-----|:-------|:------|:-------|
-| pa_controller.py | 451 lines | 541 lines | ✅ volume, play_tone, announce, heartbeat |
-| scheduler.py | 28 lines | **253 lines** | ✅ Real implementation with schedule library |
-| self_test.py | 24 lines | **204 lines** | ✅ Checks audio, MQTT, disk, reports results |
-| pa_dashboard.py | 24 lines | **174 lines** | ✅ Flask web UI with status, controls, history |
-| pa_led_gpio.py | 18 lines | **166 lines** | ✅ State machine: IDLE/PLAYING/ERROR/DISCONNECTED |
-| pa_battery_ina219.py | 17 lines | **100 lines** | ✅ INA219 I2C voltage monitor with alerts |
-| audio_cache.py | — | **111 lines** | ✅ NEW: HTTP download + local cache + cleanup |
-| requirements.txt | — | ✅ | NEW: paho-mqtt, flask, schedule, gpiozero, smbus2 |
+| File | What It Does |
+|:-----|:-------------|
+| ServerSettingsScreen.kt | Configure API and MQTT broker URLs in-app (no hardcoded IPs) |
+| RuntimeConnectionConfig.kt | Dynamic base URL switching without recompile |
+| DynamicBaseUrlInterceptor.kt | OkHttp interceptor swaps base URL at runtime |
+| SecureCredentialStore.kt | Encrypted token storage (not plain SharedPreferences) |
+| ApiCall.kt | Generic API call wrapper with error handling |
+| AuthTokenCache.kt | Token caching layer |
+| App launcher icons | Custom icons at 4 densities |
 
 ---
 
-## Complete Test Inventory
+## Simulator — NEW (24 files, 1,279 lines)
 
-| Layer | Files | Functions | Framework |
-|:------|:------|:---------|:----------|
-| Edge unit | 8 | 92 | pytest |
-| Backend unit | ~25 | 102 | JUnit 5 + Mockito |
-| Backend integration | 8 | 17 | Testcontainers |
-| Dashboard | 22 | 80 | Vitest + RTL |
-| E2E | 1 | 13 | Docker Compose + Python |
-| **Total** | **~64** | **304** | |
+Fully implemented standalone React app:
 
-vs. Plan target ~288 → **106% achieved** (exceeded plan).
+| Feature | Status |
+|:--------|:-------|
+| MQTT.js WebSocket client | ✅ MqttClient.ts (71 lines) |
+| 23 predefined scenarios | ✅ alerts/water/motor/siren/system |
+| Device inventory from API | ✅ deviceInventory.ts loads nodes/cameras/zones |
+| Zone-based alert generation | ✅ alertFromZone.ts builds payloads from real zone data |
+| Sequence playback | ✅ sequences.ts (intruder breach, water emergency, fire) |
+| Auto mode | ✅ Random events at configurable interval |
+| Docker + Nginx | ✅ Dockerfile + nginx.conf for containerized deployment |
+| Vite dev server with API proxy | ✅ vite.config.ts proxies /api to gateway |
+| DB seed data | ✅ seed_simulator_cameras_zones.sql |
 
 ---
 
-## Remaining Gaps (Honest)
+## Backend Improvements (This Round)
 
-### CRITICAL — Water/Motor Tests Still Missing
+| Change | Impact |
+|:-------|:-------|
+| WebSocket: `/ws/alerts` + `/ws` endpoints with SockJS | Dashboard receives real-time alerts |
+| `saveAndFlush` in alert-service | Ensures alert ID available before WebSocket broadcast |
+| FK handling in water entities | Prevents cascade errors when creating readings |
+| GlobalExceptionHandler fixes in device-service | Proper error responses |
+| Water level consumer → WebSocket broadcast | Water alerts push to dashboard in real-time |
+| Water/motor tests: **19 new @Test methods** | WaterServiceTest(8), WaterMqttConsumerTest(4), WaterTankControllerTest(3), WaterMotorRestControllerTest(4) |
 
-The water/motor integration in device-service (15 Java files, ~600 lines of business logic) has **zero dedicated tests**:
+---
+
+## Dashboard Improvements (This Round)
+
+| Change | Impact |
+|:-------|:-------|
+| Camera page: edge snapshot explanation + UX | Users understand RTSP vs JPEG snapshot |
+| Device API paths fixed | Correct routing through gateway |
+| useAlertWebSocket hook | Real-time alert updates |
+| edgeSnapshot utility | Helper for edge node snapshot URLs |
+| MotorControlPage.tsx (115 lines) | **NEW**: Dashboard can now control pumps |
+| .env.example | Documented environment variables |
+
+---
+
+## Test Inventory
+
+| Layer | Files | Functions | Change |
+|:------|:------|:---------|:-------|
+| Edge pytest | 8 | 92 | — |
+| Backend unit | ~30 | 122 | +20 (water/motor) |
+| Backend integration | 8 | 18 | +1 |
+| Dashboard | 24 | 86 | +6 |
+| E2E | 1 | 13 | — |
+| **Total** | **~71** | **331** | **+27 since last review** |
+
+---
+
+## Remaining Gaps — Honest
+
+| # | Gap | Severity | Effort |
+|:--|:----|:---------|:-------|
+| 1 | **Android: Pull-to-refresh** (H3) — zero refs, can't manually refresh any screen | HIGH | 0.5 day |
+| 2 | **Android: Biometric/PIN lock** — security app with no lock screen | MEDIUM | 0.5 day |
+| 3 | **Android: Camera auto-refresh** — static snapshots only | LOW | 2 hours |
+| 4 | **Android: Badge count on app icon** | LOW | 2 hours |
+| 5 | **Dashboard: WaterPage has no motor refs** — MotorControlPage exists but may not be linked from water page | LOW | 1 hour |
+| 6 | **Model training** — no trained model, only guides | BLOCKING for snake/fire/smoke | 3 days |
+| 7 | **VPN/TLS** — no OpenVPN, no HTTPS | MEDIUM for production | 3 hours |
+| 8 | **PA system** — real code now (80%) but not field-tested | LOW risk | 1 day |
+
+---
+
+## Overall: ~91% (excluding training)
 
 ```
-MISSING:  WaterServiceTest.java           (WaterService = 163 lines)
-MISSING:  WaterMqttConsumerTest.java      (WaterMqttConsumer = 84 lines)
-MISSING:  WaterTankControllerTest.java    (7 REST endpoints, 0 tested)
-MISSING:  WaterMotorControllerTest.java   (4 REST endpoints, 0 tested)
-MISSING:  Water integration test          (MQTT → DB → API, 0 Testcontainers tests)
+██████████████████████░░░  91%
+
+DONE:     Backend (96%), Dashboard (95%), Android (92% — overhaul complete),
+          CI/CD (100%), Cloud VPS (100%), Edge AI (92%), Firmware (100%),
+          Water/Motor (95%), Simulator (90%), PA System (80%)
+          Tests: 331 functions across 71 files
+
+GAPS:     Pull-to-refresh (Android), biometric lock, VPN/TLS,
+          dashboard motor page linking, model training
+
+PROGRESS: 80% → 91% since last review
+          Android: POC → production-grade (25 new files, 38% code growth)
+          Simulator: 0% → 90% (24 files, fully functional)
+          Water/motor tests: 0 → 19 @Test methods
+          Total tests: 304 → 331
 ```
-
-Only WaterLevelConsumerTest in alert-service has 3 @Test methods — that covers threshold alerting but NOT the main water data flow.
-
-### MEDIUM — Dashboard Motor Control Page
-
-Android has MotorControlScreen.kt (354 lines) — start/stop pump, runtime timer, status. Dashboard has no equivalent motor control page. Users on desktop can't control pumps.
-
-### LOW — Other Items
-
-- OpenVPN not configured yet (edge nodes use direct IP)
-- No TLS on VPS (HTTP only on port 9080)
-- PA system not field-tested with real Ahuja hardware
-
----
-
-## What's Left Before Farm Deployment
-
-| # | Item | Effort | Blocked By |
-|:--|:-----|:-------|:-----------|
-| 1 | Water/motor tests | 1-2 days | Agent work |
-| 2 | Dashboard motor control page | 1 day | Agent work |
-| 3 | Deploy VPS stack | 2 hours | VPS access |
-| 4 | Deploy edge on RTX 3060 | 1 hour | Camera RTSP credentials |
-| 5 | Flash ESP32 firmware | 1 hour | ESP32 hardware |
-| 6 | Wire PA system on Pi | 2 hours | Pi + amplifier |
-| 7 | OpenVPN + TLS | 3 hours | VPS |
-
----
-
-## Overall: ~88% (excluding training)
-
-```
-██████████████████████░░░  88%
-
-DONE:     Backend, Dashboard (responsive!), Android, CI/CD, Cloud, Edge,
-          Firmware, Water integration (code), Motor control (Android),
-          PA system (80%), Tests (304 functions, exceeded plan)
-GAPS:     Water/motor tests (0), Dashboard motor page, VPN/TLS
-NOT DONE: Farm deployment (all code ready, needs hardware)
-```
-
-Since last review: mobile responsive went from 0% → 100%, dashboard tests from 6 → 22 files, PA system from stubs → real implementations, backend tests filled most gaps. The project jumped from 80% → 88%.
