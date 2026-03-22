@@ -11,6 +11,7 @@ import com.sudarshanchakra.data.api.AuthInterceptor
 import com.sudarshanchakra.data.api.DynamicBaseUrlInterceptor
 import com.sudarshanchakra.data.db.AlertDao
 import com.sudarshanchakra.data.db.AppDatabase
+import com.sudarshanchakra.data.db.MIGRATION_1_2
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -84,8 +85,10 @@ object AppModule {
         return Room.databaseBuilder(
             context,
             AppDatabase::class.java,
-            "sudarshanchakra_db"
-        ).build()
+            "sudarshanchakra_db",
+        )
+            .addMigrations(MIGRATION_1_2)
+            .build()
     }
 
     @Provides

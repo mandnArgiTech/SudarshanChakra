@@ -12,7 +12,6 @@ Directory layout::
                                       cam-01_08-10.mp4
 """
 
-import json
 import logging
 import os
 import signal
@@ -22,12 +21,11 @@ import time
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+from storage_json_config import get_storage_config_path, load_storage_config_dict
+
 log = logging.getLogger("video_recorder")
 
-STORAGE_CONFIG_PATH = os.getenv(
-    "VIDEO_STORAGE_CONFIG",
-    os.path.join(os.getenv("CONFIG_DIR", "/app/config"), "storage.json"),
-)
+STORAGE_CONFIG_PATH = get_storage_config_path()
 
 
 @dataclass
@@ -160,13 +158,12 @@ class VideoRecorder:
 
     @staticmethod
     def _load_storage_config() -> dict:
-        try:
-            with open(STORAGE_CONFIG_PATH) as f:
-                return json.load(f)
-        except FileNotFoundError:
-            log.warning("storage.json not found at %s, using defaults",
-                        STORAGE_CONFIG_PATH)
-            return {"ssd_pools": [{"path": "/data/video", "cameras": []}]}
+        cfg = load_storage_config_dict()
+        if cfg is not None:
+            return cfg
+        log.warning("storage.json not found or invalid at %s, using defaults",
+                    STORAGE_CONFIG_PATH)
+        return {"ssd_pools": [{"path": "/data/video", "cameras": []}]}
 
     def _resolve_output_dir(self, camera_id: str) -> str:
         for pool in self._storage.get("ssd_pools", []):

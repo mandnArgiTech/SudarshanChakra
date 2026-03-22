@@ -38,6 +38,7 @@ describe('AlertTable', () => {
     );
     expect(screen.getByText('Priority')).toBeInTheDocument();
     expect(screen.getByText('Detection')).toBeInTheDocument();
+    expect(screen.getByText('Evidence')).toBeInTheDocument();
   });
 
   it('shows alert row content', () => {
@@ -64,5 +65,15 @@ describe('AlertTable', () => {
     render(<AlertTable alerts={[]} />);
     const empty = screen.getAllByText('No alerts found');
     expect(empty.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows clip evidence toggle when metadata has clip_path', () => {
+    const withClip: Alert = {
+      ...newAlert,
+      metadata: JSON.stringify({ clip_path: 't1.mp4' }),
+    };
+    render(<AlertTable alerts={[withClip]} />);
+    const toggles = screen.getAllByRole('button', { name: /clip/i });
+    expect(toggles.length).toBeGreaterThanOrEqual(1);
   });
 });

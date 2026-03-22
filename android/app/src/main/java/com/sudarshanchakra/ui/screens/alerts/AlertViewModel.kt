@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sudarshanchakra.data.repository.AlertBadgeRepository
 import com.sudarshanchakra.data.repository.AlertRepository
+import com.sudarshanchakra.data.repository.ServerSettingsRepository
 import com.sudarshanchakra.domain.model.Alert
 import com.sudarshanchakra.domain.model.AlertPriority
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -30,10 +31,16 @@ data class AlertFeedUiState(
 class AlertViewModel @Inject constructor(
     private val alertRepository: AlertRepository,
     private val alertBadgeRepository: AlertBadgeRepository,
+    serverSettingsRepository: ServerSettingsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AlertFeedUiState())
     val uiState: StateFlow<AlertFeedUiState> = _uiState.asStateFlow()
+
+    /** Edge Flask base (no trailing slash) for `/api/clips/{alertId}.mp4`. */
+    val edgeGuiBaseUrl: StateFlow<String> = serverSettingsRepository.settings
+        .map { it.edgeGuiBaseUrl.trim().trimEnd('/') }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
     init {
         loadAlerts(fullScreenLoading = true)

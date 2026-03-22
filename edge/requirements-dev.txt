@@ -1,24 +1,2 @@
-# SudarshanChakra Edge AI — DEV MODE Dependencies (CPU only, no CUDA)
-
-# YOLO — CPU-only (no torch-cuda, no tensorrt)
-ultralytics==8.2.*
-torch==2.3.*
-torchvision==0.18.*
-
-# Web GUI
-flask==3.1.*
-flask-cors==5.*
-
-# MQTT
-paho-mqtt==2.*
-
-# Geometry for virtual fence
-shapely==2.*
-
-# Image processing
-opencv-python-headless==4.9.*
-Pillow>=10.0
-numpy
-
-# Serial (optional — mock mode available)
-pyserial==3.*
+# Dev / CI tests for edge (pytest)
+pytest>=8.0

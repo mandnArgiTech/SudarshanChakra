@@ -15,12 +15,11 @@ import threading
 import time
 from typing import Dict, List, Optional
 
+from storage_json_config import get_storage_config_path, load_storage_config_dict
+
 log = logging.getLogger("storage_manager")
 
-STORAGE_CONFIG_PATH = os.getenv(
-    "VIDEO_STORAGE_CONFIG",
-    os.path.join(os.getenv("CONFIG_DIR", "/app/config"), "storage.json"),
-)
+STORAGE_CONFIG_PATH = get_storage_config_path()
 
 
 class StorageManager:
@@ -42,16 +41,15 @@ class StorageManager:
 
     @staticmethod
     def _load_config() -> dict:
-        try:
-            with open(STORAGE_CONFIG_PATH) as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return {
-                "ssd_pools": [{"path": "/data/video", "cameras": []}],
-                "retention_days": 10,
-                "high_watermark_percent": 85,
-                "archive": {"enabled": False, "path": "/archive/video"},
-            }
+        cfg = load_storage_config_dict()
+        if cfg is not None:
+            return cfg
+        return {
+            "ssd_pools": [{"path": "/data/video", "cameras": []}],
+            "retention_days": 10,
+            "high_watermark_percent": 85,
+            "archive": {"enabled": False, "path": "/archive/video"},
+        }
 
     def start(self):
         self._stop.clear()
@@ -180,6 +178,11 @@ class StorageManager:
                     "archived_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                     "source": day_path,
                     "files": os.listdir(day_path),
+                    "alerts_in_period": [],
+                    "training_notes": {
+                        "has_night_footage": None,
+                        "detected_classes": [],
+                    },
                 }
                 with open(os.path.join(dest, "metadata.json"), "w") as f:
                     json.dump(metadata, f, indent=2)

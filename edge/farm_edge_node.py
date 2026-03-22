@@ -58,6 +58,9 @@ MODEL_DIR = os.getenv("MODEL_DIR", "/app/models")
 FLASK_PORT = int(os.getenv("FLASK_PORT", "5000"))
 LORA_PORT = os.getenv("LORA_PORT", "/dev/ttyUSB0")
 LORA_ENABLED = os.getenv("LORA_ENABLED", "true").lower() == "true"
+CAMERA_SYNC_ENABLED = os.getenv("CAMERA_SYNC_ENABLED", "").lower() in (
+    "1", "true", "yes",
+)
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -125,10 +128,13 @@ def load_camera_configs() -> list:
         for cam in data.get("cameras", []):
             cameras.append(CameraConfig(
                 id=cam["id"],
-                name=cam["name"],
-                rtsp_url=cam["rtsp_url"],
-                fps=cam.get("fps", 2.0),
+                name=cam.get("name", cam["id"]),
+                rtsp_url=cam.get("rtsp_url", ""),
+                fps=float(cam.get("fps", 2.0)),
                 enabled=cam.get("enabled", True),
+                source_type=cam.get("source_type", "rtsp"),
+                source_url=cam.get("source_url"),
+                loop=cam.get("loop", False),
             ))
         log.info("Loaded %d camera configs from %s", len(cameras), config_path)
         return cameras
@@ -494,6 +500,30 @@ def main():
 
     pipeline.results_callbacks.append(alert_engine.process_detection)
     start_heartbeat(mqtt_client, pipeline=pipeline, alert_engine=alert_engine)
+
+    if CAMERA_SYNC_ENABLED:
+        sync_interval = int(os.getenv("CAMERA_SYNC_INTERVAL_SEC", "900"))
+
+        def _camera_sync_loop():
+            time.sleep(15)
+            while True:
+                try:
+                    from camera_sync import run_camera_sync
+                    if run_camera_sync():
+                        log.info(
+                            "camera_sync: cameras.json updated (restart edge to reload pipeline)"
+                        )
+                except Exception as ex:
+                    log.warning("camera_sync thread error: %s", ex)
+                time.sleep(max(60, sync_interval))
+
+        threading.Thread(
+            target=_camera_sync_loop, daemon=True, name="camera-sync",
+        ).start()
+        log.info(
+            "Camera sync thread enabled (interval=%ss, first run after 15s)",
+            max(60, sync_interval),
+        )
 
     # Graceful shutdown
     def shutdown(signum, frame):

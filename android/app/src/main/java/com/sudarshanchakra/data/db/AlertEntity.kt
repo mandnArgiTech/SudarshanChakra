@@ -18,6 +18,7 @@ data class AlertEntity(
     val detectionClass: String,
     val confidence: Float,
     val snapshotUrl: String?,
+    val metadata: String?,
     val status: String,
     val createdAt: String,
     val cachedAt: Long = System.currentTimeMillis()
@@ -33,6 +34,7 @@ data class AlertEntity(
         detectionClass = detectionClass.ifBlank { null },
         confidence = confidence,
         snapshotUrl = snapshotUrl,
+        metadata = metadata,
         status = try { AlertStatus.valueOf(status) } catch (_: Exception) { AlertStatus.ACTIVE },
         createdAt = createdAt.ifBlank { null },
     )
@@ -49,6 +51,7 @@ data class AlertEntity(
             detectionClass = alert.detectionClass.orEmpty(),
             confidence = alert.confidence ?: 0f,
             snapshotUrl = alert.snapshotUrl,
+            metadata = alert.metadata,
             status = alert.status.name,
             createdAt = alert.createdAt.orEmpty(),
         )

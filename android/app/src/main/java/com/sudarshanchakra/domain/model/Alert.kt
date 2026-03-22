@@ -13,6 +13,8 @@ data class Alert(
     val detectionClass: String? = null,
     val confidence: Float? = null,
     val snapshotUrl: String? = null,
+    /** JSON string from alert-service; may include `clip_path` for edge-recorded MP4 evidence. */
+    val metadata: String? = null,
     val status: AlertStatus = AlertStatus.ACTIVE,
     val createdAt: String? = null,
 )

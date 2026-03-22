@@ -1,5 +1,7 @@
 package com.sudarshanchakra.ui.screens.alerts
 
+import android.net.Uri
+import android.widget.VideoView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -41,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.sudarshanchakra.domain.model.AlertPriority
 import com.sudarshanchakra.domain.model.AlertStatus
@@ -59,6 +63,7 @@ import com.sudarshanchakra.ui.theme.TextPrimary
 import com.sudarshanchakra.ui.theme.TextSecondary
 import com.sudarshanchakra.ui.theme.WarningPriority
 import com.sudarshanchakra.util.RelativeTimeFormatter
+import org.json.JSONObject
 
 @Composable
 fun AlertDetailScreen(
@@ -68,6 +73,7 @@ fun AlertDetailScreen(
     viewModel: AlertViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val edgeBase by viewModel.edgeGuiBaseUrl.collectAsState()
     val haptic = LocalHapticFeedback.current
 
     LaunchedEffect(alertId) {
@@ -127,6 +133,18 @@ fun AlertDetailScreen(
             }
             uiState.selectedAlert != null -> {
                 val alert = uiState.selectedAlert!!
+                val hasClip = remember(alert.metadata) {
+                    try {
+                        JSONObject(alert.metadata ?: "{}").optString("clip_path").isNotBlank()
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+                val clipUrlString = if (hasClip && edgeBase.isNotBlank()) {
+                    "$edgeBase/api/clips/${alert.id}.mp4"
+                } else {
+                    null
+                }
                 val priorityColor = when (alert.priority) {
                     AlertPriority.CRITICAL -> CriticalRed
                     AlertPriority.HIGH -> HighPriority
@@ -164,6 +182,49 @@ fun AlertDetailScreen(
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
+
+                    if (hasClip) {
+                        if (clipUrlString != null) {
+                            Text(
+                                text = "Evidence clip",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = CardWhite),
+                            ) {
+                                AndroidView(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f / 9f),
+                                    factory = { ctx ->
+                                        VideoView(ctx).apply {
+                                            setVideoURI(Uri.parse(clipUrlString))
+                                            setOnPreparedListener { mp ->
+                                                mp.isLooping = false
+                                                start()
+                                            }
+                                        }
+                                    },
+                                    update = { view ->
+                                        view.setVideoURI(Uri.parse(clipUrlString))
+                                        view.start()
+                                    },
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = "Clip available on edge. Set Edge GUI base URL in Server settings to play here.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),

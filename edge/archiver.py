@@ -15,12 +15,11 @@ import shutil
 import time
 from typing import Optional
 
+from storage_json_config import get_storage_config_path, load_storage_config_dict
+
 log = logging.getLogger("archiver")
 
-STORAGE_CONFIG_PATH = os.getenv(
-    "VIDEO_STORAGE_CONFIG",
-    os.path.join(os.getenv("CONFIG_DIR", "/app/config"), "storage.json"),
-)
+STORAGE_CONFIG_PATH = get_storage_config_path()
 
 
 class Archiver:
@@ -34,11 +33,8 @@ class Archiver:
 
     @staticmethod
     def _load_config() -> dict:
-        try:
-            with open(STORAGE_CONFIG_PATH) as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return {}
+        cfg = load_storage_config_dict()
+        return cfg if cfg is not None else {}
 
     def is_enabled(self) -> bool:
         return self._enabled
@@ -91,6 +87,12 @@ class Archiver:
             "total_bytes": total_bytes,
             "file_count": len(files),
             "files": files,
+            # Stubs for future enrichment (training export / alert cross-ref)
+            "alerts_in_period": [],
+            "training_notes": {
+                "has_night_footage": None,
+                "detected_classes": [],
+            },
         }
         meta_path = os.path.join(dest, "metadata.json")
         try:

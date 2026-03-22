@@ -15,7 +15,7 @@ import time
 import logging
 from queue import Queue
 from dataclasses import dataclass
-from typing import List, Callable
+from typing import Callable, List, Optional
 import numpy as np
 
 from ultralytics import YOLO
@@ -78,12 +78,15 @@ def load_model() -> YOLO:
 
 @dataclass
 class CameraConfig:
-    """Configuration for a single RTSP camera."""
+    """Configuration for a single camera (RTSP, file, or HTTP source)."""
     id: str
     name: str
     rtsp_url: str
     fps: float = 2.0
     enabled: bool = True
+    source_type: str = "rtsp"
+    source_url: Optional[str] = None
+    loop: bool = False
 
 
 @dataclass

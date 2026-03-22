@@ -251,3 +251,37 @@ New since last review:
 
 Tests: 331+ functions (unchanged — zero tests added for 3,400 new lines)
 ```
+
+---
+
+## Implementation resolution (post-review)
+
+This section records what was clarified or implemented after `CODE_REVIEW_V1` was written.
+
+### GAP 1 — Android video playback (**clarified**)
+
+The review assumed ExoPlayer/Media3. The app uses **`VideoView`** inside `AndroidView` in `VideoPlayerScreen.kt` and does **not** require `media3-exoplayer` for compilation. No blocker.
+
+### GAP 2 — Edge MQTT zone reload (**clarified**)
+
+The edge node **already** subscribes to `farm/admin/reload_config` and runs `zone_engine.reload()` (see `farm_edge_node.py` / MQTT admin path). RabbitMQ maps routing key `farm.admin.reload_config` to MQTT topic `farm/admin/reload_config`. Operational requirement: the edge MQTT client must use the **same broker** as the backend publish path (e.g. VPN to `VPN_BROKER_IP`). A separate `farm/admin/zone_updated` topic is optional, not required for reload.
+
+### Completed checklist
+
+| Item | Resolution |
+|:-----|:------------|
+| **M4** | `edge/config/storage.json` uses placeholders; `storage_json_config.py` loads JSON and applies `TEST_CAMERA_RTSP` / `TEST_CAMERA_STREAM1` and `VIDEO_STORAGE_CONFIG`; `edge/config/storage.json.example` added; `video_recorder`, `storage_manager`, `archiver` use shared loader. Documented in `AGENTS.md`. |
+| **M3 Dashboard** | Alerts table parses `metadata` for `clip_path`; evidence panel with `<video>` and link; URL via `edgeAlertClipUrl` (direct edge base or `/edge/api/clips/{id}.mp4` through gateway). |
+| **M3 Android** | `Alert.metadata` + Room v2 migration; detail screen plays clip with `VideoView` when `clip_path` is set and Edge GUI base URL is configured. |
+| **GAP 3** | `edge/camera_sync.py` pulls `GET /api/v1/cameras?nodeId=…` with Bearer token; optional `CAMERA_SYNC_ENABLED` daemon thread in `farm_edge_node.py`; `CameraConfig` / `load_camera_configs()` extended for `source_type`, `source_url`, `loop`. |
+| **Tests** | `edge/tests/` pytest: `edge_gui` recordings + clips routes, `storage_manager._list_day_folders`, `camera_sync` mapping. |
+| **M1** | Archiver + storage_manager archive `metadata.json` include stub `alerts_in_period` / `training_notes`. |
+| **M2** | `edge/scripts/export_training_data.py` skeleton CLI. |
+| **M5** | `LiveCameraFeed.tsx`: loading overlay, periodic reconnect key, retry after error. |
+
+### Intentional deferrals
+
+- Android migration from `VideoView` to ExoPlayer (quality/features), if desired later.
+- Populating `alerts_in_period` / training metadata automatically (needs alert↔segment correlation job).
+- Full YOLO export pipeline (frame extraction + labeling) beyond the export script skeleton.
+

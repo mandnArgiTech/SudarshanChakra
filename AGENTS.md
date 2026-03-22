@@ -92,6 +92,9 @@ sudo docker run -d --name rabbitmq --network sc-net --hostname farm-broker \
 - Syntax-check all files: `python3 -m py_compile edge/*.py`
 - Lint: `python3 -m flake8 --max-line-length=120 edge/*.py`
 - The edge services require NVIDIA GPU + RTSP cameras to run the inference pipeline. The Flask GUI (`edge_gui.py`) also depends on OpenCV for generating placeholder images.
+- **Storage config (`storage.json`):** The repo uses placeholders only — never commit real RTSP credentials. Copy `edge/config/storage.json.example` to `storage.json` (or set **`VIDEO_STORAGE_CONFIG`** to an untracked JSON path). Optional overrides without editing the file: **`TEST_CAMERA_RTSP`**, **`TEST_CAMERA_STREAM1`** (merged into the `test_camera` block). Default path is `CONFIG_DIR/storage.json` (`/app/config` in containers).
+- **Edge tests:** `pytest edge/tests/ -q` (install: `pip install -r edge/requirements-dev.txt` or `pip install pytest`).
+- **Camera sync (optional):** `edge/camera_sync.py` writes `CONFIG_DIR/cameras.json` from device-service. Set `DEVICE_SERVICE_URL` (e.g. `http://localhost:8080/api/v1`), `EDGE_NODE_ID` / `NODE_ID`, `CAMERA_SYNC_TOKEN` (JWT), and run `python3 -m camera_sync` from `edge/`, or enable `CAMERA_SYNC_ENABLED=true` on the edge node for a background thread (`CAMERA_SYNC_INTERVAL_SEC`, default 900). **Restart the edge process** to reload the inference pipeline after cameras change.
 
 ### Android (Kotlin/Compose)
 
