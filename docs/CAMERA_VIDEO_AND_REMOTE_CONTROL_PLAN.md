@@ -604,3 +604,102 @@ Archive (external HDD, per month):
 ```
 
 Recommendation: Record sub-stream for AI (enough for detection). If you need full-quality evidence, record stream1 on a separate 2TB SSD.
+
+---
+
+## Implementation Status
+
+> Updated: 2026-03-22 — All 20 tasks complete, all tests pass.
+
+### Phase 1: Video Recording + Storage
+
+| Task | Status | Files |
+|:-----|:-------|:------|
+| 1. Video Recorder | Done | `edge/video_recorder.py` — ffmpeg subprocess per camera, 10-min MP4 segments, auto-restart with backoff |
+| 2. Storage Directory Structure | Done | `{base}/{cam_id}/{YYYY-MM-DD}/{HH}/cam-id_HH-MM-SS.mp4` layout via `strftime` in ffmpeg |
+| 3. Storage Manager + Circular Overwrite | Done | `edge/storage_manager.py` — hourly scan, watermark cleanup, retention enforcement, optional archive |
+| 4. Storage Config | Done | `edge/config/storage.json` — SSD pools, retention days, watermark %, archive toggle, test camera included |
+
+**Integration:** `farm_edge_node.py` starts `VideoRecorder` and `StorageManager` alongside the inference pipeline; graceful shutdown via SIGTERM/SIGINT.
+
+### Phase 2: Video Serving + Playback
+
+| Task | Status | Files |
+|:-----|:-------|:------|
+| 5. Edge Flask — Serve Recorded MP4 | Done | `edge_gui.py` routes: `/api/video/{cam}/{path}` (Range support), `/api/recordings/{cam}`, `/api/clips/{alert_id}.mp4`, `/api/storage/status` |
+| 6. Edge Flask — MJPEG Live Stream | Done | `edge_gui.py` route: `/api/live/{cam}` — multipart/x-mixed-replace from snapshot cache |
+| 7. Dashboard — Video Player Page | Done | `dashboard/src/pages/VideoPlayerPage.tsx` — HTML5 video, date filter, segment picker, storage status |
+| 8. Dashboard — Live Camera Grid | Done | `dashboard/src/components/LiveCameraFeed.tsx` + `CamerasPage.tsx` updated with Recordings/PTZ/Zones buttons |
+| 9. Android — Video Playback | Done | `VideoPlayerScreen.kt` — `VideoView` playback, recording list via edge API, HiltViewModel |
+| 10. Alert Detail — Video Evidence | Done | `alert_engine.py` extracts 30s clips via ffmpeg background thread; `clip_path` in alert MQTT metadata |
+
+**Note:** Android uses `VideoView` instead of ExoPlayer (no media3 dependency needed; VideoView handles MP4 via edge HTTP).
+
+### Phase 3: ONVIF PTZ Camera Control
+
+| Task | Status | Files |
+|:-----|:-------|:------|
+| 11. ONVIF Discovery + Capabilities | Done | `edge/onvif_controller.py` — `OnvifController` class wrapping `onvif-zeep`, thread-safe via lock |
+| 12. Edge Flask — PTZ API | Done | `edge_gui.py` routes: `/api/ptz/{cam}/capabilities`, `move`, `stop`, `absolute`, `presets`, `preset/goto`, `preset/save` |
+| 13. Dashboard — PTZ Joystick | Done | `dashboard/src/components/PtzJoystick.tsx` + `PtzControlPage.tsx` — directional pad, zoom, presets, keyboard support |
+| 14. Android — PTZ Control | Done | `PtzControlScreen.kt` — directional buttons, zoom, preset list, live snapshot refresh |
+
+**Dependency:** `onvif-zeep>=0.2` added to `edge/requirements.txt`.
+
+### Phase 4: Remote Zone Drawing
+
+| Task | Status | Files |
+|:-----|:-------|:------|
+| 15. Dashboard — Zone Drawing | Done | `dashboard/src/components/ZoneDrawer.tsx` + `ZoneDrawPage.tsx` — Canvas polygon editor on snapshot |
+| 16. Android — Touch Zone Drawing | Done | `ZoneDrawerScreen.kt` — Compose Canvas tap-to-add polygon, save to edge API |
+| 17. Zone Sync — Backend to Edge | Done | `DeviceService.java` publishes to `amq.topic`/`farm.admin.reload_config` via `RabbitTemplate` after zone CRUD; edge `farm_edge_node.py` handler calls `zone_engine.reload()` |
+
+**Backend:** `device-service/application.yml` updated with `spring.rabbitmq` config; `ObjectProvider<RabbitTemplate>` injected to handle optional RabbitMQ gracefully.
+
+### Phase 5: Video File Input + Camera Lifecycle
+
+| Task | Status | Files |
+|:-----|:-------|:------|
+| 18. Video File / Stream Input | Done | `edge/grabbers/file_grabber.py`, `http_grabber.py`; `pipeline.py` `create_grabber()` factory dispatches by `source_type` |
+| 19. Camera Registration UI | Done | `dashboard/src/pages/AddCameraPage.tsx`, `android/.../AddCameraScreen.kt`, `ApiService.kt` `createCamera()` |
+| 20. API Gateway — Proxy Edge | Done | `api-gateway/application.yml` route: `/edge/**` → `EDGE_FLASK_BASE_URL` with `StripPrefix=1` + `RemoveRequestHeader=Authorization` |
+
+**Database:** Flyway `V3__camera_video_schema.sql` adds `source_type`, `source_url`, `recording_enabled`, `has_ptz`, `onvif_*` columns to `cameras` table, plus `video_recordings` and `alert_video_clips` tables. `Camera.java` entity updated with matching JPA fields.
+
+### Routing Summary
+
+**Dashboard (`App.tsx`):**
+- `/cameras/:cameraId/video` → `VideoPlayerPage`
+- `/cameras/:cameraId/ptz` → `PtzControlPage`
+- `/cameras/:cameraId/zones` → `ZoneDrawPage`
+- `/cameras/add` → `AddCameraPage`
+
+**Android (`NavGraph.kt`):**
+- `camera_video/{cameraId}` → `VideoPlayerScreen`
+- `camera_ptz/{cameraId}` → `PtzControlScreen`
+- `zone_drawer/{cameraId}` → `ZoneDrawerScreen`
+- `add_camera` → `AddCameraScreen`
+
+**Vite proxy:** `/edge` → `http://localhost:8080` (gateway)
+
+### Test Results
+
+| Stack | Command | Result |
+|:------|:--------|:-------|
+| Edge Python | `py_compile` (7 new files) | Pass |
+| Edge Python | `flake8 --max-line-length=120` | Pass |
+| Dashboard | `npm run build` (tsc + vite build) | Pass |
+| Dashboard | `npm run lint` (ESLint) | Pass |
+| Backend | `./gradlew compileJava` (all 5 services) | Pass |
+| Backend | `./gradlew test` (device, alert, auth, siren) | Pass |
+| Android | `compileDebugKotlin` | Pass |
+
+### Deferred Items
+
+| Item | Reason |
+|:-----|:-------|
+| `edge/camera_sync.py` — backend-to-edge camera config sync | Not needed for MVP; cameras configured via `cameras.json` or added via UI → stored in DB |
+| `edge/scripts/export_training_data.py` — extract frames for training | Nice-to-have; can be done manually with ffmpeg |
+| `android/build.gradle.kts` — media3-exoplayer dep | Android uses `VideoView` which handles MP4 playback without additional dependencies |
+| Multi-edge-node gateway routing | MVP proxies to single edge node; multi-node requires service discovery |
+| `ptz_presets` JSONB column in Camera entity | DB column exists; JPA mapping deferred (presets managed on-camera via ONVIF, not in DB) |
