@@ -3,9 +3,14 @@ package com.sudarshanchakra.ui.screens.water
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,7 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sudarshanchakra.domain.model.water.WaterMotor
 import com.sudarshanchakra.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun MotorControlScreen(
     motorId: String,
@@ -57,10 +62,19 @@ fun MotorControlScreen(
             return@Scaffold
         }
 
-        Column(
+        val pullState = rememberPullRefreshState(
+            refreshing = ui.isRefreshing,
+            onRefresh = { viewModel.refresh() },
+        )
+        Box(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .pullRefresh(pullState),
+        ) {
+        Column(
+            Modifier
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -122,6 +136,12 @@ fun MotorControlScreen(
             }
 
             Spacer(Modifier.height(80.dp))
+        }
+            PullRefreshIndicator(
+                refreshing = ui.isRefreshing,
+                state = pullState,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
     }
 }
@@ -234,7 +254,12 @@ private fun ModeSelector(current: String, onSelect: (String) -> Unit) {
                     Column(Modifier.padding(12.dp).fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(when(mode) { "off" -> "🔴"; "auto" -> "🔵"; else -> "🟢" }, fontSize = 18.sp)
+                        Box(
+                            Modifier
+                                .size(14.dp)
+                                .clip(CircleShape)
+                                .background(selColor),
+                        )
                         Text(label, fontSize = 10.sp,
                             color = if (selected) selColor else TextMuted,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)

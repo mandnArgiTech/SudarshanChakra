@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import WaterPage from './WaterPage';
@@ -25,5 +25,12 @@ describe('WaterPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/Main tank/i)).toBeInTheDocument();
     });
+  });
+
+  it('links to pump & motor control route', () => {
+    wrap(<WaterPage />);
+    const link = screen.getByRole('link', { name: /pump & motor control/i });
+    expect(link).toHaveAttribute('href', '/water/motors');
+    fireEvent.click(link);
   });
 });

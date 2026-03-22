@@ -60,4 +60,16 @@ object ConnectionUrlNormalizer {
         return scheme == "tcp" || scheme == "ssl" || scheme == "tls" ||
             scheme == "mqtt" || scheme == "mqtts"
     }
+
+    /**
+     * Edge Flask GUI origin for JPEG snapshots, e.g. `http://192.168.1.10:5000`.
+     * Empty string = disabled. Returns null if non-empty but invalid.
+     */
+    fun validateEdgeGuiBaseUrl(input: String): String? {
+        val s = input.trim().trimEnd('/')
+        if (s.isEmpty()) return ""
+        val parsed = s.toHttpUrlOrNull() ?: return null
+        if (parsed.scheme != "http" && parsed.scheme != "https") return null
+        return parsed.toString().trimEnd('/')
+    }
 }

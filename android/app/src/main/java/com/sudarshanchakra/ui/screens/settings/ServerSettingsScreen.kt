@@ -142,6 +142,34 @@ fun ServerSettingsScreen(
                 ),
             )
 
+            Text(
+                text = "Edge GUI (camera snapshots)",
+                style = MaterialTheme.typography.labelLarge,
+                color = TextPrimary,
+            )
+            OutlinedTextField(
+                value = state.edgeGuiBaseUrl,
+                onValueChange = viewModel::onEdgeGuiChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("e.g. http://192.168.1.10:5000") },
+                supportingText = {
+                    Text(
+                        "Flask /api/snapshot/{cameraId}. Leave blank to show placeholders only. Same LAN as the phone.",
+                        color = TextMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+                singleLine = false,
+                minLines = 2,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Terracotta,
+                    unfocusedBorderColor = DividerColor,
+                    focusedLabelColor = Terracotta,
+                    cursorColor = Terracotta,
+                ),
+            )
+
             if (state.error != null) {
                 Text(text = state.error!!, color = CriticalRed, style = MaterialTheme.typography.bodySmall)
             }

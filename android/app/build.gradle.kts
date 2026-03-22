@@ -98,6 +98,12 @@ dependencies {
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
+    // Edge snapshot thumbnails (Flask /api/snapshot/{id})
+    implementation("io.coil-kt:coil-compose:2.5.0")
+
+    // App unlock after background (device credential / biometric)
+    implementation("androidx.biometric:biometric:1.1.0")
+
     // Encrypted prefs ("Remember me" password). 1.0.0 uses legacy create(String, String, Context, …) — no MasterKey.
     implementation("androidx.security:security-crypto:1.1.0")
 

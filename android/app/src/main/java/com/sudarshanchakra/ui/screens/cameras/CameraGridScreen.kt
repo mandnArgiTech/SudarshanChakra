@@ -20,7 +20,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,16 +38,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import coil.compose.AsyncImage
 import com.sudarshanchakra.data.repository.DeviceRepository
+import com.sudarshanchakra.data.repository.ServerSettingsRepository
 import com.sudarshanchakra.domain.model.Camera
 import com.sudarshanchakra.ui.theme.CardWhite
 import com.sudarshanchakra.ui.theme.CreamBackground
@@ -59,12 +67,17 @@ import com.sudarshanchakra.ui.theme.TextPrimary
 import com.sudarshanchakra.ui.theme.TextSecondary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import javax.inject.Inject
 
 data class CameraGridUiState(
@@ -76,10 +89,16 @@ data class CameraGridUiState(
 
 @HiltViewModel
 class CameraViewModel @Inject constructor(
-    private val deviceRepository: DeviceRepository
+    private val deviceRepository: DeviceRepository,
+    serverSettingsRepository: ServerSettingsRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CameraGridUiState())
     val uiState: StateFlow<CameraGridUiState> = _uiState.asStateFlow()
+
+    /** Edge Flask origin for JPEG snapshots; empty if unset in Server settings. */
+    val edgeGuiBaseUrl: StateFlow<String> = serverSettingsRepository.settings
+        .map { it.edgeGuiBaseUrl.trim().trimEnd('/') }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     private var hasLoadedOnce = false
 
@@ -122,13 +141,7 @@ fun CameraGridScreen(
     viewModel: CameraViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            delay(4000)
-            viewModel.loadCameras()
-        }
-    }
+    val edgeBase by viewModel.edgeGuiBaseUrl.collectAsState()
 
     Column(
         modifier = Modifier
@@ -176,7 +189,12 @@ fun CameraGridScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "📷", fontSize = 40.sp)
+                        Icon(
+                            Icons.Filled.BrokenImage,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp),
+                            tint = TextMuted,
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = uiState.error ?: "Error loading cameras",
@@ -192,7 +210,12 @@ fun CameraGridScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "📷", fontSize = 40.sp)
+                        Icon(
+                            Icons.Filled.Videocam,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp),
+                            tint = TextMuted,
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "No cameras found",
@@ -224,7 +247,7 @@ fun CameraGridScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(uiState.cameras, key = { it.id }) { camera ->
-                            CameraCard(camera = camera)
+                            CameraCard(camera = camera, edgeSnapshotBase = edgeBase)
                         }
                     }
                     PullRefreshIndicator(
@@ -239,9 +262,27 @@ fun CameraGridScreen(
 }
 
 @Composable
-private fun CameraCard(camera: Camera) {
+private fun CameraCard(camera: Camera, edgeSnapshotBase: String) {
     val isOnline = camera.status.equals("ONLINE", ignoreCase = true) ||
         camera.status.equals("ACTIVE", ignoreCase = true)
+
+    var snapshotTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(edgeSnapshotBase) {
+        if (edgeSnapshotBase.isNotBlank()) {
+            while (isActive) {
+                delay(3000)
+                snapshotTick++
+            }
+        }
+    }
+    val snapshotUrl = remember(camera.id, edgeSnapshotBase, snapshotTick) {
+        if (edgeSnapshotBase.isBlank()) {
+            null
+        } else {
+            val enc = URLEncoder.encode(camera.id, StandardCharsets.UTF_8.name())
+            "$edgeSnapshotBase/api/snapshot/$enc?t=$snapshotTick"
+        }
+    }
 
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -256,15 +297,28 @@ private fun CameraCard(camera: Camera) {
                     .background(SurfaceLight),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = "📹", fontSize = 28.sp)
-                    if (camera.resolution != null) {
-                        Text(
-                            text = camera.resolution,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
-                        )
-                    }
+                if (snapshotUrl != null) {
+                    AsyncImage(
+                        model = snapshotUrl,
+                        contentDescription = camera.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Icon(
+                        Icons.Filled.Videocam,
+                        contentDescription = null,
+                        modifier = Modifier.size(36.dp),
+                        tint = TextMuted,
+                    )
+                }
+                if (camera.resolution != null && snapshotUrl == null) {
+                    Text(
+                        text = camera.resolution,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
+                    )
                 }
 
                 Box(

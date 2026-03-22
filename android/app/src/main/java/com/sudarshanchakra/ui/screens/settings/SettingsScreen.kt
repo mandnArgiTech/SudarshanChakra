@@ -1,10 +1,14 @@
 package com.sudarshanchakra.ui.screens.settings
 
 import android.content.Intent
+import android.media.RingtoneManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +27,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -32,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +50,7 @@ import com.sudarshanchakra.service.MqttForegroundService
 import com.sudarshanchakra.ui.navigation.SessionViewModel
 import com.sudarshanchakra.ui.theme.CreamBackground
 import com.sudarshanchakra.ui.theme.CriticalRed
+import com.sudarshanchakra.ui.theme.Terracotta
 import com.sudarshanchakra.ui.theme.TextMuted
 import com.sudarshanchakra.ui.theme.TextPrimary
 import com.sudarshanchakra.ui.theme.TextSecondary
@@ -55,6 +63,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val user by viewModel.currentUser.collectAsStateWithLifecycle()
+    val lockOnResume by viewModel.lockOnResumeEnabled.collectAsStateWithLifecycle()
     var showLogoutConfirm by remember { mutableStateOf(false) }
     val context = LocalContext.current
     Scaffold(
@@ -106,6 +115,34 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
             Text(
+                text = "Security",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "Require unlock after leaving app",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                )
+                Switch(
+                    checked = lockOnResume,
+                    onCheckedChange = viewModel::setLockOnResume,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Terracotta,
+                        checkedTrackColor = Terracotta.copy(alpha = 0.5f),
+                    ),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
                 text = "About",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
@@ -116,6 +153,24 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted,
             )
+
+            OutlinedButton(
+                onClick = {
+                    runCatching {
+                        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                        val ringtone = RingtoneManager.getRingtone(context, uri)
+                        ringtone?.play()
+                        Handler(Looper.getMainLooper()).postDelayed(
+                            { runCatching { ringtone?.stop() } },
+                            2000L,
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text("Preview critical alert sound (2s)")
+            }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 OutlinedButton(

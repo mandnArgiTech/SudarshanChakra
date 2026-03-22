@@ -17,6 +17,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,6 +57,7 @@ import com.sudarshanchakra.ui.theme.TextMuted
 import com.sudarshanchakra.ui.theme.TextPrimary
 import com.sudarshanchakra.ui.theme.TextSecondary
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun SirenControlScreen(
     viewModel: SirenViewModel = hiltViewModel()
@@ -83,6 +88,15 @@ fun SirenControlScreen(
                 CircularProgressIndicator(color = Terracotta)
             }
         } else {
+            val pullState = rememberPullRefreshState(
+                refreshing = uiState.isRefreshing,
+                onRefresh = { viewModel.refresh() },
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pullRefresh(pullState),
+            ) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -215,9 +229,11 @@ fun SirenControlScreen(
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = if (action.action == "trigger") "🔴" else "⚪",
-                                fontSize = 14.sp
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(if (action.action == "trigger") CriticalRed else SurfaceLight),
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
@@ -238,6 +254,12 @@ fun SirenControlScreen(
                 }
 
                 item { Spacer(modifier = Modifier.height(24.dp)) }
+            }
+                PullRefreshIndicator(
+                    refreshing = uiState.isRefreshing,
+                    state = pullState,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
             }
         }
 

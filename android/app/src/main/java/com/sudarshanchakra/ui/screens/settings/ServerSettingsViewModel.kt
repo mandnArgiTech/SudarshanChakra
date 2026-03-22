@@ -16,6 +16,7 @@ import javax.inject.Inject
 data class ServerSettingsUiState(
     val apiBaseUrl: String = "",
     val mqttBrokerUrl: String = "",
+    val edgeGuiBaseUrl: String = "",
     val buildDefaultApiHint: String = "",
     val buildDefaultMqttHint: String = "",
     val isSaving: Boolean = false,
@@ -44,6 +45,7 @@ class ServerSettingsViewModel @Inject constructor(
                 it.copy(
                     apiBaseUrl = s.apiBaseUrl.trimEnd('/'),
                     mqttBrokerUrl = s.mqttBrokerUrl,
+                    edgeGuiBaseUrl = s.edgeGuiBaseUrl,
                 )
             }
         }
@@ -57,16 +59,21 @@ class ServerSettingsViewModel @Inject constructor(
         _uiState.update { it.copy(mqttBrokerUrl = value, error = null, savedMessage = null) }
     }
 
+    fun onEdgeGuiChange(value: String) {
+        _uiState.update { it.copy(edgeGuiBaseUrl = value, error = null, savedMessage = null) }
+    }
+
     fun save() {
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, error = null, savedMessage = null) }
-            val result = repository.save(_uiState.value.apiBaseUrl, _uiState.value.mqttBrokerUrl)
+            val s = _uiState.value
+            val result = repository.save(s.apiBaseUrl, s.mqttBrokerUrl, s.edgeGuiBaseUrl)
             _uiState.update {
                 it.copy(
                     isSaving = false,
                     error = result.exceptionOrNull()?.message,
                     savedMessage = if (result.isSuccess) {
-                        "Saved. Restart the app or log in again for MQTT to use the new broker."
+                        "Saved. Restart the app or log in again for MQTT to use the new broker. Camera snapshots use the edge URL immediately."
                     } else {
                         null
                     },
@@ -86,6 +93,7 @@ class ServerSettingsViewModel @Inject constructor(
                     savedMessage = if (result.isSuccess) "Reset to build defaults." else null,
                     apiBaseUrl = ConnectionUrlNormalizer.defaultApiBaseUrl().trimEnd('/'),
                     mqttBrokerUrl = ConnectionUrlNormalizer.defaultMqttBrokerUrl(),
+                    edgeGuiBaseUrl = "",
                 )
             }
         }

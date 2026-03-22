@@ -2,6 +2,7 @@ package com.sudarshanchakra.ui.screens.alerts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sudarshanchakra.data.repository.AlertBadgeRepository
 import com.sudarshanchakra.data.repository.AlertRepository
 import com.sudarshanchakra.domain.model.Alert
 import com.sudarshanchakra.domain.model.AlertPriority
@@ -27,7 +28,8 @@ data class AlertFeedUiState(
 
 @HiltViewModel
 class AlertViewModel @Inject constructor(
-    private val alertRepository: AlertRepository
+    private val alertRepository: AlertRepository,
+    private val alertBadgeRepository: AlertBadgeRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AlertFeedUiState())
@@ -51,6 +53,7 @@ class AlertViewModel @Inject constructor(
             val result = alertRepository.getAlerts()
             result.fold(
                 onSuccess = { alerts ->
+                    alertBadgeRepository.clear()
                     _uiState.update {
                         it.copy(
                             alerts = alerts,

@@ -23,6 +23,7 @@ import com.hivemq.client.mqtt.mqtt5.message.publish.Mqtt5Publish
 import com.sudarshanchakra.MainActivity
 import com.sudarshanchakra.data.api.ApiService
 import com.sudarshanchakra.data.config.RuntimeConnectionConfig
+import com.sudarshanchakra.data.repository.AlertBadgeRepository
 import com.sudarshanchakra.util.Constants
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -49,6 +50,9 @@ class MqttForegroundService : Service() {
 
     @Inject
     lateinit var runtimeConnectionConfig: RuntimeConnectionConfig
+
+    @Inject
+    lateinit var alertBadgeRepository: AlertBadgeRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var mqttClient: Mqtt5AsyncClient? = null
@@ -229,6 +233,7 @@ class MqttForegroundService : Service() {
             description = "High and warning priority detections"
             enableVibration(true)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setShowBadge(true)
         }
 
         val criticalChannel = NotificationChannel(
@@ -247,6 +252,7 @@ class MqttForegroundService : Service() {
             enableLights(true)
             lightColor = Color.RED
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setShowBadge(true)
         }
 
         manager.createNotificationChannel(serviceChannel)
@@ -320,10 +326,19 @@ class MqttForegroundService : Service() {
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         }
 
-        NotificationManagerCompat.from(this).notify(
-            ALERT_NOTIFICATION_BASE_ID + reqCode,
-            builder.build(),
-        )
+        serviceScope.launch {
+            val count = try {
+                alertBadgeRepository.increment()
+            } catch (e: Exception) {
+                Log.w(TAG, "Badge increment failed", e)
+                alertBadgeRepository.currentCount()
+            }
+            val withNumber = builder.setNumber(count.coerceAtLeast(1)).build()
+            NotificationManagerCompat.from(this@MqttForegroundService).notify(
+                ALERT_NOTIFICATION_BASE_ID + reqCode,
+                withNumber,
+            )
+        }
     }
 
     private suspend fun updateMqttClientIdOnBackend(clientId: String) {

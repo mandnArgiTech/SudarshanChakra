@@ -20,6 +20,7 @@ data class SirenUiState(
     val activeNodeIds: Set<String> = emptySet(),
     val isAllSirenActive: Boolean = false,
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
     val actionMessage: String? = null
 )
@@ -34,12 +35,20 @@ class SirenViewModel @Inject constructor(
     val uiState: StateFlow<SirenUiState> = _uiState.asStateFlow()
 
     init {
-        loadData()
+        loadData(isPullRefresh = false)
     }
 
-    fun loadData() {
+    fun refresh() = loadData(isPullRefresh = true)
+
+    private fun loadData(isPullRefresh: Boolean) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update {
+                if (isPullRefresh) {
+                    it.copy(isRefreshing = true)
+                } else {
+                    it.copy(isLoading = true)
+                }
+            }
             val nodesResult = deviceRepository.getNodes()
             val historyResult = sirenRepository.getHistory()
 
@@ -47,7 +56,8 @@ class SirenViewModel @Inject constructor(
                 it.copy(
                     nodes = nodesResult.getOrDefault(emptyList()),
                     history = historyResult.getOrDefault(emptyList()),
-                    isLoading = false
+                    isLoading = false,
+                    isRefreshing = false,
                 )
             }
         }
