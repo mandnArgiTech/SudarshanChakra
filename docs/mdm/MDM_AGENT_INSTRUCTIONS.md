@@ -145,3 +145,17 @@ android/app/.../service/MqttForegroundService.kt ← subscribe MDM command topic
 dashboard/src/components/Layout/Sidebar.tsx    ← add MDM nav item
 dashboard/src/App.tsx                          ← add MDM routes
 ```
+
+## Android Mockup Reference
+
+**Visual reference for ALL Android MDM screens:** `docs/mdm/mdm-android-mockups.jsx`
+
+5 screens using the existing Terracotta/Cream Material 3 palette:
+
+| Screen | What to Implement | Compose Component |
+|:-------|:------------------|:------------------|
+| Kiosk Home | Main dashboard + whitelisted app grid at bottom (WhatsApp, YouTube, Maps, Phone as 4 rounded icon squares) | `KioskLauncherActivity.kt` — wraps existing `NavGraph()` with bottom app grid |
+| Locked State | Full-screen "Kiosk Mode Active" with SC branding. Shows lock status (status bar disabled, home locked, recents blocked) | Part of `KioskManager.kt` lock state |
+| Settings + MDM | Existing SettingsScreen PLUS: MDM status card (6 policy toggles), telemetry sync status (last sync, pending items, next sync), allowed apps list, server connection status. Version text is the 7-tap escape trigger → shows PIN dialog with "Exit Kiosk" and "Decommission" buttons | `SettingsScreen.kt` modifications + `DevEscapeDialog.kt` |
+| Usage Detail | Per-app screen time bars (SC green, WhatsApp green, YouTube red, Maps blue, Phone orange), recent calls table, sync status indicator | Optional screen accessible from Settings |
+| OTA Update | Bottom sheet dialog showing version, release notes, download progress bar with percentage, "Installing silently" message | `SilentInstaller.kt` UI feedback (can be a notification or overlay) |
