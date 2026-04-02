@@ -150,12 +150,19 @@ dashboard/src/App.tsx                          ← add MDM routes
 
 **Visual reference for ALL Android MDM screens:** `docs/mdm/mdm-android-mockups.jsx`
 
-5 screens using the existing Terracotta/Cream Material 3 palette:
+4 screens using the existing Terracotta/Cream Material 3 palette:
 
 | Screen | What to Implement | Compose Component |
 |:-------|:------------------|:------------------|
-| Kiosk Home | Main dashboard + whitelisted app grid at bottom (WhatsApp, YouTube, Maps, Phone as 4 rounded icon squares) | `KioskLauncherActivity.kt` — wraps existing `NavGraph()` with bottom app grid |
-| Locked State | Full-screen "Kiosk Mode Active" with SC branding. Shows lock status (status bar disabled, home locked, recents blocked) | Part of `KioskManager.kt` lock state |
-| Settings + MDM | Existing SettingsScreen PLUS: MDM status card (6 policy toggles), telemetry sync status (last sync, pending items, next sync), allowed apps list, server connection status. Version text is the 7-tap escape trigger → shows PIN dialog with "Exit Kiosk" and "Decommission" buttons | `SettingsScreen.kt` modifications + `DevEscapeDialog.kt` |
-| Usage Detail | Per-app screen time bars (SC green, WhatsApp green, YouTube red, Maps blue, Phone orange), recent calls table, sync status indicator | Optional screen accessible from Settings |
-| OTA Update | Bottom sheet dialog showing version, release notes, download progress bar with percentage, "Installing silently" message | `SilentInstaller.kt` UI feedback (can be a notification or overlay) |
+| Kiosk Home | Restricted alerts (worker's assigned zones only) + app grid at bottom (WhatsApp, YouTube, Maps, Phone — NO label, just icons). Bottom nav has ONLY Alerts + Settings (NO cameras, NO water) | `KioskLauncherActivity.kt` |
+| Lock Screen | Clean SC branding only — logo + "SudarshanChakra" + "Farm Security System". NO "kiosk mode active" text, NO policy indicators | `KioskManager.kt` lock state |
+| Settings | User info, server connection status, sync status with "Sync Now" button, version text (7-tap escape). NO device management section, NO allowed apps section, NO policy toggles | `SettingsScreen.kt` modifications + `DevEscapeDialog.kt` |
+| OTA Update | Bottom card over faded content — app icon, version, progress bar, "App will restart when done" | `SilentInstaller.kt` UI feedback |
+
+**Design rules for MDM Android:**
+- MDM worker does NOT get cameras tab
+- MDM worker does NOT get water tab
+- MDM worker gets ONLY restricted alerts for their assigned zones
+- App grid at bottom has NO label — just the 4 app icons, feels like a normal phone
+- Lock screen is CLEAN — just branding, nothing that says "you're locked down"
+- Settings is MINIMAL — user info, connection, sync, version. That's it.
