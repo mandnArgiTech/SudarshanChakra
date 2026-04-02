@@ -1039,3 +1039,48 @@ ROOM CLEANUP:
 - New sidebar nav with `mdm` module filter
 
 **Total: 7 days, zero existing code modified (except Room DB version bump and ModuleConstants addition).**
+
+---
+
+## ADDENDUM: Real-Time Location Tracking
+
+### Requirement
+Track device location every 1 minute (configurable: 30s to 10 min) from the SudarshanChakra dashboard. Location, mobile data, and Wi-Fi are forced ON by Device Owner policy — worker cannot disable them.
+
+### Forced-ON Services (Device Owner policies)
+```
+Location services:  FORCED ON (dpm.setLocationEnabled + DISALLOW_CONFIG_LOCATION)
+Mobile data:        FORCED ON (DISALLOW_CONFIG_MOBILE_NETWORKS)
+Wi-Fi:              FORCED ON (DISALLOW_CONFIG_WIFI + wifiManager.setWifiEnabled)
+```
+
+### Location Collection Flow
+```
+FusedLocationProviderClient (inside MqttForegroundService)
+  → Location every N seconds (configurable)
+  → Room DB (mdm_location_cache, synced=false)
+  → TelemetryUploadWorker batch uploads every 30 min
+  → Backend stores in mdm_location_history
+  → Dashboard shows map trail + interval dropdown
+
+Interval change:
+  Dashboard dropdown → PUT /api/v1/mdm/devices/{id}/location-interval
+  → Backend saves to mdm_devices.location_interval_sec
+  → Backend dispatches SET_POLICY MQTT command with new interval
+  → Android MqttForegroundService receives → updates FusedLocationClient interval
+  → Takes effect within seconds (no app restart)
+```
+
+### DB Changes
+- `mdm_location_history` table (lat, lng, accuracy, altitude, speed, bearing, provider, battery, recorded_at)
+- `mdm_devices` adds: `last_latitude`, `last_longitude`, `last_location_at`, `location_interval_sec`
+- Policies JSON default adds: `"location_forced": true, "wifi_forced": true, "location_interval_sec": 60`
+
+### Android Permissions (auto-granted by Device Owner)
+```xml
+ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, ACCESS_BACKGROUND_LOCATION
+FOREGROUND_SERVICE_LOCATION
+```
+
+### Why FusedLocationProviderClient, not WorkManager
+WorkManager has a 15-minute minimum interval for periodic work. For 1-minute tracking, we use `FusedLocationProviderClient.requestLocationUpdates()` inside the existing `MqttForegroundService` which already runs as a foreground service. This gives us exact-interval tracking (30s to 10 min configurable) with proper GPS/network fusion and battery optimization built in.

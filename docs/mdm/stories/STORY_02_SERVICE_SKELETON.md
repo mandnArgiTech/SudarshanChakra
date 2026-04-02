@@ -263,3 +263,88 @@ cd backend/mdm-service && ../gradlew bootRun
 # Should start on port 8085
 # Check: curl http://localhost:8085/actuator/health → {"status":"UP"}
 ```
+
+---
+
+## ADDENDUM: Location Tracking Entity + Repository
+
+### Add to model directory: `LocationHistory.java`
+```java
+package com.sudarshanchakra.mdm.model;
+
+import jakarta.persistence.*;
+import java.time.Instant;
+import java.util.UUID;
+
+@Entity
+@Table(name = "mdm_location_history")
+public class LocationHistory {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "device_id", nullable = false) private UUID deviceId;
+    @Column(name = "farm_id", nullable = false) private UUID farmId;
+    @Column(nullable = false) private Double latitude;
+    @Column(nullable = false) private Double longitude;
+    @Column(name = "accuracy_meters") private Float accuracyMeters;
+    @Column(name = "altitude_meters") private Float altitudeMeters;
+    @Column(name = "speed_mps") private Float speedMps;
+    private Float bearing;
+    private String provider;
+    @Column(name = "battery_percent") private Integer batteryPercent;
+    @Column(name = "recorded_at", nullable = false) private Instant recordedAt;
+    @Column(name = "created_at") private Instant createdAt = Instant.now();
+
+    // Generate getters and setters for ALL fields
+}
+```
+
+### Add: `LocationHistoryRepository.java`
+```java
+package com.sudarshanchakra.mdm.repository;
+
+import com.sudarshanchakra.mdm.model.LocationHistory;
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+public interface LocationHistoryRepository extends JpaRepository<LocationHistory, Long> {
+    List<LocationHistory> findByDeviceIdAndRecordedAtBetweenOrderByRecordedAtDesc(
+        UUID deviceId, Instant from, Instant to);
+    List<LocationHistory> findByFarmIdAndRecordedAtAfterOrderByRecordedAtDesc(
+        UUID farmId, Instant after);
+    LocationHistory findFirstByDeviceIdOrderByRecordedAtDesc(UUID deviceId);
+}
+```
+
+### Add to `MdmDevice.java` entity:
+```java
+@Column(name = "last_latitude") private Double lastLatitude;
+@Column(name = "last_longitude") private Double lastLongitude;
+@Column(name = "last_location_at") private Instant lastLocationAt;
+@Column(name = "location_interval_sec") private Integer locationIntervalSec = 60;
+```
+
+### Add to `DeviceController.java`:
+```java
+@GetMapping("/{id}/location")
+public ResponseEntity<?> getLocationHistory(@PathVariable UUID id,
+        @RequestParam String from, @RequestParam String to) {
+    return ResponseEntity.ok(deviceService.getLocationHistory(id, from, to));
+}
+
+@GetMapping("/{id}/location/latest")
+public ResponseEntity<?> getLatestLocation(@PathVariable UUID id) {
+    return ResponseEntity.ok(deviceService.getLatestLocation(id));
+}
+
+@PutMapping("/{id}/location-interval")
+public ResponseEntity<?> setLocationInterval(@PathVariable UUID id,
+        @RequestBody Map<String, Integer> body) {
+    int seconds = body.getOrDefault("interval_sec", 60);
+    return ResponseEntity.ok(deviceService.setLocationInterval(id, seconds));
+}
+```
+
+The `setLocationInterval` endpoint saves the new interval to `mdm_devices.location_interval_sec` AND dispatches a `SET_POLICY` MQTT command to the device so it picks up the change in real-time.

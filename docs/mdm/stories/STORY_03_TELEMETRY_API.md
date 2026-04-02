@@ -259,3 +259,62 @@ curl -X POST http://localhost:8085/api/v1/mdm/telemetry/batch \
   }'
 # Expected: {"status":"ok","usage_records":1,"call_records":1,"screen_records":1}
 ```
+
+---
+
+## ADDENDUM: Location in Telemetry Batch
+
+### Update `TelemetryBatchRequest.java` — add location array:
+```java
+public record TelemetryBatchRequest(
+    // ... existing fields ...
+    @Valid List<LocationDto> locations     // NEW
+) {
+    // ... existing inner records ...
+
+    public record LocationDto(
+        double latitude,
+        double longitude,
+        Float accuracyMeters,
+        Float altitudeMeters,
+        Float speedMps,
+        Float bearing,
+        String provider,
+        Integer batteryPercent,
+        @NotBlank String recordedAt        // ISO 8601
+    ) {}
+}
+```
+
+### Update `TelemetryIngestionService.processBatch()` — add location ingestion:
+```java
+// After screen time processing, add:
+int locationCount = 0;
+if (req.locations() != null) {
+    for (var loc : req.locations()) {
+        LocationHistory lh = new LocationHistory();
+        lh.setDeviceId(deviceId);
+        lh.setFarmId(farmId);
+        lh.setLatitude(loc.latitude());
+        lh.setLongitude(loc.longitude());
+        lh.setAccuracyMeters(loc.accuracyMeters());
+        lh.setAltitudeMeters(loc.altitudeMeters());
+        lh.setSpeedMps(loc.speedMps());
+        lh.setBearing(loc.bearing());
+        lh.setProvider(loc.provider());
+        lh.setBatteryPercent(loc.batteryPercent());
+        lh.setRecordedAt(Instant.parse(loc.recordedAt()));
+        locationRepo.save(lh);
+        locationCount++;
+    }
+    // Update device last known location
+    if (!req.locations().isEmpty()) {
+        var latest = req.locations().get(req.locations().size() - 1);
+        device.setLastLatitude(latest.latitude());
+        device.setLastLongitude(latest.longitude());
+        device.setLastLocationAt(Instant.parse(latest.recordedAt()));
+    }
+}
+```
+
+Add `locationRepo` injection and `"location_records", locationCount` to the result map.

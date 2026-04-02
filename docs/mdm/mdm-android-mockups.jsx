@@ -158,7 +158,7 @@ function KioskSettings() {
                 <path d="M3.5 6.5a3.5 3.5 0 015 0" stroke={mc.green} strokeWidth="1.2" strokeLinecap="round" fill="none"/>
                 <path d="M1.5 4.2a6 6 0 019 0" stroke={mc.green} strokeWidth="1.2" strokeLinecap="round" fill="none"/>
               </svg>
-              <span style={{ fontSize: 12, color: mc.text }}>Wi-Fi Connected</span>
+              <span style={{ fontSize: 12, color: mc.text }}>Wi-Fi ON</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <svg width="14" height="12" viewBox="0 0 14 12" fill="none">
@@ -166,11 +166,22 @@ function KioskSettings() {
                 <rect x="5.5" y="3" width="3" height="8" rx="1" fill={mc.green}/>
                 <rect x="10" y="5" width="3" height="6" rx="1" fill={mc.green}/>
               </svg>
-              <span style={{ fontSize: 12, color: mc.text }}>4G</span>
+              <span style={{ fontSize: 12, color: mc.text }}>4G ON</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="7" cy="7" r="3" fill={mc.green}/>
+                <circle cx="7" cy="7" r="6" stroke={mc.green} strokeWidth="1" fill="none"/>
+              </svg>
+              <span style={{ fontSize: 12, color: mc.text }}>Location ON</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: mc.green }} />
               <span style={{ fontSize: 12, color: mc.green }}>MQTT Online</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: mc.green }} />
+              <span style={{ fontSize: 12, color: mc.dim }}>GPS: 1 min</span>
             </div>
           </div>
           <div style={{ borderTop: `1px solid ${mc.border}`, marginTop: 10, paddingTop: 8 }}>

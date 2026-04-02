@@ -504,3 +504,220 @@ kapt("androidx.hilt:hilt-compiler:1.1.0")
 cd android && ./gradlew assembleDebug
 # Worker should compile. Actual upload test requires backend running.
 ```
+
+---
+
+## ADDENDUM: Location Tracking (Android)
+
+### New Room Entity: `MdmLocationEntity.kt`
+Create at `android/app/src/main/java/com/sudarshanchakra/mdm/data/MdmLocationEntity.kt`:
+```kotlin
+package com.sudarshanchakra.mdm.data
+
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "mdm_location_cache")
+data class MdmLocationEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val latitude: Double,
+    val longitude: Double,
+    @ColumnInfo(name = "accuracy_meters") val accuracyMeters: Float? = null,
+    @ColumnInfo(name = "altitude_meters") val altitudeMeters: Float? = null,
+    @ColumnInfo(name = "speed_mps") val speedMps: Float? = null,
+    val bearing: Float? = null,
+    val provider: String? = null,
+    @ColumnInfo(name = "battery_percent") val batteryPercent: Int? = null,
+    @ColumnInfo(name = "recorded_at") val recordedAt: String,   // ISO 8601
+    val synced: Boolean = false,
+)
+```
+
+### New DAO: `MdmLocationDao.kt`
+```kotlin
+package com.sudarshanchakra.mdm.data
+
+import androidx.room.*
+
+@Dao
+interface MdmLocationDao {
+    @Query("SELECT * FROM mdm_location_cache WHERE synced = 0 ORDER BY recorded_at ASC LIMIT 500")
+    suspend fun getUnsynced(): List<MdmLocationEntity>
+
+    @Query("UPDATE mdm_location_cache SET synced = 1 WHERE id IN (:ids)")
+    suspend fun markSynced(ids: List<Long>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: MdmLocationEntity)
+
+    @Query("DELETE FROM mdm_location_cache WHERE synced = 1 AND recorded_at < :before")
+    suspend fun cleanOldSynced(before: String)
+
+    @Query("SELECT COUNT(*) FROM mdm_location_cache WHERE synced = 0")
+    suspend fun unsyncedCount(): Int
+}
+```
+
+### Update `AppDatabase.kt` migration (2→3 already adds mdm tables, extend it):
+Add to MIGRATION_2_3:
+```kotlin
+db.execSQL("""CREATE TABLE IF NOT EXISTS mdm_location_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    latitude REAL NOT NULL, longitude REAL NOT NULL,
+    accuracy_meters REAL, altitude_meters REAL,
+    speed_mps REAL, bearing REAL, provider TEXT,
+    battery_percent INTEGER,
+    recorded_at TEXT NOT NULL, synced INTEGER NOT NULL DEFAULT 0)""")
+```
+
+Add `MdmLocationEntity::class` to `@Database(entities=[...])`.
+Add `abstract fun mdmLocationDao(): MdmLocationDao` to `AppDatabase`.
+Add `@Provides fun provideMdmLocationDao(db: AppDatabase) = db.mdmLocationDao()` to `AppModule.kt`.
+
+### Update `TelemetryCollector.kt` — add location collection:
+```kotlin
+import android.annotation.SuppressLint
+import android.location.LocationManager
+import android.os.BatteryManager
+
+@SuppressLint("MissingPermission")  // Permission auto-granted by Device Owner
+fun collectCurrentLocation(): MdmLocationEntity? {
+    val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+    
+    // Try GPS first, fall back to network
+    val location = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+        ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+        ?: return null
+    
+    val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+    val batteryPct = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+
+    return MdmLocationEntity(
+        latitude = location.latitude,
+        longitude = location.longitude,
+        accuracyMeters = location.accuracy,
+        altitudeMeters = if (location.hasAltitude()) location.altitude.toFloat() else null,
+        speedMps = if (location.hasSpeed()) location.speed else null,
+        bearing = if (location.hasBearing()) location.bearing else null,
+        provider = location.provider,
+        batteryPercent = batteryPct,
+        recordedAt = java.time.Instant.ofEpochMilli(location.time).toString(),
+    )
+}
+```
+
+### New: `LocationTrackingWorker.kt`
+Separate periodic worker specifically for location — runs every 1 min (or configurable interval). Stores to Room cache.
+```kotlin
+package com.sudarshanchakra.mdm
+
+import android.content.Context
+import androidx.hilt.work.HiltWorker
+import androidx.work.*
+import com.sudarshanchakra.data.db.AppDatabase
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
+import java.util.concurrent.TimeUnit
+
+@HiltWorker
+class LocationTrackingWorker @AssistedInject constructor(
+    @Assisted context: Context,
+    @Assisted params: WorkerParameters,
+    private val db: AppDatabase,
+) : CoroutineWorker(context, params) {
+
+    override suspend fun doWork(): Result {
+        val collector = TelemetryCollector(applicationContext)
+        val location = collector.collectCurrentLocation() ?: return Result.success()
+        db.mdmLocationDao().insert(location)
+        return Result.success()
+    }
+}
+```
+
+### Update `MdmWorkScheduler.kt`:
+```kotlin
+fun scheduleLocationTracking(context: Context, intervalMinutes: Long = 1) {
+    // WorkManager minimum interval is 15 min for PeriodicWork.
+    // For 1-min tracking, use a repeating OneTimeWork chain or
+    // FusedLocationProviderClient requestLocationUpdates in the
+    // existing MqttForegroundService.
+    
+    // RECOMMENDED: Use FusedLocationProviderClient in MqttForegroundService
+    // since it already runs as a foreground service. This avoids WorkManager
+    // 15-min minimum limitation.
+}
+```
+
+**IMPORTANT:** WorkManager has a 15-minute minimum for periodic work. For 1-minute / 30-second location tracking, use `FusedLocationProviderClient.requestLocationUpdates()` inside the existing `MqttForegroundService` which already runs as a foreground service. The interval is read from `SharedPreferences` (synced from backend via MQTT SET_POLICY command).
+
+### Update `MqttForegroundService.kt` — add location tracking:
+```kotlin
+// In connectAndSubscribe(), after MQTT setup:
+startLocationTracking()
+
+private fun startLocationTracking() {
+    val intervalMs = getLocationIntervalMs()  // From SharedPrefs, default 60000
+    val fusedClient = LocationServices.getFusedLocationProviderClient(this)
+    val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMs)
+        .setMinUpdateIntervalMillis(intervalMs / 2)
+        .build()
+    
+    fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+}
+
+private val locationCallback = object : LocationCallback() {
+    override fun onLocationResult(result: LocationResult) {
+        val loc = result.lastLocation ?: return
+        val bm = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val entity = MdmLocationEntity(
+            latitude = loc.latitude,
+            longitude = loc.longitude,
+            accuracyMeters = loc.accuracy,
+            altitudeMeters = if (loc.hasAltitude()) loc.altitude.toFloat() else null,
+            speedMps = if (loc.hasSpeed()) loc.speed else null,
+            bearing = if (loc.hasBearing()) loc.bearing else null,
+            provider = loc.provider,
+            batteryPercent = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY),
+            recordedAt = java.time.Instant.ofEpochMilli(loc.time).toString(),
+        )
+        // Insert to Room on IO thread
+        CoroutineScope(Dispatchers.IO).launch {
+            db.mdmLocationDao().insert(entity)
+        }
+    }
+}
+
+// When interval changes via MQTT SET_POLICY command:
+fun updateLocationInterval(newIntervalMs: Long) {
+    fusedClient.removeLocationUpdates(locationCallback)
+    // Re-request with new interval
+    startLocationTracking()
+}
+```
+
+### Permissions — add to AndroidManifest.xml:
+```xml
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+```
+
+### build.gradle.kts — add Google Play Services Location:
+```kotlin
+implementation("com.google.android.gms:play-services-location:21.1.0")
+```
+
+### Update `TelemetryUploadWorker` — include location in batch:
+```kotlin
+// In doWork(), after collecting usage/calls/screen:
+val unsyncedLocations = db.mdmLocationDao().getUnsynced()
+
+// Add to batch request:
+// locations = unsyncedLocations.map { LocationDto(it.latitude, it.longitude, ...) }
+
+// After successful upload:
+if (unsyncedLocations.isNotEmpty()) db.mdmLocationDao().markSynced(unsyncedLocations.map { it.id })
+```

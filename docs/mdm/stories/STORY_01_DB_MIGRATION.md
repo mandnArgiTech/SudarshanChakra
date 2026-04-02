@@ -142,3 +142,52 @@ docker exec -i postgres psql -U postgres -d sudarshanchakra -f /path/to/V4__mdm_
 docker exec -i postgres psql -U postgres -d sudarshanchakra -c "\dt mdm_*"
 # Should show: mdm_devices, mdm_app_usage, mdm_call_logs, mdm_screen_time, mdm_commands, mdm_ota_packages
 ```
+
+---
+
+## ADDENDUM: Location Tracking Table
+
+Add this table to `V4__mdm_tables.sql` (after `mdm_ota_packages`):
+
+```sql
+CREATE TABLE mdm_location_history (
+    id BIGSERIAL PRIMARY KEY,
+    device_id UUID NOT NULL REFERENCES mdm_devices(id) ON DELETE CASCADE,
+    farm_id UUID NOT NULL,
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    accuracy_meters REAL,
+    altitude_meters REAL,
+    speed_mps REAL,
+    bearing REAL,
+    provider VARCHAR(20),                  -- 'gps', 'network', 'fused'
+    battery_percent INT,
+    recorded_at TIMESTAMPTZ NOT NULL,      -- Device timestamp when location was captured
+    created_at TIMESTAMPTZ DEFAULT NOW()   -- Server timestamp when record was stored
+);
+
+CREATE INDEX idx_mdm_location_device_time ON mdm_location_history(device_id, recorded_at DESC);
+CREATE INDEX idx_mdm_location_farm_time ON mdm_location_history(farm_id, recorded_at DESC);
+```
+
+Also update the default `policies` JSON in `mdm_devices` to include location and connectivity settings:
+```sql
+policies JSONB DEFAULT '{
+    "status_bar_disabled": true,
+    "safe_boot_blocked": true,
+    "factory_reset_blocked": true,
+    "wifi_config_locked": true,
+    "mobile_data_forced": true,
+    "location_forced": true,
+    "wifi_forced": true,
+    "location_interval_sec": 60
+}'::jsonb,
+```
+
+Also add to `mdm_devices`:
+```sql
+    last_latitude DOUBLE PRECISION,
+    last_longitude DOUBLE PRECISION,
+    last_location_at TIMESTAMPTZ,
+    location_interval_sec INT DEFAULT 60,
+```

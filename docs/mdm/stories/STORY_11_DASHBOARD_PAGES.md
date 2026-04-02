@@ -168,3 +168,86 @@ cd dashboard && npm run build
 # Navigate to /mdm — should show device list
 # Navigate to /mdm/devices/{id} — should show detail with charts
 ```
+
+---
+
+## ADDENDUM: Location Tracking in Dashboard
+
+### Add to `MdmDeviceDetailPage.tsx`:
+
+After the screen time chart section, add a **Location** section:
+
+```tsx
+// Location card — shows map with trail + interval control
+<Card className="p-4 mb-3">
+  <div className="flex justify-between items-center mb-3">
+    <h3 className="text-sm font-semibold text-sc-text">Location</h3>
+    <div className="flex items-center gap-2 text-xs text-sc-text-dim">
+      <span>Tracking every</span>
+      <select value={locationInterval} onChange={e => updateInterval(+e.target.value)}
+        className="bg-sc-surface-alt border border-sc-border rounded px-2 py-1 text-sc-text text-xs">
+        <option value={30}>30 sec</option>
+        <option value={60}>1 min</option>
+        <option value={120}>2 min</option>
+        <option value={300}>5 min</option>
+        <option value={600}>10 min</option>
+      </select>
+    </div>
+  </div>
+  
+  {/* Map showing location trail — use Leaflet or Google Maps */}
+  <div className="w-full h-48 rounded-lg bg-sc-surface-alt border border-sc-border flex items-center justify-center">
+    {/* Leaflet map with polyline trail of last 24h locations */}
+    {/* Current position shown as pulsing accent dot */}
+    {/* Path shown as sc-accent colored polyline */}
+    <span className="text-sc-text-muted text-xs">Map: last 24h trail</span>
+  </div>
+
+  <div className="flex justify-between mt-2 text-xs text-sc-text-dim">
+    <span>Last: 17.5123°N, 78.2456°E · 2 min ago</span>
+    <span>Accuracy: 8m · GPS</span>
+  </div>
+</Card>
+```
+
+### Add to `src/api/mdm.ts`:
+```typescript
+export function useDeviceLocation(id: string, from: string, to: string) {
+  return useQuery({
+    queryKey: ['mdm-location', id, from, to],
+    queryFn: () => apiFetch<LocationRecord[]>(`/api/v1/mdm/devices/${id}/location?from=${from}&to=${to}`),
+    refetchInterval: 60000, // Auto-refresh every 60s
+  });
+}
+
+export function useUpdateLocationInterval() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ deviceId, intervalSec }: { deviceId: string; intervalSec: number }) =>
+      apiFetch(`/api/v1/mdm/devices/${deviceId}/location-interval`, {
+        method: 'PUT',
+        body: JSON.stringify({ interval_sec: intervalSec }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mdm-device'] }),
+  });
+}
+
+export interface LocationRecord {
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number;
+  altitudeMeters?: number;
+  speedMps?: number;
+  provider?: string;
+  batteryPercent?: number;
+  recordedAt: string;
+}
+```
+
+### Add to dashboard device list — show last location:
+In each device card, show: `Last seen: 17.51°N, 78.24°E · 2 min ago`
+
+### Dashboard dependency:
+```bash
+cd dashboard && npm install leaflet react-leaflet @types/leaflet
+```

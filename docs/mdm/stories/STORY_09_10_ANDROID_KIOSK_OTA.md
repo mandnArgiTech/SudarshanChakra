@@ -286,3 +286,58 @@ cd android && ./gradlew assembleDebug
 # 1. Publish MQTT command: mosquitto_pub -t "farm/mdm/<device-id>/command" -m '{"command":"LOCK_SCREEN","command_id":"test"}'
 # 2. Device screen should lock
 ```
+
+---
+
+## ADDENDUM: Force Location, Mobile Data, Wi-Fi Always ON
+
+### Update `KioskManager.enforceKioskPolicies()`:
+```kotlin
+// After existing policy enforcement, add:
+
+// 8. Force location services ON (Device Owner can set secure settings)
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+    dpm.setLocationEnabled(componentName, true)
+}
+
+// 9. Prevent user from disabling location
+dpm.addUserRestriction(componentName, UserManager.DISALLOW_CONFIG_LOCATION)
+
+// 10. Prevent user from disabling mobile data
+dpm.addUserRestriction(componentName, UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS)
+
+// 11. Prevent user from turning off Wi-Fi
+// (DISALLOW_CONFIG_WIFI already set above, also force it ON)
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    // Android 12+: use WifiManager with Device Owner
+    val wm = context.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+    wm.setWifiEnabled(true)  // Deprecated but still works for Device Owner
+}
+
+// 12. Auto-grant location permissions
+dpm.setPermissionGrantState(componentName, context.packageName,
+    Manifest.permission.ACCESS_FINE_LOCATION,
+    DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+dpm.setPermissionGrantState(componentName, context.packageName,
+    Manifest.permission.ACCESS_COARSE_LOCATION,
+    DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+dpm.setPermissionGrantState(componentName, context.packageName,
+    Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+    DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+```
+
+### When `SET_POLICY` command arrives with `location_interval_sec`:
+```kotlin
+// In MdmCommandHandler.handle() → "SET_POLICY" case:
+val interval = payload.get("location_interval_sec")?.asInt
+if (interval != null && interval >= 10) {
+    // Save to SharedPreferences
+    context.getSharedPreferences("mdm", Context.MODE_PRIVATE)
+        .edit().putInt("location_interval_sec", interval).apply()
+    // Signal foreground service to update interval
+    val intent = Intent(context, MqttForegroundService::class.java)
+    intent.action = "UPDATE_LOCATION_INTERVAL"
+    intent.putExtra("interval_ms", interval * 1000L)
+    context.startService(intent)
+}
+```
