@@ -33,7 +33,7 @@ CREATE TABLE mdm_devices (
     is_device_owner BOOLEAN DEFAULT FALSE,
     is_lock_task_active BOOLEAN DEFAULT FALSE,
     kiosk_pin_hash VARCHAR(255),
-    whitelisted_apps JSONB DEFAULT '["com.sudarshanchakra","com.whatsapp","com.google.android.youtube","com.google.android.apps.maps","com.android.dialer"]'::jsonb,
+    whitelisted_apps JSONB DEFAULT '["com.sudarshanchakra","com.whatsapp","com.google.android.youtube","com.google.android.apps.maps","com.android.camera2","com.android.dialer"]'::jsonb,
     policies JSONB DEFAULT '{"status_bar_disabled":true,"safe_boot_blocked":true,"factory_reset_blocked":true,"wifi_config_locked":true,"mobile_data_forced":true}'::jsonb,
     last_heartbeat TIMESTAMPTZ,
     last_telemetry_sync TIMESTAMPTZ,

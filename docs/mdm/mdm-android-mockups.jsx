@@ -99,6 +99,7 @@ function KioskHome() {
             { name: "WhatsApp", color: "#25D366", icon: "W" },
             { name: "YouTube", color: "#FF0000", icon: "Y" },
             { name: "Maps", color: "#4285F4", icon: "M" },
+            { name: "Camera", color: "#4285F4", icon: "C" },
             { name: "Phone", color: "#34A853", icon: "P" },
           ].map(app => (
             <div key={app.name} style={{ textAlign: "center", cursor: "pointer" }}>

@@ -68,7 +68,7 @@ Key methods:
 ### 4. `android/app/src/main/java/com/sudarshanchakra/mdm/KioskLauncherActivity.kt`
 Compose activity that:
 - Shows the main SudarshanChakra NavGraph (existing dashboard)
-- Adds a bottom row of whitelisted app icons (WhatsApp, YouTube, Maps, Dialer)
+- Adds a bottom row of whitelisted app icons (WhatsApp, YouTube, Maps, Camera, Phone)
 - Calls `startLockTask()` in `onResume()` if Device Owner
 
 ### 5. `android/app/src/main/java/com/sudarshanchakra/mdm/DevEscapeDialog.kt`

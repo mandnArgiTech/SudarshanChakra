@@ -81,7 +81,7 @@ CREATE TABLE mdm_devices (
     is_device_owner BOOLEAN DEFAULT FALSE,           -- Provisioned as kiosk?
     is_lock_task_active BOOLEAN DEFAULT FALSE,
     kiosk_pin_hash VARCHAR(255),                     -- Admin escape PIN (bcrypt)
-    whitelisted_apps JSONB DEFAULT '["com.sudarshanchakra","com.whatsapp","com.google.android.youtube","com.google.android.apps.maps","com.android.dialer"]',
+    whitelisted_apps JSONB DEFAULT '["com.sudarshanchakra","com.whatsapp","com.google.android.youtube","com.google.android.apps.maps","com.android.camera2","com.android.dialer"]',
     policies JSONB DEFAULT '{"status_bar_disabled":true,"safe_boot_blocked":true,"factory_reset_blocked":true,"wifi_config_locked":true,"mobile_data_forced":true}',
     last_heartbeat TIMESTAMPTZ,
     last_telemetry_sync TIMESTAMPTZ,
@@ -420,7 +420,7 @@ This uses the existing SaaS module filtering — farms without `mdm` in `modules
 │  │  Factory reset blocked   [ON]                           │ │
 │  │  Wi-Fi config locked     [ON]                           │ │
 │  │  Mobile data forced      [ON]                           │ │
-│  │  Whitelisted apps: SC, WhatsApp, YouTube, Maps, Dialer │ │
+│  │  Whitelisted apps: SC, WhatsApp, YouTube, Maps, Camera, Dialer │ │
 │  │  [Edit Policies]                                        │ │
 │  └────────────────────────────────────────────────────────┘ │
 │                                                               │
@@ -529,6 +529,7 @@ class KioskManager(private val context: Context) {
             "com.whatsapp",
             "com.google.android.youtube",
             "com.google.android.apps.maps",
+            "com.android.camera2",
             "com.android.dialer",
         )
         dpm.setLockTaskPackages(componentName, packages)
@@ -906,6 +907,7 @@ fun KioskLauncherScreen(
                 AppShortcut("WhatsApp", "com.whatsapp", Icons.Filled.Chat),
                 AppShortcut("YouTube", "com.google.android.youtube", Icons.Filled.PlayArrow),
                 AppShortcut("Maps", "com.google.android.apps.maps", Icons.Filled.Map),
+                AppShortcut("Camera", "com.android.camera2", Icons.Filled.CameraAlt),
                 AppShortcut("Phone", "com.android.dialer", Icons.Filled.Phone),
             )
             apps.forEach { app ->

@@ -154,7 +154,7 @@ dashboard/src/App.tsx                          ← add MDM routes
 
 | Screen | What to Implement | Compose Component |
 |:-------|:------------------|:------------------|
-| Kiosk Home | Restricted alerts (worker's assigned zones only) + app grid at bottom (WhatsApp, YouTube, Maps, Phone — NO label, just icons). Bottom nav has ONLY Alerts + Settings (NO cameras, NO water) | `KioskLauncherActivity.kt` |
+| Kiosk Home | Restricted alerts (worker's assigned zones only) + app grid at bottom (WhatsApp, YouTube, Maps, Camera, Phone — NO label, just icons). Bottom nav has ONLY Alerts + Settings (NO cameras, NO water) | `KioskLauncherActivity.kt` |
 | Lock Screen | Clean SC branding only — logo + "SudarshanChakra" + "Farm Security System". NO "kiosk mode active" text, NO policy indicators | `KioskManager.kt` lock state |
 | Settings | User info, server connection status, sync status with "Sync Now" button, version text (7-tap escape). NO device management section, NO allowed apps section, NO policy toggles | `SettingsScreen.kt` modifications + `DevEscapeDialog.kt` |
 | OTA Update | Bottom card over faded content — app icon, version, progress bar, "App will restart when done" | `SilentInstaller.kt` UI feedback |
@@ -163,6 +163,6 @@ dashboard/src/App.tsx                          ← add MDM routes
 - MDM worker does NOT get cameras tab
 - MDM worker does NOT get water tab
 - MDM worker gets ONLY restricted alerts for their assigned zones
-- App grid at bottom has NO label — just the 4 app icons, feels like a normal phone
+- App grid at bottom has NO label — just the 5 app icons, feels like a normal phone
 - Lock screen is CLEAN — just branding, nothing that says "you're locked down"
 - Settings is MINIMAL — user info, connection, sync, version. That's it.
