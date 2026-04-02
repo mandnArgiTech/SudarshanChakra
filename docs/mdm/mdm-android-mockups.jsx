@@ -1,22 +1,5 @@
 import { useState } from "react";
 
-/*
- * SudarshanChakra MDM — Android Kiosk Mockup Screens (REVISED)
- * 
- * Changes from v1:
- *   - REMOVED: Usage Detail screen (not needed)
- *   - REMOVED: Device Management section from Settings
- *   - REMOVED: Allowed Apps section from Settings
- *   - REMOVED: "KIOSK MODE ACTIVE" text from lock state
- *   - REMOVED: Cameras tab from kiosk nav (MDM users don't get cameras)
- *   - REMOVED: Water tab from kiosk nav (MDM users don't get water)
- *   - REMOVED: "ALLOWED APPS" label from app grid
- *   - Kiosk home shows only restricted alerts (worker's assigned zone alerts)
- *   - Lock state is a clean, branded screen — no kiosk indicators
- *   - Settings shows only: user info, server connection, sync status, version (escape hatch)
- *   - Bottom app row has no label, just the icons (natural, not prison-like)
- */
-
 const mc = {
   bg: "#F8F7F4", card: "#FFFFFF", text: "#2D2A26", dim: "#6B6560",
   muted: "#9E9891", accent: "#C8553D", accentDark: "#B04530",
@@ -26,33 +9,62 @@ const mc = {
   critical: "#C8553D", success: "#4A8C5C",
 };
 
-function Phone({ title, subtitle, children, statusBar = true, navBar = null }) {
+function StatusBar({ time = "10:32 AM", battery = 78, wifi = true, network = "4G" }) {
+  return (
+    <div style={{ background: "rgba(0,0,0,0.08)", padding: "4px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10 }}>
+      <span style={{ fontWeight: 600, color: mc.text }}>{time}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {network && <span style={{ color: mc.dim, fontWeight: 500 }}>{network}</span>}
+        {wifi && (
+          <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+            <path d="M6 9a1 1 0 110-2 1 1 0 010 2z" fill={mc.green}/>
+            <path d="M3.5 6.5a3.5 3.5 0 015 0" stroke={mc.green} strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+            <path d="M1.5 4.2a6 6 0 019 0" stroke={mc.green} strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+          </svg>
+        )}
+        {!wifi && (
+          <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+            <path d="M6 9a1 1 0 110-2 1 1 0 010 2z" fill={mc.muted}/>
+            <path d="M1.5 4.2a6 6 0 019 0" stroke={mc.muted} strokeWidth="1.2" strokeLinecap="round" fill="none" strokeDasharray="2 2"/>
+          </svg>
+        )}
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 1, height: 10 }}>
+          <div style={{ width: 3, height: 10, borderRadius: 1, border: `1px solid ${battery > 20 ? mc.green : mc.critical}`, position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", bottom: 0, width: "100%", height: `${battery}%`, background: battery > 20 ? mc.green : mc.critical }} />
+          </div>
+          <span style={{ fontSize: 9, color: battery > 20 ? mc.dim : mc.critical }}>{battery}%</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Phone({ title, children, statusBar = true, battery = 78, wifi = true, network = "4G", navBar = null, bgImage = null }) {
   return (
     <div style={{ width: 260, background: "#111", borderRadius: 32, padding: "8px 7px", boxShadow: "0 8px 30px rgba(0,0,0,0.4)" }}>
-      <div style={{ background: mc.bg, borderRadius: 26, overflow: "hidden", minHeight: 520, display: "flex", flexDirection: "column", position: "relative" }}>
-        {statusBar && (
-          <div style={{ background: mc.accent, padding: "6px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 10, color: "#fff", fontWeight: 600 }}>{title}</span>
-            {subtitle && <span style={{ fontSize: 9, color: "rgba(255,255,255,0.7)" }}>{subtitle}</span>}
+      <div style={{ background: bgImage ? undefined : mc.bg, backgroundImage: bgImage ? `url(${bgImage})` : undefined, backgroundSize: "cover", backgroundPosition: "center", borderRadius: 26, overflow: "hidden", minHeight: 520, display: "flex", flexDirection: "column", position: "relative" }}>
+        {bgImage && <div style={{ position: "absolute", inset: 0, background: "rgba(248,247,244,0.85)", borderRadius: 26 }} />}
+        <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", flex: 1 }}>
+          {statusBar && <StatusBar battery={battery} wifi={wifi} network={network} />}
+          {title && (
+            <div style={{ background: mc.accent, padding: "6px 14px" }}>
+              <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>{title}</span>
+            </div>
+          )}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+            {children}
           </div>
-        )}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-          {children}
+          {navBar}
         </div>
-        {navBar}
       </div>
     </div>
   );
 }
 
 function KioskNavBar({ active }) {
-  const tabs = [
-    { id: "alerts", label: "Alerts", icon: "!" },
-    { id: "settings", label: "Settings", icon: "⚙" },
-  ];
   return (
     <div style={{ display: "flex", borderTop: `1px solid ${mc.border}`, background: mc.navBg, padding: "6px 4px 8px" }}>
-      {tabs.map(t => (
+      {[{ id: "alerts", label: "Alerts", icon: "!" }, { id: "settings", label: "Settings", icon: "⚙" }].map(t => (
         <div key={t.id} style={{ flex: 1, textAlign: "center", cursor: "pointer" }}>
           <div style={{ fontSize: 16, color: t.id === active ? mc.accent : mc.navInactive }}>{t.icon}</div>
           <div style={{ fontSize: 9, fontWeight: t.id === active ? 600 : 400, color: t.id === active ? mc.accent : mc.navInactive, marginTop: 1 }}>{t.label}</div>
@@ -62,12 +74,11 @@ function KioskNavBar({ active }) {
   );
 }
 
-// ═══ SCREEN 1: Kiosk Home — Restricted alerts + app grid ═══
+// ═══ SCREEN 1: Kiosk Home ═══
 function KioskHome() {
   return (
-    <Phone title="SudarshanChakra" navBar={<KioskNavBar active="alerts" />}>
+    <Phone title="SudarshanChakra" battery={78} wifi={true} network="4G" navBar={<KioskNavBar active="alerts" />}>
       <div style={{ flex: 1, padding: 10 }}>
-        {/* Restricted alerts for this worker's assigned zones only */}
         {[
           { pri: "critical", text: "Snake near storage", time: "2 min ago", zone: "Storage Perimeter" },
           { pri: "high", text: "Person at east gate", time: "15 min ago", zone: "East Gate" },
@@ -82,8 +93,6 @@ function KioskHome() {
           </div>
         ))}
       </div>
-
-      {/* App grid — no label, just icons. Feels like a normal phone */}
       <div style={{ background: mc.surface, borderTop: `1px solid ${mc.border}`, padding: "12px 24px 14px" }}>
         <div style={{ display: "flex", justifyContent: "space-around" }}>
           {[
@@ -103,12 +112,12 @@ function KioskHome() {
   );
 }
 
-// ═══ SCREEN 2: Lock State — Clean branded screen, no kiosk hints ═══
-function LockState() {
+// ═══ SCREEN 2: Lock Screen — clean branded, background image option ═══
+function LockScreen() {
   return (
-    <Phone title="" statusBar={false}>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 30, background: mc.bg }}>
-        <div style={{ width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg, ${mc.accent}, ${mc.orange})`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+    <Phone title="" statusBar={true} battery={65} wifi={true} network="4G" bgImage="https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=400&q=60">
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 30 }}>
+        <div style={{ width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg, ${mc.accent}, ${mc.orange})`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20, boxShadow: "0 4px 16px rgba(0,0,0,0.15)" }}>
           <span style={{ color: "#fff", fontSize: 24, fontWeight: 700 }}>SC</span>
         </div>
         <div style={{ fontSize: 18, fontWeight: 700, color: mc.text, marginBottom: 4 }}>SudarshanChakra</div>
@@ -118,13 +127,13 @@ function LockState() {
   );
 }
 
-// ═══ SCREEN 3: Settings — Clean, minimal. Only what the worker needs. ═══
+// ═══ SCREEN 3: Settings ═══
 function KioskSettings() {
   const [tapCount, setTapCount] = useState(0);
   const [showEscape, setShowEscape] = useState(false);
 
   return (
-    <Phone title="Settings" navBar={<KioskNavBar active="settings" />}>
+    <Phone title="Settings" battery={78} wifi={true} network="4G" navBar={<KioskNavBar active="settings" />}>
       <div style={{ flex: 1, padding: 10, overflow: "auto" }}>
         {/* User info */}
         <div style={{ background: mc.card, border: `1px solid ${mc.border}`, borderRadius: 12, padding: 14, marginBottom: 10 }}>
@@ -132,24 +141,74 @@ function KioskSettings() {
           <div style={{ fontSize: 12, color: mc.dim, marginTop: 2 }}>Operator · Sanga Reddy Farm</div>
         </div>
 
-        {/* Server connection */}
+        {/* Device status — battery, wifi, network, sync in one card */}
         <div style={{ background: mc.card, border: `1px solid ${mc.border}`, borderRadius: 12, padding: 14, marginBottom: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: mc.text, marginBottom: 8 }}>Connection</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: mc.green }} />
-            <span style={{ fontSize: 12, color: mc.green }}>Connected</span>
+          <div style={{ fontSize: 13, fontWeight: 600, color: mc.text, marginBottom: 10 }}>Device Status</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 18, height: 10, borderRadius: 2, border: `1.5px solid ${mc.green}`, position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", bottom: 0, width: "100%", height: "78%", background: mc.green }} />
+              </div>
+              <span style={{ fontSize: 12, color: mc.text }}>78%</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="14" height="11" viewBox="0 0 12 10" fill="none">
+                <path d="M6 9a1 1 0 110-2 1 1 0 010 2z" fill={mc.green}/>
+                <path d="M3.5 6.5a3.5 3.5 0 015 0" stroke={mc.green} strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+                <path d="M1.5 4.2a6 6 0 019 0" stroke={mc.green} strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+              </svg>
+              <span style={{ fontSize: 12, color: mc.text }}>Wi-Fi Connected</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="14" height="12" viewBox="0 0 14 12" fill="none">
+                <rect x="1" y="1" width="3" height="10" rx="1" fill={mc.green}/>
+                <rect x="5.5" y="3" width="3" height="8" rx="1" fill={mc.green}/>
+                <rect x="10" y="5" width="3" height="6" rx="1" fill={mc.green}/>
+              </svg>
+              <span style={{ fontSize: 12, color: mc.text }}>4G</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: mc.green }} />
+              <span style={{ fontSize: 12, color: mc.green }}>MQTT Online</span>
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: mc.muted }}>vivasvan-tech.in</div>
+          <div style={{ borderTop: `1px solid ${mc.border}`, marginTop: 10, paddingTop: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 11, color: mc.dim }}>Auto-sync: every 30 min</div>
+                <div style={{ fontSize: 11, color: mc.muted }}>Last synced: 12 min ago</div>
+              </div>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: mc.green }} />
+            </div>
+          </div>
         </div>
 
-        {/* Sync status */}
+        {/* Wallpaper setting */}
         <div style={{ background: mc.card, border: `1px solid ${mc.border}`, borderRadius: 12, padding: 14, marginBottom: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: mc.text, marginBottom: 8 }}>Sync</div>
-          <div style={{ fontSize: 12, color: mc.dim }}>Last synced: 12 min ago</div>
-          <div style={{ marginTop: 8, background: mc.accent, color: "#fff", borderRadius: 8, padding: "8px 0", textAlign: "center", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Sync Now</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: mc.text, marginBottom: 8 }}>Wallpaper</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={{ cursor: "pointer" }}>
+              <div style={{ fontSize: 11, color: mc.dim, marginBottom: 4 }}>App background</div>
+              <div style={{ height: 48, borderRadius: 8, background: `linear-gradient(135deg, #E8E5E0, #F0EDE8)`, border: `1px solid ${mc.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 10, color: mc.muted }}>Change</span>
+              </div>
+            </div>
+            <div style={{ cursor: "pointer" }}>
+              <div style={{ fontSize: 11, color: mc.dim, marginBottom: 4 }}>Lock screen</div>
+              <div style={{ height: 48, borderRadius: 8, background: "linear-gradient(135deg, #a8c686, #6d9f5a)", border: `1px solid ${mc.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 10, color: "#fff" }}>Change</span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Version — 7 tap escape hatch */}
+        {/* Server */}
+        <div style={{ background: mc.card, border: `1px solid ${mc.border}`, borderRadius: 12, padding: 14, marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: mc.text, marginBottom: 6 }}>Server</div>
+          <div style={{ fontSize: 12, color: mc.dim }}>vivasvan-tech.in</div>
+        </div>
+
+        {/* Version — 7 tap escape */}
         <div
           style={{ textAlign: "center", padding: "12px 0", cursor: "pointer" }}
           onClick={() => {
@@ -165,7 +224,6 @@ function KioskSettings() {
         </div>
       </div>
 
-      {/* Escape dialog */}
       {showEscape && (
         <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10 }}>
           <div style={{ background: mc.card, borderRadius: 16, padding: 20, width: 220 }}>
@@ -187,17 +245,14 @@ function KioskSettings() {
   );
 }
 
-// ═══ SCREEN 4: OTA Silent Update ═══
+// ═══ SCREEN 4: OTA Update ═══
 function OtaUpdate() {
   return (
-    <Phone title="SudarshanChakra" navBar={<KioskNavBar active="alerts" />}>
+    <Phone title="SudarshanChakra" battery={72} wifi={true} network="4G" navBar={<KioskNavBar active="alerts" />}>
       <div style={{ flex: 1, padding: 10, display: "flex", flexDirection: "column" }}>
         <div style={{ flex: 1, opacity: 0.3, padding: 8 }}>
           <div style={{ background: mc.card, borderRadius: 10, padding: 10, marginBottom: 6, borderLeft: `3px solid ${mc.critical}` }}>
             <span style={{ fontSize: 12, color: mc.dim }}>Snake near storage...</span>
-          </div>
-          <div style={{ background: mc.card, borderRadius: 10, padding: 10, borderLeft: `3px solid ${mc.orange}` }}>
-            <span style={{ fontSize: 12, color: mc.dim }}>Person at east gate...</span>
           </div>
         </div>
         <div style={{ background: mc.card, border: `2px solid ${mc.accent}`, borderRadius: 16, padding: 16, marginBottom: 8 }}>
@@ -230,7 +285,6 @@ export default function MdmAndroidMockups() {
     { id: "settings", label: "Settings" },
     { id: "ota", label: "OTA Update" },
   ];
-
   return (
     <div style={{ minHeight: "100vh", background: "#1a1a2e", color: "#e0dcd4", fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -245,7 +299,7 @@ export default function MdmAndroidMockups() {
       </div>
       <div style={{ padding: 30, display: "flex", justifyContent: "center" }}>
         {screen === "home" && <KioskHome />}
-        {screen === "lock" && <LockState />}
+        {screen === "lock" && <LockScreen />}
         {screen === "settings" && <KioskSettings />}
         {screen === "ota" && <OtaUpdate />}
       </div>
