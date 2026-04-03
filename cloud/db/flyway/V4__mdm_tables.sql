@@ -1,22 +1,9 @@
-# Story 01: Database Migration V4 — MDM Tables
-
-## Prerequisites
-- None (first story)
-
-## Goal
-Create 6 new tables for MDM without touching any existing tables.
-
-## Files to CREATE
-
-### 1. `cloud/db/flyway/V4__mdm_tables.sql`
-
-```sql
 -- ═══════════════════════════════════════════════════════════════
 -- V4: MDM Kiosk & Device Management Tables
--- Non-destructive: new tables only
+-- Non-destructive: new tables only (includes location history addendum).
+-- No explicit BEGIN/COMMIT: Flyway wraps PostgreSQL migrations in a transaction.
+-- Requires update_updated_at_column() from baseline/init schema.
 -- ═══════════════════════════════════════════════════════════════
-
-BEGIN;
 
 CREATE TABLE mdm_devices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -34,9 +21,13 @@ CREATE TABLE mdm_devices (
     is_lock_task_active BOOLEAN DEFAULT FALSE,
     kiosk_pin_hash VARCHAR(255),
     whitelisted_apps JSONB DEFAULT '["com.sudarshanchakra","com.whatsapp","com.google.android.youtube","com.google.android.apps.maps","com.android.camera2","com.android.dialer"]'::jsonb,
-    policies JSONB DEFAULT '{"status_bar_disabled":true,"safe_boot_blocked":true,"factory_reset_blocked":true,"wifi_config_locked":true,"mobile_data_forced":true}'::jsonb,
+    policies JSONB DEFAULT '{"status_bar_disabled":true,"safe_boot_blocked":true,"factory_reset_blocked":true,"wifi_config_locked":true,"mobile_data_forced":true,"location_forced":true,"wifi_forced":true,"location_interval_sec":60}'::jsonb,
     last_heartbeat TIMESTAMPTZ,
     last_telemetry_sync TIMESTAMPTZ,
+    last_latitude DOUBLE PRECISION,
+    last_longitude DOUBLE PRECISION,
+    last_location_at TIMESTAMPTZ,
+    location_interval_sec INT DEFAULT 60,
     mqtt_client_id VARCHAR(100),
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending','active','locked','wiped','decommissioned')),
     provisioned_at TIMESTAMPTZ,
@@ -122,44 +113,6 @@ CREATE TABLE mdm_ota_packages (
 
 CREATE INDEX idx_mdm_ota_farm ON mdm_ota_packages(farm_id, created_at DESC);
 
-COMMIT;
-```
-
-### 2. Also copy to `backend/mdm-service/src/main/resources/db/migration/V4__mdm_tables.sql`
-Same file — Flyway in mdm-service will also use it.
-
-## Files to MODIFY
-
-### 1. `cloud/db/init.sql`
-Append the same SQL at the bottom (after the existing V3 camera tables section) so greenfield deployments get all tables.
-
-## Verification
-```bash
-# Check SQL is valid (no syntax errors). Use your DB user (e.g. scadmin per cloud/.env or postgres in vanilla images).
-docker exec -i postgres psql -U scadmin -d sudarshanchakra -v ON_ERROR_STOP=1 -f /path/to/V4__mdm_tables.sql
-
-# Verify tables exist (seven mdm_* tables: six from main spec + mdm_location_history from addendum)
-docker exec -i postgres psql -U scadmin -d sudarshanchakra -c "\dt mdm_*"
-# Expected: mdm_app_usage, mdm_call_logs, mdm_commands, mdm_devices, mdm_location_history, mdm_ota_packages, mdm_screen_time
-
-# Confirm updated_at trigger on mdm_devices
-docker exec -i postgres psql -U scadmin -d sudarshanchakra -c "\d mdm_devices"
-```
-
-### Shipped migration notes (repo implementation)
-
-- **Addendum merged** into one script: `mdm_location_history`, extended `policies` default, and last-known location columns on `mdm_devices` are in the same `CREATE TABLE mdm_devices` as above (no follow-up `ALTER`s).
-- **`update_mdm_devices_updated_at` trigger** is included so `updated_at` matches other tenant tables (uses `update_updated_at_column()` from `init.sql` / baseline).
-- **Flyway file** [`cloud/db/flyway/V4__mdm_tables.sql`](../../../cloud/db/flyway/V4__mdm_tables.sql) has **no explicit `BEGIN`/`COMMIT`**; Flyway wraps PostgreSQL migrations in a transaction.
-- **Greenfield `init.sql`** includes **Flyway V3 parity** (camera columns, `video_recordings`, `alert_video_clips`) before zones, then this V4 MDM block (no `BEGIN`/`COMMIT`), so a fresh DB matches V2+V3+V4 without relying on Flyway alone.
-
----
-
-## ADDENDUM: Location Tracking Table
-
-Add this table to `V4__mdm_tables.sql` (after `mdm_ota_packages`):
-
-```sql
 CREATE TABLE mdm_location_history (
     id BIGSERIAL PRIMARY KEY,
     device_id UUID NOT NULL REFERENCES mdm_devices(id) ON DELETE CASCADE,
@@ -178,26 +131,6 @@ CREATE TABLE mdm_location_history (
 
 CREATE INDEX idx_mdm_location_device_time ON mdm_location_history(device_id, recorded_at DESC);
 CREATE INDEX idx_mdm_location_farm_time ON mdm_location_history(farm_id, recorded_at DESC);
-```
 
-Also update the default `policies` JSON in `mdm_devices` to include location and connectivity settings:
-```sql
-policies JSONB DEFAULT '{
-    "status_bar_disabled": true,
-    "safe_boot_blocked": true,
-    "factory_reset_blocked": true,
-    "wifi_config_locked": true,
-    "mobile_data_forced": true,
-    "location_forced": true,
-    "wifi_forced": true,
-    "location_interval_sec": 60
-}'::jsonb,
-```
-
-Also add to `mdm_devices`:
-```sql
-    last_latitude DOUBLE PRECISION,
-    last_longitude DOUBLE PRECISION,
-    last_location_at TIMESTAMPTZ,
-    location_interval_sec INT DEFAULT 60,
-```
+CREATE TRIGGER update_mdm_devices_updated_at BEFORE UPDATE ON mdm_devices
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

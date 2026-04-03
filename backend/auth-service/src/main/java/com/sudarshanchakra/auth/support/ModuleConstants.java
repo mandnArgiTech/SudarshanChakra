@@ -16,7 +16,8 @@ public final class ModuleConstants {
             "zones",
             "devices",
             "workers",
-            "analytics"
+            "analytics",
+            "mdm"
     );
 
     private ModuleConstants() {

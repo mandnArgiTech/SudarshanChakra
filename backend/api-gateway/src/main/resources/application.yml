@@ -4,6 +4,10 @@ spring:
   cloud:
     gateway:
       routes:
+        - id: mdm-service
+          uri: ${MDM_SERVICE_URL:http://localhost:8085}
+          predicates:
+            - Path=/api/v1/mdm/**
         - id: alert-service
           uri: ${ALERT_SERVICE_URL:http://localhost:8081}
           predicates:

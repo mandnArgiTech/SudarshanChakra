@@ -13,5 +13,6 @@ include(
     "device-service",
     "auth-service",
     "siren-service",
+    "mdm-service",
     "api-gateway"
 )

@@ -38,6 +38,7 @@ Each story file is at `docs/mdm/stories/STORY_XX_*.md`. Read the ENTIRE story be
 - Spring Boot 3.x (same as auth-service)
 - Port: 8085
 - Uses same PostgreSQL database (shared schema, own tables prefixed `mdm_`)
+- Flyway: `baseline-on-migrate: true` and **`baseline-version: 3`** so mdm-service applies **V4+ only** (V2/V3 live under `auth-service` / existing DB history; same `flyway_schema_history` table).
 - Uses same RabbitMQ (new exchange: `farm.mdm.commands`)
 - Uses same JWT secret (tokens from auth-service work here)
 - Copy `JwtAuthFilter.java`, `SecurityConfig.java`, `TenantContext.java` from auth-service, change package to `com.sudarshanchakra.mdm.config`

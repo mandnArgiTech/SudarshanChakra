@@ -63,11 +63,13 @@ services:
       - DEVICE_SERVICE_URL=http://device-service:8082
       - AUTH_SERVICE_URL=http://auth-service:8083
       - SIREN_SERVICE_URL=http://siren-service:8084
+      - MDM_SERVICE_URL=http://mdm-service:8085
     depends_on:
       - alert-service
       - device-service
       - auth-service
       - siren-service
+      - mdm-service
     restart: always
 
   alert-service:
@@ -123,6 +125,23 @@ services:
       - SPRING_RABBITMQ_HOST=rabbitmq
       - SPRING_RABBITMQ_USERNAME=${RABBITMQ_USER:-admin}
       - SPRING_RABBITMQ_PASSWORD=${RABBITMQ_PASS}
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    restart: always
+
+  mdm-service:
+    image: sudarshanchakra/mdm-service:latest
+    container_name: mdm-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sudarshanchakra
+      - SPRING_DATASOURCE_USERNAME=${DB_USER:-scadmin}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASS}
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_USERNAME=${RABBITMQ_USER:-admin}
+      - SPRING_RABBITMQ_PASSWORD=${RABBITMQ_PASS}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in cloud/.env}
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }

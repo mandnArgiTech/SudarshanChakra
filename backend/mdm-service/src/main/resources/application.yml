@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: mdm-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/sudarshanchakra}
+    username: ${SPRING_DATASOURCE_USERNAME:scadmin}
+    password: ${SPRING_DATASOURCE_PASSWORD:devpassword123}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    baseline-on-migrate: true
+    baseline-version: 3
+    locations: classpath:db/migration
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:admin}
+    password: ${SPRING_RABBITMQ_PASSWORD:devpassword123}
+
+server:
+  port: ${SERVER_PORT:8085}
+
+jwt:
+  secret: ${JWT_SECRET:default-dev-secret-change-in-production-must-be-at-least-256-bits-long-for-hs256}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

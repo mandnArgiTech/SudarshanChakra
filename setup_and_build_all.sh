@@ -14,6 +14,9 @@
 #   android (Kotlin/Compose), firmware (ESP32/Arduino),
 #   cloud (PostgreSQL/RabbitMQ), AlertManagement (Python/Raspberry Pi)
 #
+# Edge: runtime deps in edge/requirements.txt; pytest pin in edge/requirements-dev.txt.
+#   Optional env for storage/camera sync — see AGENTS.md (VIDEO_STORAGE_CONFIG, CAMERA_SYNC_*, etc.).
+#
 # Invariants:
 #   - set -uo pipefail: unset vars and pipeline errors abort (use ${var:-} where optional).
 #   - Run from repo root (ensure_repo_root checks required directories).
@@ -128,12 +131,13 @@ RESET_SERVICE_PIDS="${RESET_SERVICE_PIDS:-0}"
 readonly CLOUD_COMPOSE_FILE="docker-compose.vps.yml"
 
 # Service names and ports (boot order: dependencies first, gateway last)
-BACKEND_SERVICES=(auth-service device-service alert-service siren-service api-gateway)
+BACKEND_SERVICES=(auth-service device-service alert-service siren-service mdm-service api-gateway)
 declare -A SERVICE_PORT=(
   [auth-service]=8083
   [device-service]=8082
   [alert-service]=8081
   [siren-service]=8084
+  [mdm-service]=8085
   [api-gateway]=8080
 )
 
@@ -1124,16 +1128,35 @@ cmd_build_edge() {
 
   log_info "Installing edge dependencies..."
   run_pip install -r "${ROOT_DIR}/edge/requirements.txt" \
-    flake8 pytest pika opencv-python-headless -q \
+    flake8 pika opencv-python-headless -q \
     || { log_error "pip install for edge failed."; return 1; }
 
-  log_info "Syntax-checking edge Python files..."
-  (cd "${ROOT_DIR}/edge" && "${PYTHON_EXEC}" -m py_compile *.py) \
-    || { log_error "Edge Python syntax check failed."; return 1; }
+  if [[ -f "${ROOT_DIR}/edge/requirements-dev.txt" ]]; then
+    log_info "Installing edge dev/test requirements (requirements-dev.txt)..."
+    run_pip install -r "${ROOT_DIR}/edge/requirements-dev.txt" -q \
+      || { log_error "pip install requirements-dev.txt failed."; return 1; }
+  fi
 
-  log_info "Running flake8 lint..."
-  (cd "${ROOT_DIR}/edge" && "${PYTHON_EXEC}" -m flake8 --max-line-length=120 *.py) \
-    || log_warn "flake8 reported issues (non-fatal)."
+  log_info "Syntax-checking edge Python files (root, grabbers/, scripts/)..."
+  (
+    cd "${ROOT_DIR}/edge" || exit 1
+    shopt -s nullglob
+    py_files=( *.py grabbers/*.py scripts/*.py )
+    if [[ ${#py_files[@]} -eq 0 ]]; then
+      printf '%s\n' "No edge Python files to compile." >&2
+      exit 1
+    fi
+    "${PYTHON_EXEC}" -m py_compile "${py_files[@]}"
+  ) || { log_error "Edge Python syntax check failed."; return 1; }
+
+  log_info "Running flake8 lint (root, grabbers/, scripts/)..."
+  (
+    cd "${ROOT_DIR}/edge" || exit 1
+    shopt -s nullglob
+    py_files=( *.py grabbers/*.py scripts/*.py )
+    [[ ${#py_files[@]} -eq 0 ]] && exit 0
+    "${PYTHON_EXEC}" -m flake8 --max-line-length=120 "${py_files[@]}"
+  ) || log_warn "flake8 reported issues (non-fatal)."
 
   log_success "Edge AI code validated."
 }
@@ -1261,10 +1284,19 @@ cmd_test_dashboard() {
 cmd_test_edge() {
   require_cmd "${PYTHON_BIN}" || return 1
 
-  # Ensure test dependencies are available
-  if ! "${PYTHON_EXEC}" -c "import pytest" 2>/dev/null; then
-    log_info "Installing pytest..."
-    ensure_pip || return 1
+  log_info "Setting up Python environment for Edge AI tests..."
+  setup_python_venv || return 1
+
+  log_info "Installing edge dependencies for tests..."
+  run_pip install -r "${ROOT_DIR}/edge/requirements.txt" \
+    flake8 pika opencv-python-headless -q \
+    || { log_error "pip install for edge tests failed."; return 1; }
+
+  if [[ -f "${ROOT_DIR}/edge/requirements-dev.txt" ]]; then
+    run_pip install -r "${ROOT_DIR}/edge/requirements-dev.txt" -q \
+      || { log_error "pip install requirements-dev.txt failed."; return 1; }
+  else
+    log_warn "edge/requirements-dev.txt missing — installing pytest only."
     run_pip install pytest -q || return 1
   fi
 
@@ -1622,14 +1654,14 @@ cmd_menu() {
     "build-backend"     "[BUILD]  5 Spring Boot microservices (Gradle)"     OFF \
     "build-dashboard"   "[BUILD]  Lint + build React dashboard (Vite)"      OFF \
     "build-simulator"   "[BUILD]  Farm simulator (Vite)"                    OFF \
-    "build-edge"        "[BUILD]  Validate Edge AI Python code (flake8)"    OFF \
+    "build-edge"        "[BUILD]  Edge AI: pip, py_compile, flake8 (incl. grabbers, scripts)" OFF \
     "build-android"     "[BUILD]  Android app (Gradle assembleDebug)"       OFF \
     "build-firmware"    "[BUILD]  ESP32 firmware (arduino-cli)"             OFF \
     "build-alertmgmt"   "[BUILD]  Validate AlertManagement scripts"         OFF \
     "build-all"         "[BUILD]  >> ALL builds in dependency order <<"     OFF \
     "test-backend"      "[TEST]   Backend unit tests (JUnit 5, H2)"        OFF \
     "test-dashboard"    "[TEST]   Dashboard tests (Vitest)"                 OFF \
-    "test-edge"         "[TEST]   Edge AI tests (pytest)"                   OFF \
+    "test-edge"         "[TEST]   Edge AI: venv + pip + pytest edge/tests/" OFF \
     "test-android"      "[TEST]   Android unit tests (Gradle)"              OFF \
     "test-all"          "[TEST]   >> ALL test suites <<"                    OFF \
     "deploy-infra"      "[LOCAL]  Start PostgreSQL + RabbitMQ containers"   OFF \
@@ -1697,7 +1729,7 @@ ${BOLD}COMPONENT STACK:${RESET}
   backend        Java 21, Spring Boot 3.2, Gradle wrapper 8.7 (5 microservices)
   dashboard      React 18, Vite 5, TypeScript, Tailwind CSS 3 (Vitest)
   simulator      React 18, Vite 5 — farm MQTT / REST simulator (browser Web MQTT)
-  edge           Python 3.10+, YOLO, Flask, OpenCV (pytest in edge/tests/)
+  edge           Python 3.10+, YOLO, Flask, OpenCV; pytest in edge/tests/; edge/requirements-dev.txt
   android        Kotlin 1.9, Jetpack Compose, Gradle wrapper 8.5, Hilt, Retrofit
   firmware       Arduino CLI, ESP32 (bridge_receiver, lora_tag, worker_beacon sketches)
   cloud          Docker Compose, PostgreSQL 16, RabbitMQ 3
@@ -1719,7 +1751,7 @@ ${BOLD}BUILD:${RESET}
   ${CYAN}build-backend${RESET}           Gradle clean build -x test (artifacts only; use ${CYAN}test-backend${RESET} for JUnit)
   ${CYAN}build-dashboard${RESET}          npm install + ESLint + tsc + Vite build → dist/
   ${CYAN}build-simulator${RESET}          npm install + Vite build → simulator/dist/
-  ${CYAN}build-edge${RESET}              Python venv + pip deps + py_compile + flake8
+  ${CYAN}build-edge${RESET}              Python venv + edge/requirements.txt + requirements-dev.txt + py_compile + flake8 (root, grabbers/, scripts/)
   ${CYAN}build-android${RESET}           Gradle assembleDebug → app-debug.apk (needs ANDROID_HOME)
   ${CYAN}build-firmware${RESET}          arduino-cli compile: esp32_lora_bridge_receiver, esp32_lora_tag, worker_beacon
   ${CYAN}build-alertmgmt${RESET}         py_compile AlertManagement/scripts/*.py
@@ -1730,7 +1762,7 @@ ${BOLD}BUILD:${RESET}
 ${BOLD}TEST:${RESET}
   ${CYAN}test-backend${RESET}            Gradle test (JUnit 5; device-service uses Testcontainers where configured)
   ${CYAN}test-dashboard${RESET}          Vitest: npm run test -- --run --passWithNoTests
-  ${CYAN}test-edge${RESET}               pytest edge/tests/ -v
+  ${CYAN}test-edge${RESET}               Same venv + pip as build-edge, then pytest edge/tests/ -v
   ${CYAN}test-android${RESET}            Gradle testDebugUnitTest (needs ANDROID_HOME unless skipped)
   ${CYAN}test-all${RESET}                backend + dashboard + edge + android tests (simulator: no test script; same SKIP_* as build-all)
   ${CYAN}test-full${RESET}               Runs ${DIM}run_all_tests.sh${RESET} at repo root (fails with a clear error if missing)
@@ -1776,6 +1808,17 @@ ${BOLD}ENVIRONMENT VARIABLES:${RESET}
   RABBITMQ_PASS           RabbitMQ password       (default: devpassword123)
   DOCKER_BIN              Docker binary           (default: docker)
   PYTHON_BIN              Python binary           (default: python3)
+
+  ${BOLD}Edge (optional — see AGENTS.md):${RESET}
+  VIDEO_STORAGE_CONFIG    Path to storage JSON (default: CONFIG_DIR/storage.json)
+  TEST_CAMERA_RTSP        Override test_camera.rtsp_url in storage JSON
+  TEST_CAMERA_STREAM1     Override test_camera.stream1_url in storage JSON
+  CAMERA_SYNC_ENABLED     Set to 1/true to sync cameras.json from API (edge node)
+  CAMERA_SYNC_INTERVAL_SEC  Seconds between sync runs (default: 900)
+  DEVICE_SERVICE_URL      Base URL for camera sync (e.g. http://localhost:8080/api/v1)
+  CAMERA_SYNC_TOKEN       JWT for camera sync GET /cameras
+  EDGE_NODE_ID / NODE_ID  Node id for camera sync filter
+  CONFIG_DIR              Edge config directory (default: /app/config in containers)
 
 ${BOLD}FULL STACK (typical dev machine):${RESET}
   ${DIM}./${SCRIPT_NAME} install-deps${RESET}   # once

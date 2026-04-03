@@ -30,11 +30,12 @@ import java.util.Map;
 public class ModuleAccessGatewayFilter implements GlobalFilter, Ordered {
 
     private static final List<String> ALL_MODULES = List.of(
-            "alerts", "cameras", "sirens", "water", "pumps", "zones", "devices", "workers", "analytics"
+            "alerts", "cameras", "sirens", "water", "pumps", "zones", "devices", "workers", "analytics", "mdm"
     );
 
     /** Longest prefix first */
     private static final List<Map.Entry<String, String>> PATH_MODULE_PREFIXES = List.of(
+            Map.entry("/api/v1/mdm", "mdm"),
             Map.entry("/api/v1/water/motors", "pumps"),
             Map.entry("/api/v1/water", "water"),
             Map.entry("/api/v1/cameras", "cameras"),

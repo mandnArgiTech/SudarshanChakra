@@ -79,6 +79,7 @@ build_all() {
   build_backend device-service
   build_backend auth-service
   build_backend siren-service
+  build_backend mdm-service
   build_backend api-gateway
 
   echo "[BUILD] Dashboard"
