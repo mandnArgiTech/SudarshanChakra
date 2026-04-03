@@ -1,52 +1,77 @@
 # Garuda Release — Agent Instructions for Cursor
 
-## Execution Order
+## Execution Order (MANDATORY)
 
 ```
-WS-1: G-01 → G-02 → G-03 → G-04 → G-05     (SaaS gaps, ~3 days)
-WS-2: G-06 → G-07 → G-08 → G-09             (Camera gaps, ~2 days)
-WS-3: G-10 → G-11 → G-12                     (Android polish, ~1.5 days)
-WS-4: M-01 → M-02 → ... → M-12              (MDM, see docs/mdm/, ~7 days)
-WS-5: G-13 (done) → G-14                     (E2E tests, ~2 days)
-WS-6: G-15 → G-16                            (VPN/TLS, ~1 day)
-WS-7: G-17 → G-18                            (Release packaging, ~1 day)
+WS-1: G-01 → G-02 → G-03 (done) → G-04 → G-05
+WS-2: G-06 → G-07 → G-08 → G-09
+WS-3: G-10 → G-11 → G-12
+WS-4: M-01 → M-02 → ... → M-12  (see docs/mdm/MDM_AGENT_INSTRUCTIONS.md)
+WS-5: G-13 (done) → G-14
+WS-6: G-15 → G-16
+WS-7: G-17 → G-18
 ```
 
 ## Rules
 
-1. Read the story COMPLETELY before writing any code.
+1. Read the story file COMPLETELY before writing any code.
 2. Each story lists exact files to create and modify. Do NOT touch unlisted files.
-3. Read the reference files listed — they show existing patterns to follow.
-4. After each story, run the verification commands.
+3. After each story, run the verification commands at the bottom.
+4. After completing a story, update `docs/garuda/GARUDA_CHECKLIST.md`.
 5. For MDM stories (M-01 to M-12), follow `docs/mdm/MDM_AGENT_INSTRUCTIONS.md`.
-6. After completing a story, update `docs/garuda/GARUDA_CHECKLIST.md` — change `[ ]` to `[x]` for completed items.
 
-## Story Locations
+## Story Files — One Per Story
 
-| Stories | Location |
-|:--------|:---------|
-| G-01 to G-18 | `docs/garuda/stories/GARUDA_STORIES.md` |
-| M-01 to M-12 | `docs/mdm/stories/STORY_*.md` |
+### WS-1: SaaS Gap Closure
+```
+docs/garuda/stories/G-01_TENANT_FILTER.md
+docs/garuda/stories/G-02_RBAC_PREAUTHORIZE.md
+docs/garuda/stories/G-03_SIDEBAR_FILTER.md          ← ALREADY DONE
+docs/garuda/stories/G-04_AUDIT_ASPECT.md
+docs/garuda/stories/G-05_SAAS_TESTS.md
+```
 
-## Key Reference Files
+### WS-2: Camera/Video Gap Closure
+```
+docs/garuda/stories/G-06_EXOPLAYER_DEP.md
+docs/garuda/stories/G-07_ZONE_MQTT_SYNC.md
+docs/garuda/stories/G-08_CAMERA_SYNC.md
+docs/garuda/stories/G-09_ALERT_VIDEO_CLIP_DASHBOARD.md
+```
 
-| Purpose | File |
-|:--------|:-----|
-| JPA entity pattern | `backend/auth-service/.../model/Farm.java` |
-| Controller pattern | `backend/auth-service/.../controller/FarmController.java` |
-| Service pattern | `backend/auth-service/.../service/FarmService.java` |
-| JWT filter | `backend/auth-service/.../config/JwtAuthFilter.java` |
-| Security config | `backend/auth-service/.../config/SecurityConfig.java` |
-| Tenant context | `backend/auth-service/.../context/TenantContext.java` |
-| Module constants | `backend/auth-service/.../support/ModuleConstants.java` |
-| Gateway routes | `backend/api-gateway/src/main/resources/application.yml` |
-| Android Room DB | `android/app/src/main/java/.../data/db/AppDatabase.kt` |
-| Android NavGraph | `android/app/src/main/java/.../ui/navigation/NavGraph.kt` |
-| Android build deps | `android/app/build.gradle.kts` |
-| Android manifest | `android/app/src/main/AndroidManifest.xml` |
-| Dashboard sidebar | `dashboard/src/components/Layout/Sidebar.tsx` |
-| Dashboard routes | `dashboard/src/App.tsx` |
-| Dashboard mockups | `docs/mdm/mdm-dashboard-mockups.jsx` |
-| Android mockups | `docs/mdm/mdm-android-mockups.jsx` |
-| Camera mockups | `docs/mockups/camera-video-mockups.jsx` |
-| SaaS mockups | `docs/mockups/saas-screens-mockup.jsx` |
+### WS-3: Android Production Polish
+```
+docs/garuda/stories/G-10_PULL_TO_REFRESH.md
+docs/garuda/stories/G-11_ANDROID_ALERT_CLIP.md
+docs/garuda/stories/G-12_ANDROID_TESTS.md
+```
+
+### WS-4: MDM Kiosk Module
+```
+docs/mdm/stories/STORY_01_DB_MIGRATION.md
+docs/mdm/stories/STORY_02_SERVICE_SKELETON.md
+docs/mdm/stories/STORY_03_TELEMETRY_API.md
+docs/mdm/stories/STORY_04_05_COMMANDS_OTA.md
+docs/mdm/stories/STORY_06_07_08_ANDROID_TELEMETRY.md
+docs/mdm/stories/STORY_09_10_ANDROID_KIOSK_OTA.md
+docs/mdm/stories/STORY_11_DASHBOARD_PAGES.md
+docs/mdm/stories/STORY_12_TESTS_DOCKER.md
+```
+
+### WS-5: E2E Testing
+```
+docs/garuda/stories/G-13_PREFLIGHT_DONE.md           ← ALREADY DONE
+docs/garuda/stories/G-14_E2E_SUITE.md
+```
+
+### WS-6: Infrastructure
+```
+docs/garuda/stories/G-15_OPENVPN.md
+docs/garuda/stories/G-16_TLS_HTTPS.md
+```
+
+### WS-7: Build & Release
+```
+docs/garuda/stories/G-17_GHCR_PUSH.md
+docs/garuda/stories/G-18_DEPLOY_PROFILES.md
+```
