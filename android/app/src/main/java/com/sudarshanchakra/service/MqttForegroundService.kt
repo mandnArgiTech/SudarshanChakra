@@ -1,5 +1,6 @@
 package com.sudarshanchakra.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,15 +8,31 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
+import android.os.Looper
+import android.provider.Settings.Secure
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.sudarshanchakra.data.db.AppDatabase
+import com.sudarshanchakra.mdm.KioskManager
+import com.sudarshanchakra.mdm.MdmCommandHandler
+import com.sudarshanchakra.mdm.MdmConfig
+import com.sudarshanchakra.mdm.SilentInstaller
+import com.sudarshanchakra.mdm.data.MdmLocationEntity
 import com.hivemq.client.mqtt.MqttClient
 import com.hivemq.client.mqtt.datatypes.MqttQos
 import com.hivemq.client.mqtt.mqtt5.Mqtt5AsyncClient
@@ -39,6 +56,7 @@ import org.json.JSONObject
 import java.net.URI
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
+import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
 
@@ -54,11 +72,43 @@ class MqttForegroundService : Service() {
     @Inject
     lateinit var alertBadgeRepository: AlertBadgeRepository
 
+    @Inject
+    lateinit var appDatabase: AppDatabase
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var mqttClient: Mqtt5AsyncClient? = null
     private var mqttClientId: String = ""
     private var isConnecting = false
     private var hasSubscribed = false
+    private var fusedLocationClient: FusedLocationProviderClient? = null
+    private var mdmCommandHandler: MdmCommandHandler? = null
+
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            val loc = result.lastLocation ?: return
+            serviceScope.launch {
+                try {
+                    val bm = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+                    val batteryPct = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                    appDatabase.mdmLocationDao().insert(
+                        MdmLocationEntity(
+                            latitude = loc.latitude,
+                            longitude = loc.longitude,
+                            accuracyMeters = loc.accuracy,
+                            altitudeMeters = if (loc.hasAltitude()) loc.altitude.toFloat() else null,
+                            speedMps = if (loc.hasSpeed()) loc.speed else null,
+                            bearing = if (loc.hasBearing()) loc.bearing else null,
+                            provider = loc.provider,
+                            batteryPercent = batteryPct,
+                            recordedAt = Instant.ofEpochMilli(loc.time).toString(),
+                        ),
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "MDM location cache insert failed", e)
+                }
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -73,6 +123,13 @@ class MqttForegroundService : Service() {
             return START_NOT_STICKY
         }
 
+        if (intent?.action == ACTION_UPDATE_LOCATION_INTERVAL) {
+            if (MdmConfig.isEnabled(this)) {
+                startLocationTracking()
+            }
+            return START_STICKY
+        }
+
         startForeground(SERVICE_NOTIFICATION_ID, buildServiceNotification("Connecting to alert broker"))
 
         if (!isConnecting && mqttClient == null) {
@@ -83,6 +140,8 @@ class MqttForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        fusedLocationClient?.removeLocationUpdates(locationCallback)
+        fusedLocationClient = null
         serviceScope.cancel()
         mqttClient?.disconnectWith()?.send()
         mqttClient = null
@@ -115,7 +174,74 @@ class MqttForegroundService : Service() {
             updateServiceStatus("Connected. Listening for alerts")
             subscribeToTopic(client, Constants.MQTT_ALERT_TOPIC)
             subscribeToTopic(client, LEGACY_ALERT_TOPIC)
+            if (MdmConfig.isEnabled(this@MqttForegroundService)) {
+                startLocationTracking()
+                subscribeMdmCommandTopic(client)
+            }
         }
+    }
+
+    private fun startLocationTracking() {
+        val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!fine && !coarse) {
+            Log.w(TAG, "Location permission not granted; skipping MDM location tracking")
+            return
+        }
+        fusedLocationClient?.removeLocationUpdates(locationCallback)
+        val client = LocationServices.getFusedLocationProviderClient(this)
+        fusedLocationClient = client
+        val prefs = getSharedPreferences("mdm_prefs", MODE_PRIVATE)
+        val intervalMs = prefs.getLong("mdm_location_interval_ms", 60_000L).coerceIn(15_000L, 3_600_000L)
+        val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, intervalMs)
+            .setMinUpdateIntervalMillis(intervalMs / 2)
+            .build()
+        try {
+            client.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+            Log.i(TAG, "MDM fused location updates started (intervalMs=$intervalMs)")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Location updates not permitted", e)
+        }
+    }
+
+    private fun subscribeMdmCommandTopic(client: Mqtt5AsyncClient) {
+        val androidId = Secure.getString(contentResolver, Secure.ANDROID_ID) ?: return
+        val topic = "farm/mdm/$androidId/command"
+        val kioskManager = KioskManager(this)
+        val silentInstaller = SilentInstaller(this, serviceScope)
+        val handler = MdmCommandHandler(
+            context = this,
+            kioskManager = kioskManager,
+            silentInstaller = silentInstaller,
+            ackCallback = { commandId, command, success ->
+                val ackTopic = "farm/mdm/$androidId/ack"
+                val ackPayload = """{"command_id":"$commandId","command":"$command","success":$success}"""
+                client.publishWith()
+                    .topic(ackTopic)
+                    .qos(MqttQos.AT_LEAST_ONCE)
+                    .payload(ackPayload.toByteArray(StandardCharsets.UTF_8))
+                    .send()
+            },
+        )
+        mdmCommandHandler = handler
+
+        client.subscribeWith()
+            .topicFilter(topic)
+            .qos(MqttQos.AT_LEAST_ONCE)
+            .callback { publish ->
+                val payload = decodePayload(publish.payload.orElse(null))
+                handler.handle(topic, payload)
+            }
+            .send()
+            .whenComplete { _, throwable ->
+                if (throwable != null) {
+                    Log.e(TAG, "Failed to subscribe to MDM topic: $topic", throwable)
+                } else {
+                    Log.i(TAG, "Subscribed to MDM command topic: $topic")
+                }
+            }
     }
 
     private fun scheduleReconnect(client: Mqtt5AsyncClient) {
@@ -363,6 +489,7 @@ class MqttForegroundService : Service() {
         private const val TAG = "MqttForegroundService"
         private const val ACTION_START = "com.sudarshanchakra.action.START_MQTT_SERVICE"
         private const val ACTION_STOP = "com.sudarshanchakra.action.STOP_MQTT_SERVICE"
+        const val ACTION_UPDATE_LOCATION_INTERVAL = "com.sudarshanchakra.action.UPDATE_LOCATION_INTERVAL"
 
         const val SERVICE_CHANNEL_ID = "sc_mqtt_service"
         const val HIGH_ALERT_CHANNEL_ID = "sc_high_alerts"

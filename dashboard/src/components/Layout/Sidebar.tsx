@@ -15,6 +15,7 @@ import {
   Zap,
   Building2,
   ScrollText,
+  Smartphone,
 } from 'lucide-react';
 import { useNodes } from '@/api/devices';
 import { useAuth } from '@/hooks/useAuth';
@@ -37,6 +38,7 @@ const mainNavItems: {
   { to: '/analytics', icon: BarChart3, label: 'Analytics', module: 'analytics' },
   { to: '/water', icon: Droplets, label: 'Water', module: 'water' },
   { to: '/water/motors', icon: Zap, label: 'Pumps', module: 'pumps' },
+  { to: '/mdm', icon: Smartphone, label: 'MDM', module: 'mdm' },
   { to: '/settings', icon: Settings, label: 'Settings', module: null },
 ];
 

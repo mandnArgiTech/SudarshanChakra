@@ -157,6 +157,15 @@ export interface RegisterRequest {
   farmId: string;
 }
 
+export type {
+  MdmDevice,
+  AppUsageRecord,
+  CallLogRecord,
+  ScreenTimeRecord,
+  MdmCommandRecord,
+  LocationRecord,
+} from '@/api/mdm';
+
 export interface SirenRequest {
   nodeId: string;
   sirenUrl?: string;

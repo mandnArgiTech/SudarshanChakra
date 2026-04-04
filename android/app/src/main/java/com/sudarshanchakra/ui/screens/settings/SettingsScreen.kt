@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,7 +35,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,8 +49,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sudarshanchakra.BuildConfig
+import com.sudarshanchakra.mdm.DevEscapeDialog
+import com.sudarshanchakra.mdm.KioskManager
 import com.sudarshanchakra.service.MqttForegroundService
 import com.sudarshanchakra.ui.navigation.SessionViewModel
+import kotlinx.coroutines.delay
 import com.sudarshanchakra.ui.theme.CreamBackground
 import com.sudarshanchakra.ui.theme.CriticalRed
 import com.sudarshanchakra.ui.theme.Terracotta
@@ -65,7 +71,17 @@ fun SettingsScreen(
     val user by viewModel.currentUser.collectAsStateWithLifecycle()
     val lockOnResume by viewModel.lockOnResumeEnabled.collectAsStateWithLifecycle()
     var showLogoutConfirm by remember { mutableStateOf(false) }
+    var showEscapeDialog by remember { mutableStateOf(false) }
+    var tapCount by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
+    val kioskManager = remember { KioskManager(context) }
+
+    LaunchedEffect(tapCount) {
+        if (tapCount in 1..6) {
+            delay(3000L)
+            tapCount = 0
+        }
+    }
     Scaffold(
         containerColor = CreamBackground,
         topBar = {
@@ -152,6 +168,13 @@ fun SettingsScreen(
                 text = "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted,
+                modifier = Modifier.clickable {
+                    tapCount++
+                    if (tapCount >= 7) {
+                        tapCount = 0
+                        showEscapeDialog = true
+                    }
+                },
             )
 
             OutlinedButton(
@@ -198,6 +221,14 @@ fun SettingsScreen(
                 Text("Log out")
             }
         }
+    }
+
+    if (showEscapeDialog) {
+        DevEscapeDialog(
+            onDismiss = { showEscapeDialog = false },
+            onExitKiosk = { pin -> kioskManager.exitKiosk(pin) },
+            onDecommission = { pin -> kioskManager.decommission(pin) },
+        )
     }
 
     if (showLogoutConfirm) {

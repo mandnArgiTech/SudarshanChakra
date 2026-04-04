@@ -89,6 +89,14 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
 
+    // WorkManager + Hilt integration
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.hilt:hilt-work:1.1.0")
+    kapt("androidx.hilt:hilt-compiler:1.1.0")
+
+    // Location (MDM foreground tracking)
+    implementation("com.google.android.gms:play-services-location:21.1.0")
+
     // MQTT (HiveMQ)
     implementation("com.hivemq:hivemq-mqtt-client:1.3.3")
 

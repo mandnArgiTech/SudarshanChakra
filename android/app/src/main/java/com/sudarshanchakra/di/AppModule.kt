@@ -12,6 +12,12 @@ import com.sudarshanchakra.data.api.DynamicBaseUrlInterceptor
 import com.sudarshanchakra.data.db.AlertDao
 import com.sudarshanchakra.data.db.AppDatabase
 import com.sudarshanchakra.data.db.MIGRATION_1_2
+import com.sudarshanchakra.data.db.MIGRATION_2_3
+import com.sudarshanchakra.data.db.MIGRATION_3_4
+import com.sudarshanchakra.mdm.data.MdmAppUsageDao
+import com.sudarshanchakra.mdm.data.MdmCallLogDao
+import com.sudarshanchakra.mdm.data.MdmLocationDao
+import com.sudarshanchakra.mdm.data.MdmScreenTimeDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -87,7 +93,7 @@ object AppModule {
             AppDatabase::class.java,
             "sudarshanchakra_db",
         )
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .build()
     }
 
@@ -96,4 +102,20 @@ object AppModule {
     fun provideAlertDao(database: AppDatabase): AlertDao {
         return database.alertDao()
     }
+
+    @Provides
+    @Singleton
+    fun provideMdmAppUsageDao(database: AppDatabase): MdmAppUsageDao = database.mdmAppUsageDao()
+
+    @Provides
+    @Singleton
+    fun provideMdmCallLogDao(database: AppDatabase): MdmCallLogDao = database.mdmCallLogDao()
+
+    @Provides
+    @Singleton
+    fun provideMdmScreenTimeDao(database: AppDatabase): MdmScreenTimeDao = database.mdmScreenTimeDao()
+
+    @Provides
+    @Singleton
+    fun provideMdmLocationDao(database: AppDatabase): MdmLocationDao = database.mdmLocationDao()
 }

@@ -22,6 +22,8 @@ import VideoPlayerPage from '@/pages/VideoPlayerPage';
 import PtzControlPage from '@/pages/PtzControlPage';
 import ZoneDrawPage from '@/pages/ZoneDrawPage';
 import AddCameraPage from '@/pages/AddCameraPage';
+import MdmDeviceListPage from '@/pages/mdm/MdmDeviceListPage';
+import MdmDeviceDetailPage from '@/pages/mdm/MdmDeviceDetailPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -134,6 +136,22 @@ export default function App() {
           element={
             <ModuleRoute module="analytics">
               <AnalyticsPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="mdm"
+          element={
+            <ModuleRoute module="mdm">
+              <MdmDeviceListPage />
+            </ModuleRoute>
+          }
+        />
+        <Route
+          path="mdm/devices/:id"
+          element={
+            <ModuleRoute module="mdm">
+              <MdmDeviceDetailPage />
             </ModuleRoute>
           }
         />

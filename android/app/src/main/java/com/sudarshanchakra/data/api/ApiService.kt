@@ -9,6 +9,7 @@ import com.sudarshanchakra.domain.model.RegisterRequest
 import com.sudarshanchakra.domain.model.SirenAction
 import com.sudarshanchakra.domain.model.WorkerTag
 import com.sudarshanchakra.domain.model.Zone
+import com.sudarshanchakra.mdm.api.TelemetryBatchRequestDto
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -69,6 +70,13 @@ interface ApiService {
     // MQTT client ID
     @PATCH("users/me/mqtt-client-id")
     suspend fun updateMqttClientId(@Body body: Map<String, String>): Response<Unit>
+
+    // MDM telemetry (mdm-service behind gateway)
+    @POST("mdm/telemetry/batch")
+    suspend fun uploadMdmTelemetryBatch(@Body body: TelemetryBatchRequestDto): Response<Map<String, Any>>
+
+    @POST("mdm/telemetry/heartbeat")
+    suspend fun postMdmTelemetryHeartbeat(@Body body: Map<String, String>): Response<Map<String, String>>
 
     // Water tanks
     @GET("water/tanks")
