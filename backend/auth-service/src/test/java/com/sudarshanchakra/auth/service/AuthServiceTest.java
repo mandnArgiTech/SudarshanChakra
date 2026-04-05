@@ -79,7 +79,7 @@ class AuthServiceTest {
         when(passwordEncoder.matches("secret", "hash")).thenReturn(true);
         when(moduleResolutionService.resolveModules(any(User.class))).thenReturn(ModuleConstants.ALL_MODULES);
         when(permissionService.effectivePermissions(any(), any())).thenReturn(List.of("alerts:view"));
-        when(jwtService.generateToken(any(), any(), any(), any(), any())).thenReturn("tok");
+        when(jwtService.generateToken(any(), any(), any(), any(), any(), any())).thenReturn("tok");
         when(jwtService.generateRefreshToken(any())).thenReturn("ref");
         when(userRepository.save(any(User.class))).thenReturn(user);
 
@@ -128,7 +128,7 @@ class AuthServiceTest {
         });
         when(moduleResolutionService.resolveModules(any(User.class))).thenReturn(ModuleConstants.ALL_MODULES);
         when(permissionService.effectivePermissions(any(), any())).thenReturn(List.of());
-        when(jwtService.generateToken(any(), any(), any(), any(), any())).thenReturn("t");
+        when(jwtService.generateToken(any(), any(), any(), any(), any(), any())).thenReturn("t");
         when(jwtService.generateRefreshToken(any())).thenReturn("r");
 
         var req = new RegisterRequest();
@@ -161,7 +161,7 @@ class AuthServiceTest {
         });
         when(moduleResolutionService.resolveModules(any(User.class))).thenReturn(ModuleConstants.ALL_MODULES);
         when(permissionService.effectivePermissions(any(), any())).thenReturn(List.of());
-        when(jwtService.generateToken(any(), any(), any(), any(), any())).thenReturn("t");
+        when(jwtService.generateToken(any(), any(), any(), any(), any(), any())).thenReturn("t");
         when(jwtService.generateRefreshToken(any())).thenReturn("r");
 
         var req = new RegisterRequest();

@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { getFirstAccessibleNavPath } from '@/utils/moduleNavigation';
 
 /**
  * Renders children only if the current user has the SaaS module enabled (or full legacy access).
@@ -13,7 +14,7 @@ export default function ModuleRoute({
 }) {
   const { hasModule } = useAuth();
   if (!hasModule(moduleId)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={getFirstAccessibleNavPath(hasModule)} replace />;
   }
   return <>{children}</>;
 }

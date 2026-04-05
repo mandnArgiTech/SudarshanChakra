@@ -1,62 +1,59 @@
 # G-05: SaaS Test Coverage
 
 ## Status
-NOT DONE — FarmService, PermissionService, ModuleResolutionService, ModuleAccessGatewayFilter have zero tests.
+**COMPLETE (backend)** — Unit tests added for `FarmService`, `PermissionService`, `ModuleResolutionService`, and extended `ModuleAccessGatewayFilterTest`.
 
 ## Prerequisites
 G-01 through G-04 complete.
 
-## Files to CREATE
+## Implemented
 
 ### 1. `backend/auth-service/src/test/java/com/sudarshanchakra/auth/service/FarmServiceTest.java`
 
-Follow pattern of `backend/auth-service/src/test/java/com/sudarshanchakra/auth/service/AuthServiceTest.java`.
+`@ExtendWith(MockitoExtension.class)`, `@Mock` repositories + `PasswordEncoder`, `@InjectMocks FarmService`.
 
-Tests (minimum 5):
-```java
-@Test void createFarm_savesAndReturnsResponse()
-@Test void createFarm_duplicateSlug_throwsException()
-@Test void getFarmById_found_returnsResponse()
-@Test void getFarmById_notFound_throwsException()
-@Test void suspendFarm_setsStatusSuspended()
-```
-
-Use `@ExtendWith(MockitoExtension.class)`, `@Mock FarmRepository`, `@InjectMocks FarmService`.
+- `createFarm_savesAndReturnsResponse`
+- `createFarm_duplicateSlug_throwsException`
+- `getFarmById_found_returnsResponse`
+- `getFarmById_notFound_throwsException`
+- `suspendFarm_setsStatusSuspended`
+- `createFarm_withInitialAdmin_savesUser` (initial admin branch)
+- `activateFarm_setsStatusActive`
 
 ### 2. `backend/auth-service/src/test/java/com/sudarshanchakra/auth/service/PermissionServiceTest.java`
 
-Tests (minimum 5):
-```java
-@Test void superAdmin_hasAllPermissions()
-@Test void viewer_cannotTriggerSiren()
-@Test void viewer_canViewAlerts()
-@Test void manager_canAcknowledgeAlerts()
-@Test void operator_cannotDeleteZones()
-```
+Stateless `PermissionService` — no mocks.
+
+- `superAdmin_hasAllPermissions`
+- `viewer_cannotTriggerSiren`
+- `viewer_canViewAlerts`
+- `manager_canAcknowledgeAlerts`
+- `operator_cannotDeleteZones`
 
 ### 3. `backend/auth-service/src/test/java/com/sudarshanchakra/auth/service/ModuleResolutionServiceTest.java`
 
-Tests (minimum 3):
-```java
-@Test void resolveModules_farmModules_returnsFarmList()
-@Test void resolveModules_userOverride_returnsUserList()
-@Test void resolveModules_emptyModules_returnsAllModules()
-```
+`@Mock FarmRepository`, `@InjectMocks ModuleResolutionService`.
+
+- `resolveModules_farmModules_returnsFarmList`
+- `resolveModules_userOverride_returnsUserList` (verifies no farm lookup when override set)
+- `resolveModules_emptyModules_returnsAllModules`
+- `resolveModules_superAdmin_returnsAllModules` (bonus)
 
 ### 4. `backend/api-gateway/src/test/java/com/sudarshanchakra/gateway/filter/ModuleAccessGatewayFilterTest.java`
 
-Tests (minimum 4):
-```java
-@Test void allowedModule_passes()
-@Test void disabledModule_returns403()
-@Test void noModulesInJwt_treatedAsFullAccess()
-@Test void publicEndpoint_noModuleCheck()
-```
+Existing reactive unit tests (`MockServerWebExchange` + `StepVerifier`) plus:
 
-Note: Gateway tests may need `@SpringBootTest(webEnvironment=RANDOM_PORT)` with `WebTestClient` or mock the exchange directly.
+- `camerasPath_forbiddenWhenModulesExcludeCameras` (maps to disabled module / 403)
+- `camerasPath_okWhenModulesIncludesCameras` (maps to allowed module passes)
+- `noModulesInJwt_treatedAsFullAccess`
+- `publicEndpoint_noModuleCheck`
+
+## Out of scope (checklist vs story)
+
+Dashboard **Admin pages** Vitest coverage is tracked separately on the master checklist; this story only specified **backend** tests.
 
 ## Verification
 ```bash
 cd backend && ./gradlew :auth-service:test :api-gateway:test --info 2>&1 | grep -E "PASSED|FAILED|tests"
-# Expected: 17+ new tests passing, zero failures
+# Expected: all tests passing, zero failures
 ```

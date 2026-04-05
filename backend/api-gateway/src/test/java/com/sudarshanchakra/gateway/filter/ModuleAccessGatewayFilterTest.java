@@ -63,4 +63,28 @@ class ModuleAccessGatewayFilterTest {
                 .verifyComplete();
         assertThat(ex.getResponse().getStatusCode()).isNotEqualTo(HttpStatus.FORBIDDEN);
     }
+
+    @Test
+    void noModulesInJwt_treatedAsFullAccess() {
+        String token = jwt(Map.of("sub", "u1"));
+        MockServerHttpRequest req = MockServerHttpRequest.get("http://localhost/api/v1/cameras")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .build();
+        MockServerWebExchange ex = MockServerWebExchange.from(req);
+        StepVerifier.create(filter.filter(ex, exchange -> Mono.empty()))
+                .verifyComplete();
+        assertThat(ex.getResponse().getStatusCode()).isNotEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void publicEndpoint_noModuleCheck() {
+        String token = jwt(Map.of("sub", "u1", "modules", List.of("alerts")));
+        MockServerHttpRequest req = MockServerHttpRequest.post("http://localhost/api/v1/auth/login")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .build();
+        MockServerWebExchange ex = MockServerWebExchange.from(req);
+        StepVerifier.create(filter.filter(ex, exchange -> Mono.empty()))
+                .verifyComplete();
+        assertThat(ex.getResponse().getStatusCode()).isNotEqualTo(HttpStatus.FORBIDDEN);
+    }
 }

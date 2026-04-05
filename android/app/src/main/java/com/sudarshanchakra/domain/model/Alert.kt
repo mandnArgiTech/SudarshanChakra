@@ -1,6 +1,7 @@
 package com.sudarshanchakra.domain.model
 
 import com.google.gson.annotations.SerializedName
+import org.json.JSONObject
 
 data class Alert(
     val id: String = "",
@@ -18,6 +19,18 @@ data class Alert(
     val status: AlertStatus = AlertStatus.ACTIVE,
     val createdAt: String? = null,
 )
+
+/** Non-empty `clip_path` from [metadata] JSON (edge evidence), or null if absent/invalid. */
+fun Alert.clipPathFromMetadata(): String? {
+    if (metadata.isNullOrBlank()) return null
+    return try {
+        JSONObject(metadata).optString("clip_path").takeIf { it.isNotBlank() }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+fun Alert.hasClipEvidence(): Boolean = clipPathFromMetadata() != null
 
 enum class AlertPriority {
     @SerializedName("critical") CRITICAL,

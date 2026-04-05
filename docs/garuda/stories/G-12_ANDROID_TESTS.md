@@ -1,53 +1,49 @@
-# G-12: Android Test Coverage
+# G-12: Android test coverage (ViewModels)
 
-## Files to CREATE
+## Status: COMPLETE (ViewModel unit tests)
 
-### 1. `android/app/src/test/java/com/sudarshanchakra/ui/screens/alerts/AlertViewModelTest.kt`
-```kotlin
-@OptIn(ExperimentalCoroutinesApi::class)
-class AlertViewModelTest {
-    @Test fun `initial state has empty alerts`()
-    @Test fun `loadAlerts updates uiState with alerts`()
-    @Test fun `refresh sets isRefreshing and reloads`()
-}
-```
+This story delivers **unit tests for four screens’ ViewModels** under `android/app/src/test/...`, with **`kotlinx-coroutines-test`** and **MockK**, and a shared **`MainDispatcherRule`** (`StandardTestDispatcher` + `Dispatchers.setMain`).
 
-### 2. `android/app/src/test/java/com/sudarshanchakra/ui/screens/water/WaterViewModelTest.kt`
-```kotlin
-class WaterViewModelTest {
-    @Test fun `initial state has empty tanks`()
-    @Test fun `loadTanks fetches from repository`()
-    @Test fun `refresh reloads tanks`()
-}
-```
+**Out of scope here:** Compose **UI** tests (`createComposeRule`, etc.) — see the separate Garuda checklist row *UI component tests (G-12)*.
 
-### 3. `android/app/src/test/java/com/sudarshanchakra/ui/screens/siren/SirenViewModelTest.kt`
-```kotlin
-class SirenViewModelTest {
-    @Test fun `triggerSiren calls repository`()
-    @Test fun `stopSiren calls repository`()
-}
-```
+## Reality vs early draft
 
-### 4. `android/app/src/test/java/com/sudarshanchakra/ui/screens/login/LoginViewModelTest.kt`
-```kotlin
-class LoginViewModelTest {
-    @Test fun `login success sets isLoggedIn`()
-    @Test fun `login failure sets error message`()
-}
-```
+| Area | Note |
+|------|------|
+| **WaterViewModel** | Depends on **`ApiService`** (Retrofit `Response.success` / exceptions), not a dedicated repository type. |
+| **AlertViewModel** | Needs **`AlertRepository`**, **`AlertBadgeRepository`**, and **`ServerSettingsRepository.settings`** as a **`Flow<ServerSettings>`** for `edgeGuiBaseUrl`. **`init`** runs **`loadAlerts(true)`** — assert **steady state after `advanceUntilIdle()`** (e.g. `isLoading == false`), not the first pre-`init` `StateFlow` value. |
+| **SirenViewModel** | **`SirenRepository`** + **`DeviceRepository`**; **`init`** calls **`loadData`**. Tests use **`coVerify`** on **`triggerSiren` / `stopSiren`** (and mock **`getNodes` / `getHistory`** for load). |
+| **LoginViewModel** | **`init`** loads **`getRememberedLoginForm()`** — **`advanceUntilIdle()`** before asserting username/password. |
+| **Mocking repositories** | Production repositories are **classes**; they are marked **`open`** so MockK can subclass them on the JVM. **`ApiService`** remains an **interface** (no change). |
 
-### Dependencies needed in `build.gradle.kts` (testImplementation):
-```kotlin
-testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-testImplementation("io.mockk:mockk:1.13.8")
-```
+## Files
+
+| File | Role |
+|------|------|
+| `android/app/build.gradle.kts` | `testImplementation` **kotlinx-coroutines-test:1.7.3**, **mockk:1.13.8** |
+| `android/app/src/test/java/com/sudarshanchakra/MainDispatcherRule.kt` | Shared main dispatcher for VM tests |
+| `android/app/src/test/java/com/sudarshanchakra/ui/screens/alerts/AlertViewModelTest.kt` | Load success/failure, refresh → extra `getAlerts` |
+| `android/app/src/test/java/com/sudarshanchakra/ui/screens/water/WaterViewModelTest.kt` | ApiService mocks, error path, refresh settles |
+| `android/app/src/test/java/com/sudarshanchakra/ui/screens/siren/SirenViewModelTest.kt` | `triggerAllSirens` / `stopAllSirens` / `toggleNodeSiren` → repository calls |
+| `android/app/src/test/java/com/sudarshanchakra/ui/screens/login/LoginViewModelTest.kt` | Remembered form, blank validation, login success/failure |
 
 ## Verification
+
+From repo root (with Android SDK configured, e.g. `ANDROID_HOME` or `android/local.properties` **`sdk.dir`**):
+
 ```bash
-cd android && ./gradlew test 2>&1 | grep -E "PASSED|FAILED|tests"
-# Expected: 10+ tests passing
+cd android && ./gradlew :app:testDebugUnitTest
 ```
 
----
+Optional smoke:
 
+```bash
+./gradlew :app:testDebugUnitTest 2>&1 | grep -E "PASSED|FAILED|tests"
+```
+
+`connectedAndroidTest` / emulator tests are **not** required for this story.
+
+## Garuda checklist
+
+- **[x]** ViewModel unit tests (G-12) — this document.
+- **[ ]** UI component tests (G-12) — follow-up (Compose UI test harness).

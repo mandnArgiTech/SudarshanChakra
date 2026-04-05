@@ -1,7 +1,5 @@
 package com.sudarshanchakra.ui.screens.alerts
 
-import android.net.Uri
-import android.widget.VideoView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -46,8 +46,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.sudarshanchakra.domain.model.AlertPriority
 import com.sudarshanchakra.domain.model.AlertStatus
+import com.sudarshanchakra.domain.model.hasClipEvidence
 import com.sudarshanchakra.ui.components.PriorityBadge
 import com.sudarshanchakra.ui.theme.CardWhite
 import com.sudarshanchakra.ui.theme.CreamBackground
@@ -63,7 +67,8 @@ import com.sudarshanchakra.ui.theme.TextPrimary
 import com.sudarshanchakra.ui.theme.TextSecondary
 import com.sudarshanchakra.ui.theme.WarningPriority
 import com.sudarshanchakra.util.RelativeTimeFormatter
-import org.json.JSONObject
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 @Composable
 fun AlertDetailScreen(
@@ -133,15 +138,10 @@ fun AlertDetailScreen(
             }
             uiState.selectedAlert != null -> {
                 val alert = uiState.selectedAlert!!
-                val hasClip = remember(alert.metadata) {
-                    try {
-                        JSONObject(alert.metadata ?: "{}").optString("clip_path").isNotBlank()
-                    } catch (_: Exception) {
-                        false
-                    }
-                }
+                val hasClip = alert.hasClipEvidence()
                 val clipUrlString = if (hasClip && edgeBase.isNotBlank()) {
-                    "$edgeBase/api/clips/${alert.id}.mp4"
+                    val encId = URLEncoder.encode(alert.id, StandardCharsets.UTF_8.name())
+                    "$edgeBase/api/clips/$encId.mp4"
                 } else {
                     null
                 }
@@ -197,23 +197,11 @@ fun AlertDetailScreen(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = CardWhite),
                             ) {
-                                AndroidView(
+                                AlertClipPlayer(
+                                    clipUrl = clipUrlString,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .aspectRatio(16f / 9f),
-                                    factory = { ctx ->
-                                        VideoView(ctx).apply {
-                                            setVideoURI(Uri.parse(clipUrlString))
-                                            setOnPreparedListener { mp ->
-                                                mp.isLooping = false
-                                                start()
-                                            }
-                                        }
-                                    },
-                                    update = { view ->
-                                        view.setVideoURI(Uri.parse(clipUrlString))
-                                        view.start()
-                                    },
                                 )
                             }
                         } else {
@@ -326,6 +314,40 @@ fun AlertDetailScreen(
             }
         }
     }
+}
+
+@Composable
+private fun AlertClipPlayer(
+    clipUrl: String,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build()
+    }
+    LaunchedEffect(clipUrl) {
+        exoPlayer.setMediaItem(MediaItem.fromUri(clipUrl))
+        exoPlayer.prepare()
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                player = exoPlayer
+                useController = true
+            }
+        },
+        modifier = modifier,
+        update = { view ->
+            if (view.player !== exoPlayer) {
+                view.player = exoPlayer
+            }
+        },
+    )
 }
 
 @Composable

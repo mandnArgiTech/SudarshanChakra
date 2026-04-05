@@ -17,27 +17,6 @@ function AlertEvidencePanel({ alert, clipUrl }: { alert: Alert; clipUrl: string 
     <div className="px-4 py-4 bg-sc-surface-alt/80 space-y-4">
       <div className="text-[11px] uppercase tracking-wider font-mono text-sc-text-muted">Evidence</div>
       <div className="flex flex-col lg:flex-row gap-4 flex-wrap">
-        {hasClip && (
-          <div className="space-y-2 min-w-0 flex-1 max-w-xl">
-            <div className="flex items-center gap-2 text-sc-text text-xs font-mono">
-              <Film size={14} className="text-sc-accent shrink-0" />
-              Alert clip
-            </div>
-            <video
-              controls
-              className="w-full rounded-lg border border-sc-border bg-black max-h-56"
-              src={clipUrl}
-            />
-            <a
-              href={clipUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sc-accent text-xs font-mono underline"
-            >
-              Open clip in new tab
-            </a>
-          </div>
-        )}
         {alert.snapshotUrl && (
           <div className="space-y-2 min-w-0 flex-1 max-w-md">
             <div className="flex items-center gap-2 text-sc-text text-xs font-mono">
@@ -50,6 +29,28 @@ function AlertEvidencePanel({ alert, clipUrl }: { alert: Alert; clipUrl: string 
                 alt="Alert snapshot"
                 className="rounded-lg border border-sc-border max-h-48 w-auto object-contain bg-black"
               />
+            </a>
+          </div>
+        )}
+        {hasClip && (
+          <div className="space-y-2 min-w-0 flex-1 max-w-xl">
+            <div className="flex items-center gap-2 text-sc-text text-xs font-mono">
+              <Film size={14} className="text-sc-accent shrink-0" />
+              Alert clip
+            </div>
+            <video
+              controls
+              preload="metadata"
+              className="w-full rounded-lg border border-sc-border bg-black max-h-56"
+              src={clipUrl}
+            />
+            <a
+              href={clipUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sc-accent text-xs font-mono underline"
+            >
+              Open clip in new tab
             </a>
           </div>
         )}

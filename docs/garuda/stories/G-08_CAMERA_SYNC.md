@@ -1,175 +1,70 @@
-# G-08: camera_sync.py — Edge ↔ Backend Camera Config Sync
+# G-08: Edge ↔ backend camera config sync (`camera_sync.py`)
 
 ## Status
-NOT DONE — `cameras.json` is static. Cameras registered via dashboard/Android are stored in the database but edge never picks them up.
+**COMPLETE (baseline)** — [`edge/camera_sync.py`](edge/camera_sync.py) pulls cameras from device-service and writes `CONFIG_DIR/cameras.json`. [`farm_edge_node.py`](edge/farm_edge_node.py) can run sync on a background thread when `CAMERA_SYNC_ENABLED=true`. **Inference still does not hot-reload cameras**; restart the edge process after `cameras.json` changes (see [AGENTS.md](../../AGENTS.md)).
 
-## File to CREATE
+## Implementation (authoritative)
 
-### `edge/camera_sync.py`
-```python
-"""
-camera_sync.py — Periodically syncs camera configuration from backend API.
+| Piece | Location |
+|-------|----------|
+| Sync logic | [`edge/camera_sync.py`](edge/camera_sync.py) — `run_camera_sync()`, `fetch_cameras()`, `map_api_camera_to_edge()`, `build_cameras_document()`, `write_cameras_json()` |
+| HTTP | Stdlib **`urllib`** (no `requests` dependency) |
+| Periodic run | [`farm_edge_node.py`](edge/farm_edge_node.py) — thread when `CAMERA_SYNC_ENABLED` is true; interval `CAMERA_SYNC_INTERVAL_SEC` (default **900**); first run after **15s**; loop uses `max(60, interval)` seconds between runs |
+| Unit tests | [`edge/tests/test_camera_sync.py`](edge/tests/test_camera_sync.py) |
 
-If the remote camera list differs from local cameras.json, updates the file
-and signals the pipeline to restart affected grabbers.
+## Environment variables
 
-Runs as a daemon thread started from farm_edge_node.py.
-"""
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DEVICE_SERVICE_URL` | Yes | Base URL including **`/api/v1`** (e.g. `http://api-gateway:8080/api/v1` or `http://device-service:8082/api/v1`). |
+| `CAMERA_SYNC_TOKEN` | Yes | JWT `Bearer` for `GET /cameras?nodeId=…` (must not be empty or sync skips). |
+| `EDGE_NODE_ID` or `NODE_ID` | No | Query `nodeId` (default `edge-node-a`). |
+| `CONFIG_DIR` | No | Directory for `cameras.json` (default `/app/config`). |
+| `CAMERA_SYNC_ENABLED` | For daemon | Set `true` / `1` / `yes` on edge to enable the thread in `farm_edge_node`. |
+| `CAMERA_SYNC_INTERVAL_SEC` | No | Seconds between sync attempts (default `900`; effective minimum **60** in `farm_edge_node`). |
 
-import json
-import logging
-import os
-import threading
-import time
+## API contract
 
-import requests
+- **GET** `/api/v1/cameras?nodeId=<EDGE_NODE_ID>` — returns JSON array of cameras (device-service). Requires authenticated JWT with access to that tenant’s data; `getCamerasByNodeId` uses `@PreAuthorize('PERMISSION_cameras:view')`.
 
-log = logging.getLogger("camera_sync")
+## Behavior notes
 
-DEFAULT_INTERVAL = 300  # 5 minutes
-CONFIG_PATH = os.getenv("CAMERA_CONFIG", "/app/config/cameras.json")
-
-
-class CameraSync:
-    """Synchronise local cameras.json with the backend device-service API."""
-
-    def __init__(
-        self,
-        api_base: str,
-        node_id: str,
-        auth_token: str = "",
-        config_path: str = CONFIG_PATH,
-        interval: int = DEFAULT_INTERVAL,
-        on_change=None,
-    ):
-        self.api_base = api_base.rstrip("/")
-        self.node_id = node_id
-        self.auth_token = auth_token
-        self.config_path = config_path
-        self.interval = interval
-        self.on_change = on_change  # Callback: def on_change(new_cameras: list)
-        self._stop = threading.Event()
-        self._thread = None
-
-    def start(self):
-        self._thread = threading.Thread(target=self._loop, name="camera-sync", daemon=True)
-        self._thread.start()
-        log.info("Camera sync started (every %ds, node=%s)", self.interval, self.node_id)
-
-    def stop(self):
-        self._stop.set()
-        if self._thread:
-            self._thread.join(timeout=10)
-
-    def _loop(self):
-        while not self._stop.is_set():
-            try:
-                self._sync()
-            except Exception as e:
-                log.warning("Camera sync failed: %s", e)
-            self._stop.wait(self.interval)
-
-    def _sync(self):
-        url = f"{self.api_base}/api/v1/cameras?nodeId={self.node_id}"
-        headers = {}
-        if self.auth_token:
-            headers["Authorization"] = f"Bearer {self.auth_token}"
-
-        resp = requests.get(url, headers=headers, timeout=15)
-        if resp.status_code != 200:
-            log.warning("Camera sync API returned %d", resp.status_code)
-            return
-
-        remote_cameras = resp.json()
-        local_cameras = self._load_local()
-
-        # Compare by converting both to sorted JSON for deterministic diff
-        remote_sorted = json.dumps(sorted(remote_cameras, key=lambda c: c.get("id", "")), sort_keys=True)
-        local_sorted = json.dumps(sorted(local_cameras, key=lambda c: c.get("id", "")), sort_keys=True)
-
-        if remote_sorted != local_sorted:
-            log.info(
-                "Camera config changed: %d remote vs %d local cameras — updating",
-                len(remote_cameras), len(local_cameras),
-            )
-            self._save_local(remote_cameras)
-            if self.on_change:
-                self.on_change(remote_cameras)
-        else:
-            log.debug("Camera config unchanged (%d cameras)", len(local_cameras))
-
-    def _load_local(self) -> list:
-        if not os.path.isfile(self.config_path):
-            return []
-        try:
-            with open(self.config_path) as f:
-                data = json.load(f)
-            # Handle both formats: {"cameras": [...]} or [...]
-            if isinstance(data, dict) and "cameras" in data:
-                return data["cameras"]
-            if isinstance(data, list):
-                return data
-            return []
-        except Exception:
-            return []
-
-    def _save_local(self, cameras: list):
-        # Preserve the existing file format
-        try:
-            with open(self.config_path) as f:
-                existing = json.load(f)
-        except Exception:
-            existing = {}
-
-        if isinstance(existing, dict):
-            existing["cameras"] = cameras
-            output = existing
-        else:
-            output = {"cameras": cameras}
-
-        tmp_path = self.config_path + ".tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(output, f, indent=2)
-        os.replace(tmp_path, self.config_path)
-        log.info("Saved %d cameras to %s", len(cameras), self.config_path)
-
-    def force_sync(self):
-        """Trigger an immediate sync (called from MQTT command handler)."""
-        threading.Thread(target=self._sync, daemon=True).start()
-```
-
-## File to MODIFY
-
-### `edge/farm_edge_node.py`
-
-After existing initialisation, start the camera sync:
-```python
-from camera_sync import CameraSync
-
-# After pipeline start, add:
-camera_sync = CameraSync(
-    api_base=os.getenv("API_BASE", "http://localhost:8080"),
-    node_id=os.getenv("NODE_ID", "edge-node-a"),
-    auth_token=os.getenv("EDGE_AUTH_TOKEN", ""),
-    on_change=lambda cams: log.info("Camera config updated, restart pipeline for %d cameras", len(cams)),
-)
-camera_sync.start()
-```
+- **Diff-before-write:** If the normalized `cameras` document matches the existing file, sync **skips the write** and returns `False` (no “updated” log spam from `farm_edge_node`). See `read_cameras_document_from_disk` in [`camera_sync.py`](edge/camera_sync.py).
+- **CLI (`python -m camera_sync`):** Exits **0** after a successful run (whether the file changed or not); **1** if env missing, fetch fails, or other exception.
+- **Empty API list** writes `{"cameras":[]}` — can clear local config; ensure that matches ops expectations.
+- **JWT expiry:** Sync fails until the token is refreshed; use a rotation strategy suitable for unmanned edge nodes.
+- **Networking:** From inside Docker, use a hostname the edge container can resolve (not host `localhost` unless using host network).
 
 ## Verification
+
 ```bash
-# Register a new camera via API
-curl -X POST http://localhost:8080/api/v1/cameras \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"id":"cam-new","nodeId":"edge-node-a","name":"New Camera","rtspUrl":"rtsp://test:test@192.168.1.99:554/stream2","fpsTarget":2.0}'
+# Edge container env (example)
+# DEVICE_SERVICE_URL=http://host.docker.internal:8080/api/v1
+# CAMERA_SYNC_TOKEN=<JWT with cameras:view for the farm>
+# EDGE_NODE_ID=edge-node-a
+# CAMERA_SYNC_ENABLED=true
+# CAMERA_SYNC_INTERVAL_SEC=60
 
-# Wait 5 minutes (or set CAMERA_SYNC_INTERVAL=30 for testing)
-# Check edge logs
-docker logs edge-ai 2>&1 | grep "Camera config changed\|Saved.*cameras"
-# Expected: "Camera config changed: 3 remote vs 2 local cameras — updating"
+# After interval + first 15s delay, logs may show:
+docker logs <edge-container> 2>&1 | grep -E "camera_sync:|Camera sync thread"
 
-# Verify cameras.json updated
-docker exec edge-ai cat /app/config/cameras.json | jq '.cameras | length'
-# Expected: 3 (or however many cameras now exist)
+# Confirm file
+docker exec <edge-container> cat /app/config/cameras.json | head
 ```
+
+Manual one-shot (from `edge/`):
+
+```bash
+DEVICE_SERVICE_URL=http://localhost:8080/api/v1 CAMERA_SYNC_TOKEN=$TOKEN \\
+  EDGE_NODE_ID=edge-node-a CONFIG_DIR=./config python3 -m camera_sync
+```
+
+## Historical note
+
+An older story draft proposed a **`CameraSync` class** using **`requests`**, env names `API_BASE` / `EDGE_AUTH_TOKEN`, and **`on_change` pipeline hooks**. The repo uses the **functional** module above; that snippet is **not** the source of truth.
+
+## Follow-ups (out of scope for G-08 baseline)
+
+- Hot-reload inference pipeline when `cameras.json` changes (new grabbers without full restart).
+- Long-lived device / service credentials for edge.
+- MQTT-triggered forced sync.

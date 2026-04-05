@@ -4,6 +4,7 @@ import com.sudarshanchakra.mdm.model.MdmDevice;
 import com.sudarshanchakra.mdm.service.DeviceManagementService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,16 +36,19 @@ public class DeviceController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')")
     public ResponseEntity<MdmDevice> registerDevice(@RequestBody MdmDevice device) {
         return ResponseEntity.ok(deviceService.register(device));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')")
     public ResponseEntity<MdmDevice> updateDevice(@PathVariable UUID id, @RequestBody MdmDevice device) {
         return ResponseEntity.ok(deviceService.update(id, device));
     }
 
     @PatchMapping("/{id}/decommission")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')")
     public ResponseEntity<MdmDevice> decommission(@PathVariable UUID id) {
         return ResponseEntity.ok(deviceService.decommission(id));
     }

@@ -20,7 +20,7 @@ class JwtServiceTest {
     @Test
     void generateToken_containsSubjectAndRole() {
         UUID farm = UUID.fromString("a0000000-0000-0000-0000-000000000001");
-        String t = jwtService.generateToken("alice", "admin", farm, List.of("alerts", "water"), List.of());
+        String t = jwtService.generateToken("alice", "admin", farm, UUID.randomUUID(), List.of("alerts", "water"), List.of());
         assertThat(jwtService.extractUsername(t)).isEqualTo("alice");
         assertThat(jwtService.validateToken(t)).isTrue();
         assertThat(jwtService.extractFarmId(t)).contains(farm);
@@ -48,7 +48,7 @@ class JwtServiceTest {
     void shortSecret_padded() {
         JwtService shortKey = new JwtService("short", 1000L);
         UUID farm = UUID.fromString("a0000000-0000-0000-0000-000000000001");
-        String t = shortKey.generateToken("u", "viewer", farm, List.of(), List.of());
+        String t = shortKey.generateToken("u", "viewer", farm, null, List.of(), List.of());
         assertThat(shortKey.validateToken(t)).isTrue();
     }
 }

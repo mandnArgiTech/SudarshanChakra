@@ -41,3 +41,35 @@ def test_map_file_source():
 def test_build_document_skips_empty_id():
     doc = build_cameras_document([{"id": "", "name": "x", "rtspUrl": "rtsp://a"}])
     assert doc["cameras"] == []
+
+
+def test_run_camera_sync_skips_write_when_unchanged(monkeypatch, tmp_path):
+    import camera_sync as cs
+
+    monkeypatch.setenv("DEVICE_SERVICE_URL", "http://example/api/v1")
+    monkeypatch.setenv("CAMERA_SYNC_TOKEN", "tok")
+    monkeypatch.setenv("EDGE_NODE_ID", "n1")
+    monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+
+    api_cam = {
+        "id": "c1",
+        "name": "Gate",
+        "rtspUrl": "rtsp://u:p@10/stream",
+        "fpsTarget": 2.0,
+        "enabled": True,
+        "sourceType": "rtsp",
+    }
+
+    def fake_fetch(base, node, token):
+        assert base == "http://example/api/v1"
+        assert node == "n1"
+        assert token == "tok"
+        return [api_cam]
+
+    monkeypatch.setattr(cs, "fetch_cameras", fake_fetch)
+
+    assert cs.run_camera_sync() is True
+    path = tmp_path / "cameras.json"
+    mtime1 = path.stat().st_mtime_ns
+    assert cs.run_camera_sync() is False
+    assert path.stat().st_mtime_ns == mtime1

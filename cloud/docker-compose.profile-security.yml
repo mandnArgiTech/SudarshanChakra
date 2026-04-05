@@ -1,12 +1,15 @@
-# SudarshanChakra — optional overlay: security-focused stack notes.
-# Merge with the main compose file when you want auth + gateway + audit-capable services only.
+# SudarshanChakra — G-18 profile reference: security
+# ==============================================================================
+# Service selection is defined by Compose profiles on docker-compose.vps.yml.
+# This file is documentation only (no merge required).
 #
-# Typical services: postgres, rabbitmq, auth-service, api-gateway (and optionally device/alert for device APIs).
-# Add TLS termination (reverse proxy), JWT rotation, and RabbitMQ TLS when hardening production.
+# Profile: security
+#   Includes: postgres, rabbitmq, auth, alert, device, siren, api-gateway, dashboard, nginx
+#   Excludes: mdm-service
 #
 # Example:
-#   docker compose -f docker-compose.yml -f docker-compose.profile-security.yml up -d
+#   cd cloud && docker compose -f docker-compose.vps.yml --profile security up -d
 #
-# Ensure `JWT_SECRET`, DB passwords, and `SUPER_ADMIN` bootstrap users are set via secrets, not defaults.
-
+# Or: ./cloud/deploy.sh --profile security
+# ==============================================================================
 services: {}

@@ -40,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import com.sudarshanchakra.service.MqttForegroundService
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -75,6 +76,11 @@ fun AlertFeedScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val waterUiState by waterViewModel.uiState.collectAsStateWithLifecycle()
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = uiState.isRefreshing,
+        onRefresh = { viewModel.refresh() },
+    )
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val activity = LocalContext.current as? ComponentActivity
     BackHandler {
         activity?.moveTaskToBack(true)
@@ -168,86 +174,114 @@ fun AlertFeedScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        when {
-            uiState.isLoading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = Terracotta)
-                }
-            }
-            uiState.error != null -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "⚠️",
-                            fontSize = 40.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = uiState.error ?: "Unknown error",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "You may be offline — pull saved data or retry after checking connection.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
-                        )
-                    }
-                }
-            }
-            uiState.filteredAlerts.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "✅", fontSize = 40.sp)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "No alerts",
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text = "All clear on the farm",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextMuted
-                        )
-                    }
-                }
-            }
-            else -> {
-                val pullRefreshState = rememberPullRefreshState(
-                    refreshing = uiState.isRefreshing,
-                    onRefresh = { viewModel.refresh() },
-                )
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // Water tank strip — tap to navigate to WaterTanksScreen
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        if (waterUiState.tanks.isNotEmpty()) {
-                            WaterStripCard(
-                                tanks = waterUiState.tanks,
-                                motors = waterUiState.motors,
-                                onClick = onWaterCardClick,
-                                modifier = androidx.compose.ui.Modifier.padding(horizontal = 0.dp, vertical = 4.dp),
-                            )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+            when {
+                uiState.isLoading -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pullRefresh(pullRefreshState),
+                    ) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(screenHeight),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(color = Terracotta)
+                            }
                         }
+                    }
+                }
+                uiState.error != null -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pullRefresh(pullRefreshState),
+                    ) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(screenHeight),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = "⚠️",
+                                        fontSize = 40.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = uiState.error ?: "Unknown error",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextSecondary,
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text(
+                                        text = "You may be offline — pull saved data or retry after checking connection.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextMuted,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                uiState.filteredAlerts.isEmpty() -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pullRefresh(pullRefreshState),
+                    ) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(screenHeight),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(text = "✅", fontSize = 40.sp)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "No alerts",
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "All clear on the farm",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextMuted
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            if (waterUiState.tanks.isNotEmpty()) {
+                                WaterStripCard(
+                                    tanks = waterUiState.tanks,
+                                    motors = waterUiState.motors,
+                                    onClick = onWaterCardClick,
+                                    modifier = androidx.compose.ui.Modifier.padding(horizontal = 0.dp, vertical = 4.dp),
+                                )
+                            }
 
-                        val mqttConnected by MqttForegroundService.mqttConnected.collectAsStateWithLifecycle()
+                            val mqttConnected by MqttForegroundService.mqttConnected.collectAsStateWithLifecycle()
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .pullRefresh(pullRefreshState),
-                        ) {
                             LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .pullRefresh(pullRefreshState),
                                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
@@ -266,15 +300,15 @@ fun AlertFeedScreen(
                                 }
                                 item { Spacer(modifier = Modifier.height(16.dp)) }
                             }
-                            PullRefreshIndicator(
-                                refreshing = uiState.isRefreshing,
-                                state = pullRefreshState,
-                                modifier = Modifier.align(Alignment.TopCenter),
-                            )
                         }
                     }
                 }
             }
+            PullRefreshIndicator(
+                refreshing = uiState.isRefreshing,
+                state = pullRefreshState,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
         }
     }

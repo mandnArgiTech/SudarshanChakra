@@ -11,7 +11,8 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-    open-in-view: false
+    # Required for AuthTenantHibernateFilterActivationFilter (same pattern as jwt-support resource servers)
+    open-in-view: true
   flyway:
     enabled: ${FLYWAY_ENABLED:true}
     baseline-on-migrate: true
@@ -24,6 +25,10 @@ server:
 jwt:
   secret: ${JWT_SECRET:default-dev-secret-change-in-production-must-be-at-least-256-bits-long-for-hs256}
   expiration-ms: 86400000
+
+tenant:
+  filter:
+    enabled: ${TENANT_FILTER_ENABLED:true}
 
 management:
   endpoints:

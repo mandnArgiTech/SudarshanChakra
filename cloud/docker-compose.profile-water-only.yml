@@ -1,12 +1,18 @@
-# SudarshanChakra — optional profile: water + pumps + alerts (no camera/siren edge stack).
-# Use as a reference with your main compose file: merge services you need per tenant plan.
+# SudarshanChakra — G-18 profile reference: water_only
+# ==============================================================================
+# Service selection is defined by Compose profiles on docker-compose.vps.yml.
+# This file is documentation only (no merge required).
 #
-# Typical stack: postgres, rabbitmq, auth-service, device-service, alert-service, api-gateway, dashboard.
-# Omit: siren-service, edge-ai, when customer has no cameras/sirens.
+# Profile: water_only
+#   Includes: postgres, rabbitmq, auth, alert, device, api-gateway, dashboard, nginx
+#   Excludes: siren-service, mdm-service (same as monitoring)
 #
-# Example (conceptual):
-#   docker compose -f docker-compose.yml -f docker-compose.profile-water-only.yml up -d
+# Set modulesEnabled for the farm to water/pumps/alerts (etc.) via scripts/deploy_saas_farm.sh
+# or POST /api/v1/farms — see docs/garuda/stories/G-18_DEPLOY_PROFILES.md.
 #
-# Ensure farm `modules_enabled` in DB matches (e.g. water_only plan).
-
+# Example:
+#   cd cloud && docker compose -f docker-compose.vps.yml --profile water_only up -d
+#
+# Or: ./cloud/deploy.sh --profile water_only
+# ==============================================================================
 services: {}

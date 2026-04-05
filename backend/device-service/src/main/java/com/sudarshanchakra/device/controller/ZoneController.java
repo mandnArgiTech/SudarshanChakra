@@ -1,5 +1,6 @@
 package com.sudarshanchakra.device.controller;
 
+import com.sudarshanchakra.device.audit.Auditable;
 import com.sudarshanchakra.device.model.Zone;
 import com.sudarshanchakra.device.service.DeviceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -44,6 +45,7 @@ public class ZoneController {
     }
 
     @PostMapping
+    @Auditable(action = "zone.create", entityType = "zone")
     @PreAuthorize("hasAuthority('PERMISSION_zones:manage')")
     @Operation(summary = "Create a new zone")
     public ResponseEntity<Zone> createZone(@Valid @RequestBody Zone zone) {
@@ -51,6 +53,7 @@ public class ZoneController {
     }
 
     @DeleteMapping("/{id}")
+    @Auditable(action = "zone.delete", entityType = "zone", entityId = "#id")
     @PreAuthorize("hasAuthority('PERMISSION_zones:manage')")
     @Operation(summary = "Delete a zone")
     public ResponseEntity<Void> deleteZone(@PathVariable String id) {

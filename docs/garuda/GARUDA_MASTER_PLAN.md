@@ -106,7 +106,7 @@ WS-1 ──→ WS-4 (MDM) ──→ WS-5
 
 | Story | Title | Deliverable | Acceptance Criteria |
 |:------|:------|:-----------|:-------------------|
-| G-13 | Preflight checker | Already done: `e2e/preflight_check.py` | `python3 preflight_check.py` → all green. |
+| G-13 | Preflight checker | Already done: `e2e/preflight_check.py` | `python3 e2e/preflight_check.py --config e2e/config/e2e_config.yml` → all green (farm/lab config). |
 | G-14 | E2E test suite execution | Playwright + Maestro + real cameras + ESP8266 | 68 tests across 11 suites. Green on real hardware. |
 
 ### WS-6: Infrastructure (2 stories)
@@ -121,7 +121,7 @@ WS-1 ──→ WS-4 (MDM) ──→ WS-5
 | Story | Title | Deliverable | Acceptance Criteria |
 |:------|:------|:-----------|:-------------------|
 | G-17 | Docker image tagging + GHCR push | CI pushes versioned images on tag | `docker pull ghcr.io/mandnargitech/auth-service:garuda` works. |
-| G-18 | deploy.sh + compose profiles | Functional deployment script + water_only/security/full profiles | `./deploy.sh --plan full` provisions new farm end-to-end. |
+| G-18 | deploy.sh + compose profiles | `docker-compose.vps.yml` profiles + `scripts/deploy_saas_farm.sh` | `./scripts/deploy_saas_farm.sh --plan full …` provisions farm (+ optional compose); `./cloud/deploy.sh --profile full` builds/starts full stack. |
 
 ---
 

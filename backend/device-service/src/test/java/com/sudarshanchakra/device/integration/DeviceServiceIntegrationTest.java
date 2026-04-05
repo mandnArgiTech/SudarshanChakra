@@ -11,6 +11,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -21,14 +23,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class DeviceServiceIntegrationTest extends AbstractDeviceIntegrationTest {
 
-    private static final String FARM = "a0000000-0000-0000-0000-000000000001";
+    private static final String FARM_A = "a0000000-0000-0000-0000-000000000001";
+    private static final String FARM_B = "b0000000-0000-0000-0000-000000000001";
 
     @Autowired
     private MockMvc mockMvc;
 
     private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder withAuth(
             org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder req) {
-        return req.header(HttpHeaders.AUTHORIZATION, DeviceTestJwt.bearerForFarm(UUID.fromString(FARM)));
+        return req.header(HttpHeaders.AUTHORIZATION, DeviceTestJwt.bearerForFarm(UUID.fromString(FARM_A)));
     }
 
     @Test
@@ -36,7 +39,7 @@ class DeviceServiceIntegrationTest extends AbstractDeviceIntegrationTest {
         String id = "edge-it-" + System.currentTimeMillis();
         String body = String.format(
                 "{\"id\":\"%s\",\"farmId\":\"%s\",\"displayName\":\"IT Node\",\"status\":\"online\"}",
-                id, FARM);
+                id, FARM_A);
 
         mockMvc.perform(withAuth(post("/api/v1/nodes")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -59,7 +62,7 @@ class DeviceServiceIntegrationTest extends AbstractDeviceIntegrationTest {
         mockMvc.perform(withAuth(post("/api/v1/nodes")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(String.format(
-                                "{\"id\":\"%s\",\"farmId\":\"%s\",\"displayName\":\"N\"}", nodeId, FARM))))
+                                "{\"id\":\"%s\",\"farmId\":\"%s\",\"displayName\":\"N\"}", nodeId, FARM_A))))
                 .andExpect(status().isOk());
 
         String camId = "cam-it-1";
@@ -90,5 +93,19 @@ class DeviceServiceIntegrationTest extends AbstractDeviceIntegrationTest {
         mockMvc.perform(withAuth(get("/api/v1/water/motors")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
+    }
+
+    /** Tenant Hibernate filter: JWT farm B has no edge_nodes in seed data; farm A has two. */
+    @Test
+    void listNodes_jwtFarmScopesResults() throws Exception {
+        mockMvc.perform(get("/api/v1/nodes")
+                        .header(HttpHeaders.AUTHORIZATION, DeviceTestJwt.bearerForFarm(UUID.fromString(FARM_B))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+
+        mockMvc.perform(withAuth(get("/api/v1/nodes")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(greaterThanOrEqualTo(2))))
+                .andExpect(jsonPath("$[?(@.id=='edge-node-a')]").exists());
     }
 }

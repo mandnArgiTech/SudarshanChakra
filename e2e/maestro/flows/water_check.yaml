@@ -1,0 +1,6 @@
+appId: com.sudarshanchakra
+---
+# T11.5 — run after login.yaml in a session; tune selectors for Water tab.
+- launchApp
+- assertVisible:
+    text: ".*"

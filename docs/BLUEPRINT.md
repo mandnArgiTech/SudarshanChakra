@@ -1379,7 +1379,7 @@ services:
     restart: always
 
   api-gateway:
-    image: ghcr.io/mandnargitech/sudarshanchakra/api-gateway:latest
+    image: ghcr.io/mandnargitech/api-gateway:latest
     ports:
       - "8080:8080"
     environment:
@@ -1392,7 +1392,7 @@ services:
     restart: always
 
   alert-service:
-    image: ghcr.io/mandnargitech/sudarshanchakra/alert-service:latest
+    image: ghcr.io/mandnargitech/alert-service:latest
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sudarshanchakra
       - SPRING_RABBITMQ_HOST=rabbitmq
@@ -1403,7 +1403,7 @@ services:
     restart: always
 
   device-service:
-    image: ghcr.io/mandnargitech/sudarshanchakra/device-service:latest
+    image: ghcr.io/mandnargitech/device-service:latest
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sudarshanchakra
     depends_on:
@@ -1411,7 +1411,7 @@ services:
     restart: always
 
   auth-service:
-    image: ghcr.io/mandnargitech/sudarshanchakra/auth-service:latest
+    image: ghcr.io/mandnargitech/auth-service:latest
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sudarshanchakra
       - JWT_SECRET=${JWT_SECRET}
@@ -1420,7 +1420,7 @@ services:
     restart: always
 
   siren-service:
-    image: ghcr.io/mandnargitech/sudarshanchakra/siren-service:latest
+    image: ghcr.io/mandnargitech/siren-service:latest
     environment:
       - SPRING_RABBITMQ_HOST=rabbitmq
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/sudarshanchakra
@@ -1430,7 +1430,7 @@ services:
     restart: always
 
   react-dashboard:
-    image: ghcr.io/mandnargitech/sudarshanchakra/dashboard:latest
+    image: ghcr.io/mandnargitech/dashboard:latest
     ports:
       - "443:443"
     volumes:
@@ -1508,8 +1508,8 @@ jobs:
       - name: Docker Build & Push
         run: |
           echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker build -t ghcr.io/mandnargitech/sudarshanchakra/${{ matrix.service }}:latest backend/${{ matrix.service }}
-          docker push ghcr.io/mandnargitech/sudarshanchakra/${{ matrix.service }}:latest
+          docker build -t ghcr.io/mandnargitech/${{ matrix.service }}:latest backend/${{ matrix.service }}
+          docker push ghcr.io/mandnargitech/${{ matrix.service }}:latest
       
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1

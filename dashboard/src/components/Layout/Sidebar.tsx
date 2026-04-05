@@ -21,6 +21,7 @@ import { useNodes } from '@/api/devices';
 import { useAuth } from '@/hooks/useAuth';
 import type { UserRole } from '@/types';
 
+/** Keep `to` + `module` in sync with `MAIN_NAV_MODULE_ORDER` in `@/utils/moduleNavigation`. */
 const mainNavItems: {
   to: string;
   icon: typeof LayoutDashboard;

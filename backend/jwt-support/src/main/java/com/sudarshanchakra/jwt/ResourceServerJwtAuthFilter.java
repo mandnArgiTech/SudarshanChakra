@@ -45,7 +45,7 @@ public class ResourceServerJwtAuthFilter extends OncePerRequestFilter {
                                 new UsernamePasswordAuthenticationToken(pj.username(), null, authorities);
                         auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(auth);
-                        TenantContext.set(pj.farmId(), pj.isSuperAdmin());
+                        TenantContext.set(pj.farmId(), pj.isSuperAdmin(), pj.userId());
                     }
                 } catch (Exception e) {
                     log.warn("JWT processing failed: {}", e.getMessage());

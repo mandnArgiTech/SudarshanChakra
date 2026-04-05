@@ -1537,13 +1537,14 @@ cmd_deploy_docker() {
     log_info "Skipping simulator image (SKIP_SIMULATOR=1)."
   fi
 
-  # Start everything via Compose (run from cloud/ so .env is loaded)
-  local compose_profile_args=()
+  # Start everything via Compose (run from cloud/ so .env is loaded).
+  # G-18: core services require --profile full; simulator adds --profile dev.
+  local compose_profile_args=(--profile full)
   if [[ "${SKIP_SIMULATOR}" != "1" ]]; then
     compose_profile_args+=(--profile dev)
-    log_info "Starting Docker Compose stack (profile dev: farm simulator on :3001)..."
+    log_info "Starting Docker Compose stack (profiles full + dev: farm simulator on :3001)..."
   else
-    log_info "Starting Docker Compose stack..."
+    log_info "Starting Docker Compose stack (profile full)..."
   fi
   compose_vps_exec "${compose_profile_args[@]}" up -d \
     || { log_error "docker compose up failed."; return 1; }

@@ -126,3 +126,6 @@ replay_pid*
 runs/
 venv/
 vpn/*.ovpn
+edge/vpn/*.ovpn
+cloud/vpn/ta.key
+cloud/vpn/easy-rsa/

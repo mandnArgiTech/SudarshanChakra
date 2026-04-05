@@ -15,7 +15,7 @@ import javax.inject.Singleton
  * Cleared when the user opens the alert feed.
  */
 @Singleton
-class AlertBadgeRepository @Inject constructor(
+open class AlertBadgeRepository @Inject constructor(
     private val dataStore: DataStore<Preferences>,
 ) {
     companion object {

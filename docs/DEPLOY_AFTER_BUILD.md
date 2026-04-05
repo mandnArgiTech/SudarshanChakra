@@ -68,7 +68,8 @@ cd /path/to/SudarshanChakra
 ```
 
 - **First time:** Copy `cloud/.env.example` to `cloud/.env` and set `DB_PASS`, `RABBITMQ_PASS`, `JWT_SECRET` (e.g. `openssl rand -hex 32`). The script creates `cloud/.env` from the example if missing.
-- **Options:** `./cloud/deploy.sh --no-build` to skip building images; `./cloud/deploy.sh --build-only` to only build images.
+- **Options:** `./cloud/deploy.sh --no-build` to skip building images; `./cloud/deploy.sh --build-only` to only build images; **`./cloud/deploy.sh --profile security`** (or `monitoring`, `water_only`) for a smaller stack — see [garuda/stories/G-18_DEPLOY_PROFILES.md](garuda/stories/G-18_DEPLOY_PROFILES.md).
+- **SaaS farm + modules:** [scripts/deploy_saas_farm.sh](../scripts/deploy_saas_farm.sh) calls `POST /api/v1/farms` (with initial admin) and optionally `docker compose --profile <plan> up -d`.
 - **Ports:** Dashboard and API are behind Nginx. If host port 80 is free, edit `cloud/docker-compose.vps.yml` and set nginx ports to `"80:80"`. By default the script uses **9080** so SudarshanChakra does not conflict with other apps on the VPS (e.g. Portainer on vivasvan-tech.in).
 - **Access:** Dashboard: `http://<vps-ip>:9080`, API: `http://<vps-ip>:9080/api/v1/`. See [VPS_HEALTH_AND_USAGE.md](VPS_HEALTH_AND_USAGE.md) for health checks and usage.
 
@@ -90,7 +91,7 @@ npm run build
 # (Dockerfiles may expect to be run from backend/ with context; adjust paths as needed.)
 ```
 
-The repo’s `cloud/docker-compose.yml` references **pre-built images** at `ghcr.io/mandnargitech/sudarshanchakra/*`. To run without a registry you have two options:
+The repo’s `cloud/docker-compose.yml` references **pre-built images** at `ghcr.io/mandnargitech/<service>` (e.g. `api-gateway`, `dashboard`), published by [`.github/workflows/docker-publish.yml`](../.github/workflows/docker-publish.yml) on pushes to `main` and on **git tags**. To run without a registry you have two options:
 
 - Use **option B** (push to a registry after building locally), or  
 - Add a **compose override** that uses `build:` and local Dockerfiles (build context must be set so each service’s Dockerfile can see the root Gradle files).

@@ -10,7 +10,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class AlertRepository @Inject constructor(
+open class AlertRepository @Inject constructor(
     private val apiService: ApiService,
     private val alertDao: AlertDao,
 ) {

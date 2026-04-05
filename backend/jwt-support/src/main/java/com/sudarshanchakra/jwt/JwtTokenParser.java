@@ -53,7 +53,16 @@ public class JwtTokenParser {
             farmId = UUID.fromString(farm.toString());
         }
         List<String> permissions = extractStringList(c.get("permissions"));
-        return new ParsedJwt(username, farmId, role.trim(), permissions);
+        UUID userId = null;
+        Object uid = c.get("user_id");
+        if (uid != null && !uid.toString().isBlank()) {
+            try {
+                userId = UUID.fromString(uid.toString());
+            } catch (IllegalArgumentException e) {
+                log.debug("Invalid user_id claim: {}", uid);
+            }
+        }
+        return new ParsedJwt(username, farmId, role.trim(), permissions, userId);
     }
 
     private Claims parseClaims(String token) {
@@ -78,7 +87,7 @@ public class JwtTokenParser {
         return List.of();
     }
 
-    public record ParsedJwt(String username, UUID farmId, String role, List<String> permissions) {
+    public record ParsedJwt(String username, UUID farmId, String role, List<String> permissions, UUID userId) {
         public boolean isSuperAdmin() {
             return "super_admin".equalsIgnoreCase(role);
         }

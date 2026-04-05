@@ -70,8 +70,19 @@ logging.basicConfig(
 log = logging.getLogger("farm_edge_node")
 
 
-def _mqtt_admin_reload(zone_engine, mqtt_client):
+def _mqtt_admin_reload(zone_engine, mqtt_client, msg=None):
     """Reload zones.json + suppression_rules.json (topic farm/admin/reload_config)."""
+    if msg is not None and getattr(msg, "payload", None):
+        try:
+            body = json.loads(msg.payload.decode() or "{}")
+            log.info(
+                "reload_config MQTT: event=%s zone_id=%s camera_id=%s",
+                body.get("event", "?"),
+                body.get("zone_id"),
+                body.get("camera_id"),
+            )
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+            log.info("reload_config MQTT: non-JSON payload, reloading anyway")
     try:
         from detection_filters import reload_suppression_rules
         zone_engine.reload()
@@ -265,7 +276,7 @@ def setup_siren_listener(mqtt_client, zone_engine, pipeline_holder):
 
     def combined(client, userdata, msg):
         if msg.topic == "farm/admin/reload_config":
-            _mqtt_admin_reload(zone_engine, client)
+            _mqtt_admin_reload(zone_engine, client, msg)
         elif msg.topic == "farm/admin/model_update":
             _mqtt_model_update(client, msg, pipeline_holder)
         else:
@@ -386,7 +397,7 @@ def main():
 
         def dev_route(client, userdata, msg):
             if msg.topic == "farm/admin/reload_config":
-                _mqtt_admin_reload(zone_engine, client)
+                _mqtt_admin_reload(zone_engine, client, msg)
             elif msg.topic == "farm/admin/model_update":
                 _mqtt_model_update(client, msg, pipeline_holder)
             else:

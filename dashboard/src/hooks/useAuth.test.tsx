@@ -83,3 +83,84 @@ describe('useAuth', () => {
     expect(localStorage.getItem('sc_token')).toBeNull();
   });
 });
+
+function HasModuleProbe({ id }: { id: string | null }) {
+  const { hasModule } = useAuth();
+  return <span data-testid="hm">{String(hasModule(id))}</span>;
+}
+
+function LoginWithModules({ modules }: { modules: string[] }) {
+  const { login } = useAuth();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        login('tok', 'ref', {
+          id: '1',
+          username: 'u',
+          email: '',
+          role: 'viewer',
+          farmId: 'f1',
+          active: true,
+          modules,
+        })
+      }
+    >
+      in-mod
+    </button>
+  );
+}
+
+describe('useAuth hasModule', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('null module is always allowed', () => {
+    render(
+      <AuthProvider>
+        <HasModuleProbe id={null} />
+      </AuthProvider>,
+    );
+    expect(screen.getByTestId('hm')).toHaveTextContent('true');
+  });
+
+  it('missing modules on user allows any module (legacy)', () => {
+    render(
+      <AuthProvider>
+        <>
+          <T />
+          <HasModuleProbe id="cameras" />
+        </>
+      </AuthProvider>,
+    );
+    fireEvent.click(screen.getByText('in'));
+    expect(screen.getByTestId('hm')).toHaveTextContent('true');
+  });
+
+  it('restricts to listed modules when modules non-empty', () => {
+    render(
+      <AuthProvider>
+        <>
+          <LoginWithModules modules={['water', 'alerts']} />
+          <HasModuleProbe id="cameras" />
+          <HasModuleProbe id="water" />
+        </>
+      </AuthProvider>,
+    );
+    fireEvent.click(screen.getByText('in-mod'));
+    expect(screen.getAllByTestId('hm')[0]).toHaveTextContent('false');
+    expect(screen.getAllByTestId('hm')[1]).toHaveTextContent('true');
+  });
+
+  it('empty modules array allows all (legacy)', () => {
+    render(
+      <AuthProvider>
+        <>
+          <LoginWithModules modules={[]} />
+          <HasModuleProbe id="cameras" />
+        </>
+      </AuthProvider>,
+    );
+    fireEvent.click(screen.getByText('in-mod'));
+    expect(screen.getByTestId('hm')).toHaveTextContent('true');
+  });
+});

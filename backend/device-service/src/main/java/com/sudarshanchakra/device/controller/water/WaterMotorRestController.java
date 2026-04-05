@@ -1,5 +1,6 @@
 package com.sudarshanchakra.device.controller.water;
 
+import com.sudarshanchakra.device.audit.Auditable;
 import com.sudarshanchakra.device.dto.water.MotorCommandRequest;
 import com.sudarshanchakra.device.dto.water.MotorUpdateRequest;
 import com.sudarshanchakra.device.model.water.WaterMotorController;
@@ -38,6 +39,7 @@ public class WaterMotorRestController {
     }
 
     @PostMapping("/{id}/command")
+    @Auditable(action = "pump.command", entityType = "motor", entityId = "#id")
     @PreAuthorize("hasAuthority('PERMISSION_pumps:control')")
     @Operation(summary = "Send pump command: pump_on | pump_off | pump_auto")
     public ResponseEntity<Map<String, String>> sendCommand(

@@ -28,7 +28,7 @@ data class RememberedLoginForm(
 )
 
 @Singleton
-class AuthRepository @Inject constructor(
+open class AuthRepository @Inject constructor(
     private val apiService: ApiService,
     private val dataStore: DataStore<Preferences>,
     private val secureCredentialStore: SecureCredentialStore,

@@ -1,78 +1,38 @@
-# G-11: Android Alert Video Clip (ExoPlayer)
+# G-11: Android alert detail — video evidence (Media3 / ExoPlayer)
 
-## Prerequisites
-- G-06 complete (media3 dependency added)
+## Status
 
-## File to MODIFY
+**COMPLETE (baseline)** — Alert detail plays edge-hosted MP4 evidence with **Media3 `ExoPlayer`** and **`PlayerView`** when alert **`metadata`** JSON includes a non-empty **`clip_path`** (same contract as dashboard G-09 and the edge [`alert_engine.py`](edge/alert_engine.py) payload).
 
-### `android/.../ui/screens/alerts/AlertDetailScreen.kt`
+## Implementation (authoritative)
 
-Read the file. Find where the alert snapshot image is displayed.
+| Piece | Location |
+|-------|----------|
+| Player UI | [`AlertDetailScreen.kt`](android/app/src/main/java/com/sudarshanchakra/ui/screens/alerts/AlertDetailScreen.kt) — `AlertClipPlayer` (`ExoPlayer` + `LaunchedEffect(clipUrl)` + `DisposableEffect` release) |
+| Edge base URL | [`AlertViewModel.edgeGuiBaseUrl`](android/app/src/main/java/com/sudarshanchakra/ui/screens/alerts/AlertViewModel.kt) — from **Server settings** (same as Edge GUI / snapshots) |
+| `clip_path` parsing | [`Alert.kt`](android/app/src/main/java/com/sudarshanchakra/domain/model/Alert.kt) — `clipPathFromMetadata()`, `hasClipEvidence()` |
+| Media3 deps | [`android/app/build.gradle.kts`](android/app/build.gradle.kts) — `media3-exoplayer`, `media3-ui` (G-06 prerequisite) |
 
-Add BELOW the snapshot:
-```kotlin
-// Video clip player
-if (!alert.clipPath.isNullOrBlank()) {
-    val context = LocalContext.current
-    val edgeBase = remember { RuntimeConnectionConfig.getEdgeBaseUrl(context) }
-    val clipUrl = "$edgeBase/api/clips/${alert.id}.mp4"
-    
-    val exoPlayer = remember(clipUrl) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(clipUrl))
-            prepare()
-        }
-    }
-    
-    DisposableEffect(clipUrl) {
-        onDispose { exoPlayer.release() }
-    }
-    
-    Text(
-        text = "Video evidence",
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-    )
-    
-    AndroidView(
-        factory = { ctx ->
-            androidx.media3.ui.PlayerView(ctx).apply {
-                player = exoPlayer
-                useController = true
-            }
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 9f)
-            .clip(RoundedCornerShape(12.dp)),
-    )
-}
-```
+## Data and URL
 
-### Imports needed:
-```kotlin
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
-import android.view.ViewGroup
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.runtime.DisposableEffect
-```
+- **Signal:** `metadata.clip_path` (snake_case), not a separate API field on the `Alert` data class (avoids duplicating backend JSON).
+- **Playback URL:** `{edgeGuiBase}/api/clips/{urlEncodedAlertId}.mp4` — **alert id** is URL-encoded for reserved characters.
+- **Missing Edge GUI base:** UI shows copy to set **Edge GUI base URL** in Server settings (direct HTTP to Flask, not Spring gateway).
 
-### Check Alert data class
-Ensure `clipPath` field exists in `android/.../domain/model/Alert.kt`:
-```kotlin
-data class Alert(
-    // ... existing fields ...
-    val clipPath: String? = null,
-)
-```
+## Historical note
+
+An older draft used **`VideoView`**, a top-level **`clipPath`** property on `Alert`, and **`RuntimeConnectionConfig.getEdgeBaseUrl(context)`** — that **getter does not exist**; runtime config uses **`getEdgeGuiBaseUrl()`** without `Context`, and the screen correctly uses the **ViewModel** settings flow. The old snippet is **not** the source of truth.
 
 ## Verification
+
 ```bash
 cd android && ./gradlew assembleDebug
-# Open alert with video clip → ExoPlayer renders with play/pause/seek controls
+# Set Edge GUI base to reachable edge (e.g. http://10.0.2.2:5000 on emulator).
+# Open an alert whose metadata includes clip_path → Evidence clip with ExoPlayer controls.
 ```
 
----
+## Limitations / follow-ups
 
+- **Cleartext HTTP** to a LAN edge may require **`usesCleartextTraffic`** or a **network security config** on some builds.
+- **404 / race:** `clip_path` may appear before the `.mp4` exists on disk — user can leave and re-open; optional retry UI later.
+- Snapshot block above the clip is still a **placeholder** (icon + label); loading a real snapshot image is a separate enhancement.

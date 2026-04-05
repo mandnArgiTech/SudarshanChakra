@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import AlertTable from './AlertTable';
+import { edgeAlertClipUrl } from '@/lib/edgeSnapshot';
 import type { Alert } from '@/types';
 
 const newAlert: Alert = {
@@ -75,5 +76,19 @@ describe('AlertTable', () => {
     render(<AlertTable alerts={[withClip]} />);
     const toggles = screen.getAllByRole('button', { name: /clip/i });
     expect(toggles.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows video with edgeAlertClipUrl when evidence is expanded', () => {
+    const withClip: Alert = {
+      ...newAlert,
+      id: 't1',
+      metadata: JSON.stringify({ clip_path: 't1.mp4' }),
+    };
+    const { container } = render(<AlertTable alerts={[withClip]} />);
+    const clipToggles = screen.getAllByRole('button', { name: /clip/i });
+    fireEvent.click(clipToggles[0]);
+    const video = container.querySelector('video');
+    expect(video).toBeTruthy();
+    expect(video).toHaveAttribute('src', edgeAlertClipUrl('t1'));
   });
 });

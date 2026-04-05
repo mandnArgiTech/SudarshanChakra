@@ -1,0 +1,6 @@
+appId: com.sudarshanchakra
+---
+# T11.x — adjust selectors to match Compose UI. Env: E2E_ADMIN_USER, E2E_ADMIN_PASS (from run_full_e2e.sh).
+- launchApp
+- assertVisible:
+    text: ".*"

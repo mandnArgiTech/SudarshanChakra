@@ -1,134 +1,68 @@
-# G-04: Extend @Auditable to All Critical Controller Methods
+# G-04: Extend @Auditable to Critical Resource-Server Controllers
 
 ## Status
-PARTIAL — AuditAspect.java exists and works. @Auditable is only on FarmController (4 methods). Need to add it to siren, zone, water, user, and alert controllers.
+**COMPLETE** — Resource servers use a local `@Auditable` + `ResourceAuditAspect` + JPA `AuditLog` / `AuditService` writing to the shared `audit_log` table. JWTs include optional **`user_id`** (strategy A) for traceability on resource servers.
 
-## Already Done
-- `AuditAspect.java` — full @Aspect with @AfterReturning ✓
-- `Auditable.java` — annotation with action, entityType, entityId ✓
-- `FarmController` — @Auditable on create/update/suspend/activate ✓
+## Identity strategy (A)
 
-## Files to MODIFY
+- **JWT:** `JwtService.generateToken` adds claim `user_id` (user UUID). Issued on login and register.
+- **jwt-support:** `JwtTokenParser` reads `user_id`; `ResourceServerJwtAuthFilter` calls `TenantContext.set(farmId, superAdmin, userId)`.
+- **Aspect:** Uses `TenantContext.getFarmId()` and `TenantContext.getUserId()`. If `userId` is null (legacy tokens), `details` JSON may include `username` from `SecurityContext`.
 
-The `@Auditable` annotation lives in `backend/auth-service`. Other services (device-service, siren-service, alert-service) cannot import it directly because they're separate Gradle modules.
+## Super-admin / null farm
 
-**Option A (recommended):** Copy `Auditable.java` + `AuditAspect.java` + `AuditService.java` into each service that needs it. Each service writes to the same `audit_log` table via its own AuditService.
+If **`farm_id` is absent** in the JWT, `ResourceAuditAspect` **skips** the insert (avoids violating `audit_log.farm_id` NOT NULL). Debug log: `Skip audit …: no farm in jwt context`.
 
-**Option B:** Extract a shared `backend/common` module. More complex, skip for now.
+## auth-service: no duplicate @Auditable on User / Auth
 
-### For device-service:
+`UserService` and `AuthService` already call **`auditService.log`** for create/update/deactivate/login/register. **Do not** add `@Auditable` on `UserController` / `AuthController` for those flows without removing the imperative calls, or you would double-insert into `audit_log`.
 
-**Create** `backend/device-service/src/main/java/com/sudarshanchakra/device/audit/Auditable.java`
-Copy from `backend/auth-service/src/main/java/com/sudarshanchakra/auth/audit/Auditable.java`, change package to `com.sudarshanchakra.device.audit`.
+`FarmController` continues to use auth’s `AuditAspect` + `@Auditable` as before.
 
-**Create** `backend/device-service/src/main/java/com/sudarshanchakra/device/audit/AuditAspect.java`
-Copy from auth-service, change package, adapt imports (TenantContext, AuditService paths).
+## Annotated actions (resource servers)
 
-**Create** `backend/device-service/src/main/java/com/sudarshanchakra/device/audit/AuditService.java`
-Simplified version — writes directly to audit_log table via JdbcTemplate:
-```java
-package com.sudarshanchakra.device.audit;
+| Service | Controller | Actions |
+|---------|------------|---------|
+| **device** | `ZoneController` | `zone.create`, `zone.delete` |
+| **device** | `CameraController` | `camera.create` |
+| **device** | `WaterMotorRestController` | `pump.command` |
+| **siren** | `SirenController` | `siren.trigger`, `siren.stop` |
+| **alert** | `AlertController` | `alert.acknowledge`, `alert.resolve`, `alert.false_positive` |
 
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Service;
-import java.util.UUID;
+**Siren note:** `SirenCommandService` still persists siren-domain rows; `audit_log` adds a cross-service compliance trail — you may see **two** logical records (domain + audit) until product deduplicates.
 
-@Service
-public class AuditService {
-    private final JdbcTemplate jdbc;
-    public AuditService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
-
-    public void log(UUID farmId, UUID userId, String action, String entityType,
-                    String entityId, String details, String ip) {
-        jdbc.update("INSERT INTO audit_log (farm_id, user_id, action, entity_type, entity_id, details, ip_address) VALUES (?,?,?,?,?,?::jsonb,?)",
-            farmId, userId, action, entityType, entityId, details, ip);
-    }
-}
-```
-
-**Ensure** device-service `build.gradle.kts` has `spring-boot-starter-aop` (check — auth-service has it).
-
-**Then add @Auditable to device-service controllers:**
-
-`ZoneController.java`:
-```java
-@Auditable(action = "zone.create", entityType = "zone")
-@PostMapping public ResponseEntity<Zone> createZone(...) { ... }
-
-@Auditable(action = "zone.delete", entityType = "zone", entityId = "#id")
-@DeleteMapping("/{id}") public ResponseEntity<Void> deleteZone(...) { ... }
-```
-
-`CameraController.java`:
-```java
-@Auditable(action = "camera.create", entityType = "camera")
-@PostMapping public ResponseEntity<Camera> createCamera(...) { ... }
-```
-
-`WaterMotorRestController.java`:
-```java
-@Auditable(action = "pump.command", entityType = "motor", entityId = "#id")
-@PostMapping("/{id}/command") public ResponseEntity<?> sendCommand(...) { ... }
-```
-
-### For siren-service:
-Same pattern — copy Auditable + AuditAspect + AuditService into siren-service.
-
-`SirenController.java`:
-```java
-@Auditable(action = "siren.trigger", entityType = "siren")
-@PostMapping("/trigger") public ResponseEntity<?> triggerSiren(...) { ... }
-
-@Auditable(action = "siren.stop", entityType = "siren")
-@PostMapping("/stop") public ResponseEntity<?> stopSiren(...) { ... }
-```
-
-### For alert-service:
-`AlertController.java`:
-```java
-@Auditable(action = "alert.acknowledge", entityType = "alert", entityId = "#id.toString()")
-@PatchMapping("/{id}/acknowledge") public ResponseEntity<?> acknowledgeAlert(...) { ... }
-
-@Auditable(action = "alert.resolve", entityType = "alert", entityId = "#id.toString()")
-@PatchMapping("/{id}/resolve") public ResponseEntity<?> resolveAlert(...) { ... }
-```
-
-### For auth-service (extend existing):
-
-`UserController.java`:
-```java
-@Auditable(action = "user.create", entityType = "user")
-@PostMapping public ResponseEntity<?> createUser(...) { ... }
-
-@Auditable(action = "user.deactivate", entityType = "user", entityId = "#id.toString()")
-@PatchMapping("/{id}/deactivate") public ResponseEntity<?> deactivateUser(...) { ... }
-```
-
-`AuthController.java`:
-```java
-@Auditable(action = "user.login", entityType = "user")
-@PostMapping("/login") public ResponseEntity<?> login(...) { ... }
-```
+**Failures:** Only successful controller returns are audited (`@AfterReturning`), same pattern as auth `AuditAspect`.
 
 ## Verification
+
+With PostgreSQL, gateway, and services running, obtain a JWT from auth (so it includes `user_id`), then:
+
 ```bash
-# Trigger siren
+# Trigger siren (via api-gateway)
 curl -X POST http://localhost:8080/api/v1/siren/trigger \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"nodeId":"edge-node-a"}'
-
-# Check audit_log
-docker exec -i postgres psql -U postgres -d sudarshanchakra \
-  -c "SELECT action, entity_type, created_at FROM audit_log ORDER BY created_at DESC LIMIT 5;"
-# Expected: row with action='siren.trigger'
 
 # Create zone
 curl -X POST http://localhost:8080/api/v1/zones \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"cameraId":"cam-01","name":"Test Zone","zoneType":"intrusion","priority":"high","targetClasses":["person"],"polygon":"[[0,0],[100,0],[100,100],[0,100]]"}'
-
-# Check audit_log again
-# Expected: row with action='zone.create'
 ```
+
+Check `audit_log` as **`scadmin`** (see [AGENTS.md](../../../AGENTS.md) / [PORTS_AND_CREDENTIALS.md](../../../docs/PORTS_AND_CREDENTIALS.md)):
+
+```bash
+psql -U scadmin -d sudarshanchakra -h localhost -c \
+  "SELECT action, entity_type, created_at FROM audit_log ORDER BY created_at DESC LIMIT 5;"
+```
+
+If using Docker exec against the repo’s postgres container, adjust host/user to match your run (e.g. same `-U scadmin`).
+
+**Expected:** rows such as `siren.trigger`, `zone.create` (and existing auth/farm rows).
+
+## Implementation notes
+
+- Per-service copies: `audit/Auditable.java`, `audit/ResourceAuditAspect.java`, `model/AuditLog.java`, `repository/AuditLogRepository.java`, `service/AuditService.java` (mirrors auth table mapping).
+- `spring-boot-starter-aop` added to **device-service**, **siren-service**, **alert-service**.

@@ -1,24 +1,28 @@
 # G-06: Add ExoPlayer media3 Dependency
 
 ## Status
-NOT DONE — `VideoPlayerScreen.kt` (359 lines) exists but won't compile because media3 is missing from dependencies.
+**COMPLETE** — `androidx.media3:media3-exoplayer:1.3.1` and `androidx.media3:media3-ui:1.3.1` are declared in `android/app/build.gradle.kts` (after Room).
 
-## File to MODIFY
+## Clarification
+`VideoPlayerScreen.kt` currently uses `android.widget.VideoView` and did not require Media3 to compile. These dependencies are the **prerequisite for G-11** (alert video clip) and any future ExoPlayer-based playback.
+
+## Implemented
 
 ### `android/app/build.gradle.kts`
 
-Add these two lines in the `dependencies {}` block, after the existing `room-ktx` line:
 ```kotlin
+// Media3 / ExoPlayer (G-06 — prerequisite for G-11 alert video clip)
 implementation("androidx.media3:media3-exoplayer:1.3.1")
 implementation("androidx.media3:media3-ui:1.3.1")
 ```
 
 ## Verification
 ```bash
-cd android && ./gradlew assembleDebug 2>&1 | tail -5
+cd android && ANDROID_HOME=/opt/android-sdk ./gradlew assembleDebug --no-daemon 2>&1 | tail -5
 # Expected: BUILD SUCCESSFUL
-# VideoPlayerScreen.kt should compile without errors
 ```
 
+Requires a valid Android SDK (`ANDROID_HOME` or `android/local.properties` with `sdk.dir`).
+
 ## Note
-This is a 1-minute fix but it BLOCKS G-11 (Android alert video clip). Execute first.
+This unblocks G-11 (Android alert video clip).

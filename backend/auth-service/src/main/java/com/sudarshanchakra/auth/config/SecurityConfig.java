@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -17,6 +18,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 @SecurityScheme(
         name = "bearerAuth",
@@ -42,14 +44,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/audit/**").hasAnyAuthority(
                                 "ROLE_SUPER_ADMIN", "ROLE_ADMIN", "ROLE_MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/v1/me/**").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/users").hasAnyAuthority(
-                                "ROLE_SUPER_ADMIN", "ROLE_ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/v1/users/**").hasAnyAuthority(
-                                "ROLE_SUPER_ADMIN", "ROLE_ADMIN")
-                        .requestMatchers(HttpMethod.PATCH, "/api/v1/users/*/deactivate").hasAnyAuthority(
-                                "ROLE_SUPER_ADMIN", "ROLE_ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/v1/users", "/api/v1/users/**")
-                                .hasAnyAuthority("ROLE_SUPER_ADMIN", "ROLE_ADMIN", "ROLE_MANAGER")
+                        .requestMatchers("/api/v1/users", "/api/v1/users/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

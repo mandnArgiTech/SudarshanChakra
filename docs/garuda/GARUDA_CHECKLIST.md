@@ -16,9 +16,10 @@
 - [x] JWT modules claim from farm.modules_enabled
 - [ ] Hibernate tenant filter on User entity (G-01)
 - [ ] Per-endpoint @PreAuthorize on User/Farm controllers (G-02)
-- [ ] AOP audit aspect auto-logs @Auditable methods (G-04)
-- [ ] FarmService unit tests (G-05)
-- [ ] PermissionService unit tests (G-05)
+- [x] AOP audit aspect auto-logs @Auditable methods (G-04)
+- [x] FarmService unit tests (G-05)
+- [x] PermissionService unit tests (G-05)
+- [x] ModuleResolutionService unit tests (G-05)
 
 ### Alert Service
 - [x] Alert creation via REST API
@@ -37,7 +38,7 @@
 - [x] Motor/pump control commands
 - [x] Camera source_type (rtsp/file/http)
 - [x] Camera has_ptz, ptz_presets, recording_enabled fields
-- [ ] Zone publish MQTT reload on create/delete (G-07)
+- [x] Zone publish MQTT reload on create/delete (G-07)
 - [ ] Tenant filter on Camera/Zone/Node entities (G-01)
 - [ ] Per-endpoint @PreAuthorize (G-02)
 
@@ -52,6 +53,7 @@
 - [x] Route to all 5 services
 - [x] Edge proxy (/edge/**)
 - [x] Module access filter (403 for disabled modules)
+- [x] ModuleAccessGatewayFilter unit tests (G-05)
 - [x] CORS configuration
 - [ ] MDM service route /api/v1/mdm/** (M-02)
 - [ ] ModuleAccessFilter includes "mdm" module (M-02)
@@ -94,7 +96,7 @@
 - [x] Admin farms page (list)
 - [x] Admin users page (list)
 - [x] Admin audit page (list)
-- [ ] Dashboard sidebar actually filters by modules (G-03)
+- [x] Dashboard sidebar actually filters by modules (G-03)
 
 ### Camera/Video Pages
 - [x] Live MJPEG feed component
@@ -102,7 +104,7 @@
 - [x] Zone drawing page with SVG polygon
 - [x] Video player page with segment list
 - [x] Add camera page (RTSP/file/HTTP)
-- [ ] Alert detail shows video clip player (G-09)
+- [x] Alert detail shows video clip player (G-09)
 
 ### MDM Pages (NEW — WS-4)
 - [ ] MDM device list page (M-11)
@@ -154,15 +156,15 @@
 - [x] Dynamic bottom nav (module filtering)
 - [x] Server settings (dynamic URL)
 - [x] Encrypted credential storage
-- [ ] Pull-to-refresh on all list screens (G-10)
+- [x] Pull-to-refresh on all list screens (G-10)
 
 ### Camera/Video Screens
 - [x] PTZ control screen (joystick, zoom, presets)
 - [x] Zone drawer screen (touch polygon)
 - [x] Add camera screen
 - [x] Video player screen (ExoPlayer)
-- [ ] ExoPlayer media3 dependency in build.gradle (G-06)
-- [ ] Alert detail video clip (G-11)
+- [x] ExoPlayer media3 dependency in build.gradle (G-06)
+- [x] Alert detail video clip (G-11)
 
 ### MDM Kiosk (NEW — WS-4)
 - [ ] DeviceAdminReceiver (M-09)
@@ -180,7 +182,7 @@
 - [ ] OTA update progress UI (M-10)
 
 ### Tests
-- [ ] ViewModel unit tests (G-12)
+- [x] ViewModel unit tests (G-12)
 - [ ] UI component tests (G-12)
 
 ---
@@ -215,8 +217,8 @@
 - [x] HTTP stream grabber
 
 ### Missing
-- [ ] Zone reload via MQTT subscriber (G-07)
-- [ ] camera_sync.py — pull config from backend (G-08)
+- [x] Zone reload via MQTT subscriber (G-07)
+- [x] camera_sync.py — pull config from backend (G-08)
 
 ### Dev Mode
 - [x] Mock camera
@@ -265,31 +267,31 @@
 ### Cloud VPS
 - [x] Docker Compose (11 services)
 - [x] deploy.sh
-- [x] Nginx (HTTP, port 9080)
+- [x] Nginx (HTTP :9080 + HTTPS :443, LE mount — G-16)
 - [x] PostgreSQL schema
 - [x] RabbitMQ config
-- [ ] OpenVPN tunnel (G-15)
-- [ ] TLS / HTTPS (G-16)
+- [x] OpenVPN tunnel (G-15)
+- [x] TLS / HTTPS (G-16)
 
 ### CI/CD
 - [x] backend.yml workflow
 - [x] dashboard.yml workflow
 - [x] edge.yml workflow
 - [x] test.yml workflow
-- [ ] Docker image push to GHCR on tag (G-17)
+- [x] Docker image push to GHCR on tag (G-17)
 
 ### Deployment
-- [ ] Functional deploy.sh with farm provisioning (G-18)
-- [ ] Compose profiles: full, water_only, security (G-18)
+- [x] Farm provisioning script + compose integration (G-18) — [`scripts/deploy_saas_farm.sh`](../../scripts/deploy_saas_farm.sh)
+- [x] Compose profiles: full, security, monitoring, water_only on `docker-compose.vps.yml` (G-18)
 
 ---
 
 ## E2E TESTING
-- [x] Preflight checker (35+ checks)
+- [x] Preflight checker (35+ checks) (G-13)
 - [x] E2E test plan (11 suites, 68 tests)
 - [x] e2e_config.example.yml
-- [ ] Playwright browser tests (G-14)
-- [ ] Maestro Android emulator tests (G-14)
+- [x] Playwright browser tests (G-14)
+- [x] Maestro Android emulator tests (G-14)
 - [ ] Real camera integration (G-14)
 - [ ] Real ESP8266 water sensor integration (G-14)
 - [ ] Real siren audio test (G-14)
@@ -300,9 +302,9 @@
 
 ```
 Total checkboxes:  142
-Completed [x]:      95
-Remaining [ ]:      47
+Completed [x]:     102
+Remaining [ ]:      40
 
-Completion: 67% (pre-Garuda baseline)
+Completion: ~72% (pre-Garuda baseline)
 Target:    100% at Garuda release
 ```

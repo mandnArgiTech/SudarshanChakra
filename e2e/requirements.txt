@@ -1,0 +1,5 @@
+# E2E pytest + orchestration (install: pip install -r e2e/requirements.txt)
+pytest>=7.0
+PyYAML>=6.0
+paho-mqtt>=1.6
+websocket-client>=1.6

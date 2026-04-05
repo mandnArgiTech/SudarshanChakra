@@ -52,9 +52,11 @@ cp .env.example .env
 #   MQTT_EDGE_PASS=<edge_password>
 ```
 
-**Quick HTTP-only deploy (no TLS/OpenVPN):** From repo root run `./cloud/deploy.sh`. It builds all images, starts the stack with `docker-compose.vps.yml`, and initializes RabbitMQ. Dashboard and API are at `http://<vps-ip>:9080` (or port 80 if you change nginx ports in the compose file). See [DEPLOY_AFTER_BUILD.md](DEPLOY_AFTER_BUILD.md) for options (`--no-build`, `--build-only`).
+**Default VPS compose (HTTP + HTTPS):** `docker-compose.vps.yml` publishes **9080→80** and **443→443**, mounts host **`/etc/letsencrypt`**, and uses `cloud/nginx/nginx-vps.conf`. Nginx **will not start** until matching certs exist — run **`sudo ./cloud/scripts/setup_tls.sh`** (from the repo on the VPS) **before** or **after** a brief stop of `nginx-proxy`, or switch to **HTTP-only** (§1.4). From repo root, `./cloud/deploy.sh` builds images, starts the stack, and initializes RabbitMQ. See [DEPLOY_AFTER_BUILD.md](DEPLOY_AFTER_BUILD.md) for options (`--no-build`, `--build-only`).
 
 ### 1.3 OpenVPN Server
+
+**In-repo templates (Garuda G-15):** [cloud/vpn/](../cloud/vpn/) contains `server.conf`, `setup_vpn_server.sh` (native **easy-rsa** on Ubuntu), and `client/*.conf` templates with **CCD** examples for static **`10.8.0.10` / `10.8.0.11`**. Use that path **or** the Docker flow below — not two servers on the same host without care.
 
 ```bash
 OVPN_DATA="/opt/openvpn-data"
@@ -73,15 +75,28 @@ echo "ifconfig-push 10.8.0.10 10.8.0.9" > $OVPN_DATA/ccd/edge-node-a
 echo "ifconfig-push 10.8.0.11 10.8.0.9" > $OVPN_DATA/ccd/edge-node-b
 ```
 
-### 1.4 TLS Certificates
+### 1.4 TLS Certificates (Let's Encrypt, Docker nginx)
+
+The VPS reverse proxy is **nginx in Docker** with a mounted config — do **not** use `certbot --nginx` against a non-existent host nginx. Obtain certs on the **host** with **standalone** HTTP-01 (port **80** on the public IP must reach this host during issuance), then the compose file mounts **`/etc/letsencrypt`** read-only into the container.
+
+**HTTP-01 caveat:** If `vivasvan-tech.in:80` is served by another app (e.g. Portainer), standalone validation fails unless you free port 80 temporarily or use **DNS-01** / **TLS-ALPN-01** (not covered by `setup_tls.sh`).
 
 ```bash
-sudo apt install certbot
-sudo certbot certonly --standalone -d vivasvan-tech.in
-mkdir -p certs
-cp /etc/letsencrypt/live/vivasvan-tech.in/fullchain.pem certs/
-cp /etc/letsencrypt/live/vivasvan-tech.in/privkey.pem certs/
+# On the VPS, from repo root (stop nginx-proxy first if it binds :80)
+sudo ./cloud/scripts/setup_tls.sh --domain vivasvan-tech.in --email your-email@example.com
+# Optional second hostname (SAN):
+# sudo ./cloud/scripts/setup_tls.sh -d vivasvan-tech.in -d www.vivasvan-tech.in -m your-email@example.com
 ```
+
+Then ensure **`docker-compose.vps.yml`** publishes **443** and mounts **`/etc/letsencrypt`** (already the default). If host **443** is taken, use **`8443:443`** in compose and open **`https://vivasvan-tech.in:8443`**.
+
+**HTTP-only (no certs yet):** In `docker-compose.vps.yml` under **nginx**, set the config volume to **`./nginx/nginx-vps-http.conf`**, remove the **`443:443`** port mapping and the **`/etc/letsencrypt`** volume. Dashboard/API stay at **`http://<vps-ip>:9080`**.
+
+**Mixed content:** If the dashboard was built with a hardcoded **`http://`** API URL, switch to **`https://`** or use relative **`/api`** behind nginx and rebuild the dashboard image.
+
+**Renewal:** Example cron line (reload nginx in Docker after renew):
+
+`0 3 1 * * certbot renew --deploy-hook 'docker exec nginx-proxy nginx -s reload'`
 
 ### 1.5 Start Services
 
@@ -105,7 +120,9 @@ docker compose ps
 curl -k https://localhost/health
 ```
 
-**Option B — HTTP-only stack (build on VPS):** From repo root run `./cloud/deploy.sh`. Uses `docker-compose.vps.yml`; dashboard and API at `http://<vps-ip>:9080`. See [VPS_HEALTH_AND_USAGE.md](VPS_HEALTH_AND_USAGE.md) for health checks.
+**Option B — HTTP-only stack (build on VPS):** From repo root run `./cloud/deploy.sh` with **`nginx-vps-http.conf`** and no **443** / **letsencrypt** mount as in §1.4; dashboard and API at **`http://<vps-ip>:9080`**.
+
+**Option C — TLS stack:** With certs in place and default `nginx-vps.conf`, verify **`curl -sI https://vivasvan-tech.in`** (use **`:8443`** if mapped). Health: **`curl -sS https://vivasvan-tech.in/health`**. See [VPS_HEALTH_AND_USAGE.md](VPS_HEALTH_AND_USAGE.md) for HTTP checks on **:9080**.
 
 ---
 

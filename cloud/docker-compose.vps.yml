@@ -1,15 +1,30 @@
 # ==============================================================================
-# SudarshanChakra — VPS Docker Compose (local images, HTTP-only)
+# SudarshanChakra — VPS Docker Compose (local images, HTTP + HTTPS)
 # ==============================================================================
-# Use with: ./deploy.sh  (builds images then runs this compose)
+# Compose profiles (G-18): pass at least one — e.g. --profile full
+#   full        — all services (incl. siren, mdm)
+#   security    — no mdm-service
+#   monitoring  — no siren, no mdm (same containers as water_only)
+#   water_only  — same as monitoring; farm modules differ (use API / deploy script)
+#   dev         — optional; adds farm-simulator (with --profile full)
+#
+# Use with: ./cloud/deploy.sh (default --profile full) or:
+#   docker compose -f docker-compose.vps.yml --profile full up -d
 # Requires: cloud/.env (copy from .env.example), Docker, docker compose
-# No TLS: nginx serves HTTP (container port 80; default host port 9080 so SudarshanChakra
-# does not conflict with other apps on the VPS, e.g. Portainer on vivasvan-tech.in). Change 9080 if needed.
+#
+# Nginx: HTTP on host port 9080 → container 80 (http://<ip>:9080). HTTPS on host 443 →
+# container 443 for vivasvan-tech.in (see cloud/nginx/nginx-vps.conf). Host must have LE certs
+# under /etc/letsencrypt (run cloud/scripts/setup_tls.sh). If 443 is already used on the host,
+# map e.g. "8443:443" and use https://<domain>:8443.
+#
+# HTTP-only (no certs): mount cloud/nginx/nginx-vps-http.conf, remove the 443 port line and
+# the /etc/letsencrypt volume from nginx below — see docs/DEPLOYMENT_GUIDE.md §1.4.
 # No OpenVPN/VPN health in this profile.
 # ==============================================================================
 
 services:
   postgres:
+    profiles: [full, security, monitoring, water_only]
     image: postgres:16-alpine
     container_name: postgres
     volumes:
@@ -29,6 +44,7 @@ services:
       retries: 5
 
   rabbitmq:
+    profiles: [full, security, monitoring, water_only]
     image: rabbitmq:3-management
     # No container_name: avoids conflict with an existing `docker run --name rabbitmq` (AGENTS.md).
     # Other services still reach this broker via the Compose DNS name `rabbitmq`.
@@ -54,6 +70,7 @@ services:
       retries: 5
 
   api-gateway:
+    profiles: [full, security, monitoring, water_only]
     image: sudarshanchakra/api-gateway:latest
     container_name: api-gateway
     # Port 8080 not exposed on host; access via nginx on port 80 (e.g. /api/...)
@@ -64,15 +81,15 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:8083
       - SIREN_SERVICE_URL=http://siren-service:8084
       - MDM_SERVICE_URL=http://mdm-service:8085
+    # Do not depend_on siren/mdm — they may be omitted by profile (monitoring/water_only/security).
     depends_on:
       - alert-service
       - device-service
       - auth-service
-      - siren-service
-      - mdm-service
     restart: always
 
   alert-service:
+    profiles: [full, security, monitoring, water_only]
     image: sudarshanchakra/alert-service:latest
     container_name: alert-service
     environment:
@@ -89,6 +106,7 @@ services:
     restart: always
 
   device-service:
+    profiles: [full, security, monitoring, water_only]
     image: sudarshanchakra/device-service:latest
     container_name: device-service
     environment:
@@ -101,6 +119,7 @@ services:
     restart: always
 
   auth-service:
+    profiles: [full, security, monitoring, water_only]
     image: sudarshanchakra/auth-service:latest
     container_name: auth-service
     environment:
@@ -115,6 +134,7 @@ services:
     restart: always
 
   siren-service:
+    profiles: [full, security]
     image: sudarshanchakra/siren-service:latest
     container_name: siren-service
     environment:
@@ -131,6 +151,7 @@ services:
     restart: always
 
   mdm-service:
+    profiles: [full]
     image: sudarshanchakra/mdm-service:latest
     container_name: mdm-service
     environment:
@@ -148,17 +169,21 @@ services:
     restart: always
 
   react-dashboard:
+    profiles: [full, security, monitoring, water_only]
     image: sudarshanchakra/dashboard:latest
     container_name: react-dashboard
     restart: always
 
   nginx:
+    profiles: [full, security, monitoring, water_only]
     image: nginx:alpine
     container_name: nginx-proxy
     ports:
-      - "9080:80"   # SudarshanChakra dashboard/API (vivasvan-tech.in is used by Portainer/other app)
+      - "9080:80"   # SudarshanChakra dashboard/API (vivasvan-tech.in may point at other apps on :80)
+      - "443:443"   # HTTPS; use "8443:443" if host 443 is taken
     volumes:
       - ./nginx/nginx-vps.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - api-gateway
       - react-dashboard

@@ -1,5 +1,6 @@
 package com.sudarshanchakra.siren.controller;
 
+import com.sudarshanchakra.siren.audit.Auditable;
 import com.sudarshanchakra.siren.dto.SirenRequest;
 import com.sudarshanchakra.siren.dto.SirenResponse;
 import com.sudarshanchakra.siren.model.SirenAction;
@@ -23,6 +24,7 @@ public class SirenController {
     private final SirenCommandService sirenCommandService;
 
     @PostMapping("/trigger")
+    @Auditable(action = "siren.trigger", entityType = "siren", entityId = "#request.nodeId")
     @PreAuthorize("hasAuthority('PERMISSION_sirens:trigger')")
     @Operation(summary = "Trigger siren", description = "Trigger siren on a target edge node")
     public ResponseEntity<SirenResponse> triggerSiren(@RequestBody SirenRequest request) {
@@ -30,6 +32,7 @@ public class SirenController {
     }
 
     @PostMapping("/stop")
+    @Auditable(action = "siren.stop", entityType = "siren", entityId = "#request.nodeId")
     @PreAuthorize("hasAuthority('PERMISSION_sirens:trigger')")
     @Operation(summary = "Stop siren", description = "Stop siren on a target edge node")
     public ResponseEntity<SirenResponse> stopSiren(@RequestBody SirenRequest request) {

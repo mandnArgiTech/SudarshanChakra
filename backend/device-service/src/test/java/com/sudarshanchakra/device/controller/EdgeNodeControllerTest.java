@@ -66,6 +66,19 @@ class EdgeNodeControllerTest {
     }
 
     @Test
+    @WithMockUser(
+            username = "v1",
+            authorities = {"PERMISSION_devices:view"})
+    void createNode_forbiddenWithoutManagePermission() throws Exception {
+        UUID f = UUID.fromString("a0000000-0000-0000-0000-000000000001");
+        EdgeNode body = EdgeNode.builder().id("n-new").farmId(f).displayName("X").build();
+        mockMvc.perform(post("/api/v1/nodes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void createNode() throws Exception {
         UUID f = UUID.fromString("a0000000-0000-0000-0000-000000000001");
         EdgeNode saved = EdgeNode.builder().id("new-node").farmId(f).displayName("X").build();

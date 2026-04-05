@@ -91,7 +91,7 @@ pip install pika
 RABBITMQ_PASS=devpassword123 python cloud/scripts/rabbitmq_init.py
 ```
 
-For **VPS deployment** (full stack in Docker), use the deploy script from repo root: `./cloud/deploy.sh`. It builds backend and dashboard images and runs `cloud/docker-compose.vps.yml` (HTTP-only; dashboard on port 9080 by default). See [DEPLOY_AFTER_BUILD.md](DEPLOY_AFTER_BUILD.md).
+For **VPS deployment** (full stack in Docker), use the deploy script from repo root: `./cloud/deploy.sh`. It builds backend and dashboard images and runs `cloud/docker-compose.vps.yml` with **`--profile full`** by default (G-18: `security`, `monitoring`, `water_only` also available). Dashboard on port 9080 by default. See [DEPLOY_AFTER_BUILD.md](DEPLOY_AFTER_BUILD.md).
 
 **Dev credentials:**
 - PostgreSQL: `scadmin / devpassword123` on `localhost:5432`
@@ -356,7 +356,7 @@ curl http://localhost:5000/api/zones  # Edge GUI API
 
 ```bash
 # When using deploy.sh / docker-compose.vps.yml (from cloud/):
-docker compose -f docker-compose.vps.yml logs -f
+docker compose -f docker-compose.vps.yml --profile full logs -f
 # Dashboard and API: http://localhost:9080 (or http://<vps-ip>:9080)
 
 # Check all service logs (full compose)

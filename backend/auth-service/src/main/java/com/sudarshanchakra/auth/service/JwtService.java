@@ -37,7 +37,7 @@ public class JwtService {
         this.expirationMs = expirationMs;
     }
 
-    public String generateToken(String username, String role, UUID farmId,
+    public String generateToken(String username, String role, UUID farmId, UUID userId,
                                 List<String> modules, List<String> permissions) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
@@ -49,6 +49,7 @@ public class JwtService {
                 .subject(username)
                 .claim("role", role)
                 .claim("farm_id", farmId != null ? farmId.toString() : null)
+                .claim("user_id", userId != null ? userId.toString() : null)
                 .claim("modules", mod)
                 .claim("permissions", perm)
                 .issuedAt(now)

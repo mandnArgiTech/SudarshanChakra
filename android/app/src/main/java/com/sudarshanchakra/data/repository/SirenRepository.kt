@@ -7,7 +7,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class SirenRepository @Inject constructor(
+open class SirenRepository @Inject constructor(
     private val apiService: ApiService,
 ) {
     suspend fun triggerSiren(nodeId: String, reason: String? = null): Result<SirenAction> {

@@ -57,6 +57,7 @@ public class AuthService {
                 user.getUsername(),
                 user.getRole().getValue(),
                 user.getFarmId(),
+                user.getId(),
                 modules,
                 perms
         );
@@ -121,6 +122,7 @@ public class AuthService {
                 user.getUsername(),
                 user.getRole().getValue(),
                 user.getFarmId(),
+                user.getId(),
                 modules,
                 perms
         );

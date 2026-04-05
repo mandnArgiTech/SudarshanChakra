@@ -1,5 +1,6 @@
 package com.sudarshanchakra.device.controller;
 
+import com.sudarshanchakra.device.audit.Auditable;
 import com.sudarshanchakra.device.model.Camera;
 import com.sudarshanchakra.device.service.DeviceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,6 +31,7 @@ public class CameraController {
     }
 
     @GetMapping(params = "nodeId")
+    @PreAuthorize("hasAuthority('PERMISSION_cameras:view')")
     @Operation(summary = "List cameras by node ID")
     public ResponseEntity<List<Camera>> getCamerasByNodeId(@RequestParam String nodeId) {
         return ResponseEntity.ok(deviceService.getCamerasByNodeId(nodeId));
@@ -43,6 +45,7 @@ public class CameraController {
     }
 
     @PostMapping
+    @Auditable(action = "camera.create", entityType = "camera")
     @PreAuthorize("hasAuthority('PERMISSION_cameras:manage')")
     @Operation(summary = "Register a new camera")
     public ResponseEntity<Camera> createCamera(@Valid @RequestBody Camera camera) {

@@ -143,8 +143,12 @@ public class DeviceService {
         String payload = String.format(
                 "{\"event\":\"%s\",\"zone_id\":\"%s\",\"camera_id\":\"%s\"}",
                 event, zoneId, cameraId);
-        rt.convertAndSend("amq.topic", "farm.admin.reload_config", payload);
-        log.info("Zone reload published → farm/admin/reload_config : {}", payload);
+        // farm.events matches mqtt.exchange in rabbitmq.conf so MQTT edge clients receive this
+        // as topic farm/admin/reload_config (routing key uses dots).
+        rt.convertAndSend("farm.events", "farm.admin.reload_config", payload);
+        log.info(
+                "Zone reload published → exchange farm.events key farm.admin.reload_config (MQTT farm/admin/reload_config): {}",
+                payload);
     }
 
     // Worker Tags

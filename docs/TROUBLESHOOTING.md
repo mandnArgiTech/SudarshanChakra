@@ -153,7 +153,7 @@ docker exec edge-ai nc -zv 10.8.0.1 1883
 
 ## 3. Cloud / VPS Issues
 
-When using the **VPS deploy script** (`./cloud/deploy.sh`), the stack runs with `docker-compose.vps.yml` from the `cloud/` directory. Nginx serves the dashboard and API on **port 9080** by default (so SudarshanChakra does not conflict with other apps on the VPS, e.g. Portainer on vivasvan-tech.in). Use `docker compose -f docker-compose.vps.yml <command>` when running compose from `cloud/`.
+When using the **VPS deploy script** (`./cloud/deploy.sh`), the stack runs with `docker-compose.vps.yml` from the `cloud/` directory with a **Compose profile** (default **`full`**). If you run `docker compose` by hand, pass **`--profile full`** (or `security`, `monitoring`, `water_only`) or no application services will start (G-18). Nginx serves the dashboard and API on **port 9080** by default (so SudarshanChakra does not conflict with other apps on the VPS, e.g. Portainer on vivasvan-tech.in). Use `docker compose -f docker-compose.vps.yml --profile full <command>` when running compose from `cloud/`.
 
 ### 3.1 PostgreSQL Connection Refused
 

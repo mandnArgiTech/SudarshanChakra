@@ -1,0 +1,8 @@
+# Maestro does not run this file as a flow — it documents env vars for Android E2E.
+# Use: maestro test e2e/maestro/flows/login.yaml
+#
+# Recommended env (set in shell or CI):
+#   MAESTRO_APP_ID=com.sudarshanchakra
+# Point the app at VM1 using in-app Server settings before login flows.
+
+appId: com.sudarshanchakra

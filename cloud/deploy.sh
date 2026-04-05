@@ -6,10 +6,15 @@
 # Run from repo root. Requires: Docker, docker compose. Images are built inside
 # Docker (no host Java/Node required for build).
 #
+# Compose profiles (G-18): services require an active profile (default full).
+# Use SC_COMPOSE_PROFILE=security or --profile monitoring etc. For farm simulator
+# also pass --profile dev (or set SC_COMPOSE_EXTRA_PROFILES=dev).
+#
 # Usage:
-#   ./cloud/deploy.sh              # build and deploy
-#   ./cloud/deploy.sh --no-build   # deploy only (use existing images)
-#   ./cloud/deploy.sh --build-only # build images only, do not start stack
+#   ./cloud/deploy.sh                    # build and deploy (--profile full)
+#   ./cloud/deploy.sh --profile security # subset without mdm
+#   ./cloud/deploy.sh --no-build        # deploy only (existing images)
+#   ./cloud/deploy.sh --build-only      # build only, do not start stack
 # ==============================================================================
 
 set -euo pipefail
@@ -20,22 +25,48 @@ BACKEND_DIR="${ROOT_DIR}/backend"
 DASHBOARD_DIR="${ROOT_DIR}/dashboard"
 COMPOSE_FILE="${CLOUD_DIR}/docker-compose.vps.yml"
 
+die() { echo "[ERROR] $*" >&2; exit 1; }
+
 NO_BUILD=false
 BUILD_ONLY=false
-for arg in "$@"; do
-  case "$arg" in
+COMPOSE_PROFILE="${SC_COMPOSE_PROFILE:-full}"
+EXTRA_PROFILES=()
+if [[ -n "${SC_COMPOSE_EXTRA_PROFILES:-}" ]]; then
+  # space-separated e.g. SC_COMPOSE_EXTRA_PROFILES=dev
+  read -r -a EXTRA_PROFILES <<< "${SC_COMPOSE_EXTRA_PROFILES}"
+fi
+
+RAW_ARGS=("$@")
+i=0
+while [[ $i -lt ${#RAW_ARGS[@]} ]]; do
+  case "${RAW_ARGS[$i]}" in
     --no-build)   NO_BUILD=true ;;
     --build-only) BUILD_ONLY=true ;;
+    --profile)
+      ((i += 1)) || true
+      COMPOSE_PROFILE="${RAW_ARGS[$i]:-}"
+      if [[ -z "$COMPOSE_PROFILE" ]]; then
+        echo "[ERROR] --profile requires a value" >&2
+        exit 1
+      fi
+      ;;
+    --profile=*)
+      COMPOSE_PROFILE="${RAW_ARGS[$i]#--profile=}"
+      ;;
     -h|--help)
-      echo "Usage: $0 [--no-build] [--build-only]"
-      echo "  --no-build    Use existing images; do not build (default: build all)"
-      echo "  --build-only Build images only; do not start stack"
+      echo "Usage: $0 [--profile <full|security|monitoring|water_only>] [--no-build] [--build-only]"
+      echo "  --profile NAME   Compose profile (default: full, or SC_COMPOSE_PROFILE)"
+      echo "  Extra profiles: set SC_COMPOSE_EXTRA_PROFILES=dev for simulator"
+      echo "  --no-build       Use existing images; do not build"
+      echo "  --build-only     Build images only; do not start stack"
       exit 0
       ;;
+    *)
+      die "Unknown option: ${RAW_ARGS[$i]}"
+      ;;
   esac
+  ((i += 1)) || true
 done
-
-die() { echo "[ERROR] $*" >&2; exit 1; }
 
 # -----------------------------------------------------------------------------
 # 1. Ensure cloud/.env exists
@@ -96,17 +127,22 @@ fi
 # -----------------------------------------------------------------------------
 # 3. Start stack
 # -----------------------------------------------------------------------------
-echo "[DEPLOY] Starting stack with ${COMPOSE_FILE}"
+COMPOSE_BASE="$(basename "${COMPOSE_FILE}")"
+PROFILE_ARGS=(--profile "$COMPOSE_PROFILE")
+for p in "${EXTRA_PROFILES[@]}"; do
+  [[ -n "$p" ]] && PROFILE_ARGS+=(--profile "$p")
+done
+
+echo "[DEPLOY] Starting stack with ${COMPOSE_FILE} ${PROFILE_ARGS[*]}"
 cd "${CLOUD_DIR}"
-docker compose -f "$(basename "${COMPOSE_FILE}")" up -d
+docker compose -f "${COMPOSE_BASE}" "${PROFILE_ARGS[@]}" up -d
 
 # -----------------------------------------------------------------------------
 # 4. Wait for RabbitMQ and run topology init
 # -----------------------------------------------------------------------------
 echo "[WAIT] RabbitMQ..."
-COMPOSE_BASE="$(basename "${COMPOSE_FILE}")"
 for i in {1..30}; do
-  if docker compose -f "${COMPOSE_BASE}" exec -T rabbitmq rabbitmq-diagnostics check_running &>/dev/null; then
+  if docker compose -f "${COMPOSE_BASE}" "${PROFILE_ARGS[@]}" exec -T rabbitmq rabbitmq-diagnostics check_running &>/dev/null; then
     break
   fi
   if [[ $i -eq 30 ]]; then
@@ -123,6 +159,8 @@ docker run --rm --network cloud_default \
   -v "${CLOUD_DIR}/scripts/rabbitmq_init.py:/script.py:ro" \
   python:3.12-slim bash -c "pip install -q pika && python /script.py" || true
 
-echo "[DONE] Stack is up. Dashboard: http://localhost:9080 (or http://<vps-ip>:9080 or http://vivasvan-tech.in:9080). API: http://localhost:9080/api/v1/"
-echo "       Health check: curl -s http://localhost:9080/health"
+echo "[DONE] Stack is up (profile: ${COMPOSE_PROFILE}). Dashboard: http://localhost:9080 (or http://<vps-ip>:9080). API: http://localhost:9080/api/v1/"
+echo "       HTTPS (with LE certs + default nginx-vps.conf): https://<your-domain>/ (port 443)"
+echo "       Health: curl -s http://localhost:9080/health  |  TLS: curl -sS https://<your-domain>/health"
+echo "       No certs yet? Use nginx-vps-http.conf and drop 443 + /etc/letsencrypt from compose — see docs/DEPLOYMENT_GUIDE.md §1.4"
 echo "       See docs/DEPLOY_AFTER_BUILD.md and docs/USER_GUIDE.md for how to use."

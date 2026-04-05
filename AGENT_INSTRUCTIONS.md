@@ -494,8 +494,8 @@ jobs:
       - run: cd backend/${{ matrix.service }} && ./gradlew build test
       - run: |
           echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker build -t ghcr.io/mandnargitech/sudarshanchakra/${{ matrix.service }}:${{ github.sha }} backend/${{ matrix.service }}
-          docker push ghcr.io/mandnargitech/sudarshanchakra/${{ matrix.service }}:${{ github.sha }}
+          docker build -t ghcr.io/mandnargitech/${{ matrix.service }}:${{ github.sha }} backend/${{ matrix.service }}
+          docker push ghcr.io/mandnargitech/${{ matrix.service }}:${{ github.sha }}
 ```
 
 ```yaml
@@ -514,8 +514,8 @@ jobs:
         with: { node-version: '20' }
       - run: cd dashboard && npm ci && npm run build && npm test
       - run: |
-          docker build -t ghcr.io/mandnargitech/sudarshanchakra/dashboard:${{ github.sha }} dashboard/
-          docker push ghcr.io/mandnargitech/sudarshanchakra/dashboard:${{ github.sha }}
+          docker build -t ghcr.io/mandnargitech/dashboard:${{ github.sha }} dashboard/
+          docker push ghcr.io/mandnargitech/dashboard:${{ github.sha }}
 ```
 
 ```yaml
@@ -532,8 +532,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: cd edge && python -m py_compile farm_edge_node.py pipeline.py zone_engine.py alert_engine.py
       - run: |
-          docker build -t ghcr.io/mandnargitech/sudarshanchakra/edge-ai:${{ github.sha }} edge/
-          docker push ghcr.io/mandnargitech/sudarshanchakra/edge-ai:${{ github.sha }}
+          docker build -t ghcr.io/mandnargitech/edge-ai:${{ github.sha }} edge/
+          docker push ghcr.io/mandnargitech/edge-ai:${{ github.sha }}
 ```
 
 ---

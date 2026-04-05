@@ -668,7 +668,7 @@ Turn on per service once verified. Rollback = set to `false`.
 | `@Auditable` AOP aspect | Not done | Partial: explicit `AuditService.log` calls; full aspect optional |
 | Hibernate tenant `@Filter` | Not done | Planned opt-in; `TenantContext` ready |
 | Flyway | Not done | Use `migration_002_saas_multitenant.sql` + `init.sql` for greenfield |
-| Compose profiles + `deploy.sh` + GHCR matrix | Partial | See `cloud/docker-compose.profile-water-only.yml`, `scripts/deploy_saas_farm.sh` |
+| Compose profiles + `deploy.sh` + GHCR matrix | Done (G-18) | Profiles on `cloud/docker-compose.vps.yml`; `scripts/deploy_saas_farm.sh`; `cloud/deploy.sh --profile`; reference `cloud/docker-compose.profile-*.yml` |
 | Auth-service tests | Done | H2 in `application-test.yml`; integration tests still `@Tag("integration")` + Docker |
 
 ---

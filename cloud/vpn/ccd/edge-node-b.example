@@ -1,0 +1,2 @@
+# Rename to `edge-node-b` (no extension) in the live client-config-dir.
+ifconfig-push 10.8.0.11 255.255.255.0

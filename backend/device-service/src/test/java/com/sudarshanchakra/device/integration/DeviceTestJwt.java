@@ -29,6 +29,7 @@ public final class DeviceTestJwt {
 
     /** Admin-like token scoped to a farm with permissions used by integration tests. */
     public static String bearerForFarm(UUID farmId) {
+        UUID userId = UUID.fromString("b0000000-0000-0000-0000-000000000099");
         List<String> perms = List.of(
                 "devices:view",
                 "devices:manage",
@@ -44,6 +45,7 @@ public final class DeviceTestJwt {
                 .subject("integration-user")
                 .claim("role", "admin")
                 .claim("farm_id", farmId.toString())
+                .claim("user_id", userId.toString())
                 .claim("permissions", perms)
                 .signWith(KEY)
                 .compact();

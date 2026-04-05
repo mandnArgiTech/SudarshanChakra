@@ -1,5 +1,6 @@
 package com.sudarshanchakra.alert.controller;
 
+import com.sudarshanchakra.alert.audit.Auditable;
 import com.sudarshanchakra.alert.dto.AlertPayload;
 import com.sudarshanchakra.alert.dto.AlertResponse;
 import com.sudarshanchakra.alert.dto.AlertUpdateRequest;
@@ -53,6 +54,7 @@ public class AlertController {
     }
 
     @PatchMapping("/{id}/acknowledge")
+    @Auditable(action = "alert.acknowledge", entityType = "alert", entityId = "#id.toString()")
     @PreAuthorize("hasAuthority('PERMISSION_alerts:acknowledge')")
     @Operation(summary = "Acknowledge an alert")
     public ResponseEntity<AlertResponse> acknowledgeAlert(
@@ -62,6 +64,7 @@ public class AlertController {
     }
 
     @PatchMapping("/{id}/resolve")
+    @Auditable(action = "alert.resolve", entityType = "alert", entityId = "#id.toString()")
     @PreAuthorize("hasAuthority('PERMISSION_alerts:resolve')")
     @Operation(summary = "Resolve an alert")
     public ResponseEntity<AlertResponse> resolveAlert(
@@ -71,6 +74,7 @@ public class AlertController {
     }
 
     @PatchMapping("/{id}/false-positive")
+    @Auditable(action = "alert.false_positive", entityType = "alert", entityId = "#id.toString()")
     @PreAuthorize("hasAuthority('PERMISSION_alerts:resolve')")
     @Operation(summary = "Mark alert as false positive")
     public ResponseEntity<AlertResponse> markFalsePositive(

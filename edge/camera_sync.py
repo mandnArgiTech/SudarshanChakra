@@ -118,11 +118,35 @@ def write_cameras_json(config_dir: str, doc: Dict[str, Any]) -> str:
     return path
 
 
+def _canonical_document_json(doc: Dict[str, Any]) -> str:
+    """Stable JSON for comparing logical camera config (key order independent)."""
+    return json.dumps(doc, sort_keys=True, separators=(",", ":"))
+
+
+def read_cameras_document_from_disk(config_dir: str) -> Dict[str, Any] | None:
+    """
+    Load ``cameras.json`` as ``{"cameras": [...]}`` or None if missing / invalid.
+    """
+    path = os.path.join(config_dir, "cameras.json")
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return None
+    if isinstance(data, dict) and "cameras" in data and isinstance(data["cameras"], list):
+        return {"cameras": data["cameras"]}
+    if isinstance(data, list):
+        return {"cameras": data}
+    return None
+
+
 def run_camera_sync() -> bool:
     """
-    Read env, fetch cameras, write ``CONFIG_DIR/cameras.json``.
+    Read env, fetch cameras, write ``CONFIG_DIR/cameras.json`` if content changed.
 
-    Returns True if the file was written successfully.
+    Returns True if the file was written; False if skipped (unchanged, missing env, or error).
     """
     base = _env("DEVICE_SERVICE_URL")
     node_id = _env("EDGE_NODE_ID") or _env("NODE_ID", "edge-node-a")
@@ -138,6 +162,10 @@ def run_camera_sync() -> bool:
 
     api_list = fetch_cameras(base, node_id, token)
     doc = build_cameras_document(api_list)
+    existing = read_cameras_document_from_disk(config_dir)
+    if existing is not None and _canonical_document_json(existing) == _canonical_document_json(doc):
+        log.debug("camera_sync: no changes, skipping write")
+        return False
     path = write_cameras_json(config_dir, doc)
     log.info("camera_sync: wrote %d cameras to %s", len(doc["cameras"]), path)
     return True
@@ -148,5 +176,12 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    ok = run_camera_sync()
-    raise SystemExit(0 if ok else 1)
+    if not _env("DEVICE_SERVICE_URL") or not _env("CAMERA_SYNC_TOKEN"):
+        log.error("camera_sync: DEVICE_SERVICE_URL and CAMERA_SYNC_TOKEN required")
+        raise SystemExit(1)
+    try:
+        run_camera_sync()
+    except Exception:
+        log.exception("camera_sync failed")
+        raise SystemExit(1)
+    raise SystemExit(0)

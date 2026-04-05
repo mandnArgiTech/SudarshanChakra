@@ -1,0 +1,3 @@
+# Rename to `edge-node-a` (no extension) in the live client-config-dir.
+# Filename must match the X509 commonName of the client certificate.
+ifconfig-push 10.8.0.10 255.255.255.0

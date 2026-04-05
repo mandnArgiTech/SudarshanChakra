@@ -1,173 +1,94 @@
 # G-02: Per-Endpoint RBAC with @PreAuthorize
 
 ## Status
-NOT DONE — zero @PreAuthorize on any controller method. FarmController has @Auditable but no access control beyond the SecurityConfig `hasAuthority` check.
 
-## Context
-24 mutating endpoints across 10 controllers need role-based access control.
+**COMPLETE** for the services listed below, with intentional differences from the original story text.
 
-Read `backend/auth-service/src/main/java/com/sudarshanchakra/auth/service/PermissionService.java` first — it defines the full permission matrix for all 5 roles.
+| Service | Method security | Pattern |
+|---------|------------------|---------|
+| **device-service** | `@EnableMethodSecurity` | `hasAuthority('PERMISSION_*')` on controllers (see `EdgeNodeController`, `CameraController`, `ZoneController`, `WorkerTagController`, water controllers) |
+| **alert-service** | `@EnableMethodSecurity` | `hasAuthority('PERMISSION_*')` on `AlertController` |
+| **siren-service** | `@EnableMethodSecurity` | `hasAuthority('PERMISSION_*')` on `SirenController` |
+| **auth-service** | `@EnableMethodSecurity` | `hasAnyRole('SUPER_ADMIN','ADMIN',…)` on `UserController`; user paths in `SecurityConfig` are **authenticated only** so `@PreAuthorize` is the primary rule for `/api/v1/users/**` |
+| **mdm-service** | `@EnableMethodSecurity` | `hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')` on mutating endpoints in `DeviceController`, `CommandController`, `OtaController`; telemetry remains chain-level **authenticated** only |
 
-## Files to MODIFY
+**JWT authorities on resource servers (device, alert, siren):** `ResourceServerJwtAuthFilter` (`backend/jwt-support/.../ResourceServerJwtAuthFilter.java`) adds `ROLE_<role>` and `PERMISSION_<permission>` from the token’s `permissions` claim. Prefer **`hasAuthority('PERMISSION_...')`** over duplicating the matrix with `hasAnyRole` only.
 
-### Step 1: Enable method security in EACH service
+**mdm-service:** `JwtAuthFilter` normalizes the JWT `role` claim (`toUpperCase`, `-` → `_`) and sets `ROLE_*` so `@PreAuthorize("hasAnyRole('ADMIN',…)")` matches tokens such as `admin` or `super_admin`. MDM does **not** currently add `PERMISSION_*` authorities (role-based checks only there).
 
-**`backend/auth-service/src/main/java/com/sudarshanchakra/auth/config/SecurityConfig.java`**
-Add `@EnableMethodSecurity` above `@Configuration`:
-```java
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+**Permission source of truth:** `backend/auth-service/.../service/PermissionService.java` — issued JWTs carry `permissions` used by resource servers.
 
-@EnableMethodSecurity
-@Configuration
-public class SecurityConfig { ... }
-```
+---
 
-**`backend/device-service/src/main/java/com/sudarshanchakra/device/config/SecurityConfig.java`**
-Same — add `@EnableMethodSecurity`.
+## Divergences from the original G-02 story
 
-**`backend/alert-service/src/main/java/com/sudarshanchakra/alert/config/SecurityConfig.java`**
-Same.
+1. **Alert POST (create)** — The story suggested no `@PreAuthorize` on create (edge ingestion). The implementation uses **`@PreAuthorize("hasAuthority('PERMISSION_alerts:acknowledge')")`** on create in `AlertController`. Callers need that permission in the JWT (e.g. operator-level and above per `PermissionService`). To allow broader ingest, change to `isAuthenticated()` or a dedicated permission and update this doc.
 
-**`backend/siren-service/src/main/java/com/sudarshanchakra/siren/config/SecurityConfig.java`**
-Same.
+2. **Alert DELETE** — The story listed `DELETE /{id}`. **No delete endpoint** exists in alert-service today; out of scope unless added separately.
 
-### Step 2: Ensure JwtAuthFilter sets authorities from role
+3. **Story said “zero @PreAuthorize”** — That was incorrect for device/alert/siren; those already used permission-based `@PreAuthorize` before this refresh.
 
-Check each service's JwtAuthFilter. The filter must set GrantedAuthority from the JWT `role` claim:
-```java
-List<GrantedAuthority> authorities = List.of(
-    new SimpleGrantedAuthority("ROLE_" + role.toUpperCase())
-);
-// e.g., role="manager" → "ROLE_MANAGER"
-```
-
-If any service's JwtAuthFilter does NOT do this, add it. Read `backend/auth-service/src/main/java/com/sudarshanchakra/auth/config/JwtAuthFilter.java` for the reference pattern.
-
-### Step 3: Add @PreAuthorize to ALL mutating controller methods
-
-**`backend/siren-service/.../controller/SirenController.java`** (2 endpoints)
-```java
-import org.springframework.security.access.prepost.PreAuthorize;
-
-// Trigger siren — admin, manager only
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')")
-@PostMapping("/trigger")
-public ResponseEntity<?> triggerSiren(...) { ... }
-
-// Stop siren — admin, manager only
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')")
-@PostMapping("/stop")
-public ResponseEntity<?> stopSiren(...) { ... }
-```
-
-**`backend/device-service/.../controller/ZoneController.java`** (2 endpoints)
-```java
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')")
-@PostMapping
-public ResponseEntity<Zone> createZone(...) { ... }
-
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')")
-@DeleteMapping("/{id}")
-public ResponseEntity<Void> deleteZone(...) { ... }
-```
-
-**`backend/device-service/.../controller/CameraController.java`** (1 endpoint)
-```java
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')")
-@PostMapping
-public ResponseEntity<Camera> createCamera(...) { ... }
-```
-
-**`backend/device-service/.../controller/EdgeNodeController.java`** (2 endpoints)
-```java
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
-@PostMapping
-public ResponseEntity<EdgeNode> createNode(...) { ... }
-
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
-@DeleteMapping("/{id}")
-public ResponseEntity<Void> deleteNode(...) { ... }
-```
-
-**`backend/device-service/.../controller/WorkerTagController.java`** (1 endpoint)
-```java
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')")
-@PostMapping
-public ResponseEntity<WorkerTag> createTag(...) { ... }
-```
-
-**`backend/device-service/.../controller/water/WaterMotorRestController.java`** (2 endpoints)
-```java
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')")
-@PostMapping("/{id}/command")
-public ResponseEntity<?> sendCommand(...) { ... }
-
-// GET endpoints — no @PreAuthorize (any authenticated user can view)
-```
-
-**`backend/alert-service/.../controller/AlertController.java`** (4 endpoints)
-```java
-// POST create alert — allow any authenticated (edge node posts alerts)
-// No @PreAuthorize on create
-
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER','OPERATOR')")
-@PatchMapping("/{id}/acknowledge")
-public ResponseEntity<?> acknowledgeAlert(...) { ... }
-
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','MANAGER')")
-@PatchMapping("/{id}/resolve")
-public ResponseEntity<?> resolveAlert(...) { ... }
-
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
-@DeleteMapping("/{id}")
-public ResponseEntity<?> deleteAlert(...) { ... }
-```
-
-**`backend/auth-service/.../controller/UserController.java`** (4 endpoints)
-```java
-// FarmController already has hasAuthority("ROLE_SUPER_ADMIN") in SecurityConfig
-// UserController:
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
-@PostMapping
-public ResponseEntity<?> createUser(...) { ... }
-
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
-@PutMapping("/{id}")
-public ResponseEntity<?> updateUser(...) { ... }
-
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
-@PatchMapping("/{id}/deactivate")
-public ResponseEntity<?> deactivateUser(...) { ... }
-```
-
-### Summary — do NOT add @PreAuthorize to:
-- GET endpoints (any authenticated user can read)
-- POST /api/v1/auth/login, /api/v1/auth/register (public)
-- POST /api/v1/alerts (edge node creates alerts — authenticated but any role)
+---
 
 ## Verification
+
+### Siren (permissions in JWT)
+
+Story curls remain valid when tokens include the right **`permissions`** (e.g. `sirens:trigger` for roles that should trigger). VIEWER typically lacks it → **403**; MANAGER with `sirens:trigger` → **200**.
+
 ```bash
 # Login as VIEWER
 TOKEN_V=$(curl -s -X POST http://localhost:8083/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"testviewer","password":"test"}' | jq -r '.token')
 
-# Try to trigger siren — should get 403
 curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8084/api/v1/siren/trigger \
   -H "Authorization: Bearer $TOKEN_V" \
   -H "Content-Type: application/json" \
   -d '{}'
 # Expected: 403
 
-# Login as MANAGER
+# Login as MANAGER (or other role with sirens:trigger in JWT)
 TOKEN_M=$(curl -s -X POST http://localhost:8083/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"ramesh","password":"test"}' | jq -r '.token')
 
-# Trigger siren — should succeed
 curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8084/api/v1/siren/trigger \
   -H "Authorization: Bearer $TOKEN_M" \
   -H "Content-Type: application/json" \
   -d '{"nodeId":"edge-node-a"}'
-# Expected: 200
+# Expected: 200 (if user has permission)
 ```
+
+### Auth user mutation (role-based)
+
+```bash
+# VIEWER must not create users
+curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8083/api/v1/users \
+  -H "Authorization: Bearer $TOKEN_V" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"x","password":"secret12","role":"viewer"}'
+# Expected: 403
+```
+
+### Alerts create
+
+`POST /api/v1/alerts` (via gateway `8080` or alert-service `8081`) requires JWT **`permissions`** to include **`alerts:acknowledge`** (authority `PERMISSION_alerts:acknowledge`). Without it → **403**.
+
+---
+
+## Key files
+
+| Area | File |
+|------|------|
+| Resource-server JWT | `backend/jwt-support/.../ResourceServerJwtAuthFilter.java` |
+| Auth security + users | `backend/auth-service/.../config/SecurityConfig.java`, `.../controller/UserController.java` |
+| MDM security | `backend/mdm-service/.../config/SecurityConfig.java`, `.../config/JwtAuthFilter.java` |
+| Device RBAC | `backend/device-service/.../config/SecurityConfig.java`, device `*Controller.java` |
+
+---
+
+## Tests
+
+- **device-service:** `EdgeNodeControllerTest` includes a case where POST `/api/v1/nodes` returns **403** without `PERMISSION_devices:manage`.
+- **auth-service:** `UserControllerTest` includes **403** for `POST /api/v1/users` as VIEWER and success path as ADMIN.

@@ -10,7 +10,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class DeviceRepository @Inject constructor(
+open class DeviceRepository @Inject constructor(
     private val apiService: ApiService,
 ) {
     suspend fun getNodes(): Result<List<EdgeNode>> =

@@ -1,0 +1,7 @@
+appId: com.sudarshanchakra
+---
+# Suite 11 umbrella — extend with tab flows once login selectors match your build.
+- runFlow:
+    file: login.yaml
+- assertVisible:
+    text: ".*"

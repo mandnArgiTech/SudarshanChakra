@@ -20,7 +20,7 @@ data class ServerSettings(
 )
 
 @Singleton
-class ServerSettingsRepository @Inject constructor(
+open class ServerSettingsRepository @Inject constructor(
     private val dataStore: DataStore<Preferences>,
     private val runtime: RuntimeConnectionConfig,
 ) {

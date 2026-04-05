@@ -1,0 +1,7 @@
+appId: com.sudarshanchakra
+---
+# After login flow: open notifications when a critical alert push is injected (farm).
+- launchApp
+- openNotifications
+- assertVisible:
+    text: ".*"

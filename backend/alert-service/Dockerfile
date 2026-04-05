@@ -5,6 +5,8 @@ WORKDIR /app
 COPY gradlew gradlew
 COPY gradle gradle
 COPY build.gradle.kts settings.gradle.kts ./
+COPY jwt-support/build.gradle.kts jwt-support/build.gradle.kts
+COPY jwt-support/src jwt-support/src
 COPY alert-service/build.gradle.kts alert-service/build.gradle.kts
 COPY alert-service/src alert-service/src
 RUN chmod +x gradlew && ./gradlew :alert-service:bootJar -x test

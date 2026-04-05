@@ -8,6 +8,8 @@ Terminate HTTPS at a **reverse proxy** in front of the API gateway and dashboard
 
 ### Option A — Nginx + Let’s Encrypt (Certbot)
 
+**SudarshanChakra VPS (Docker nginx):** Use [cloud/scripts/setup_tls.sh](../cloud/scripts/setup_tls.sh) (`certbot certonly --standalone`) and mount **`/etc/letsencrypt`** into the **`nginx-proxy`** container; details in [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) §1.4.
+
 1. Point DNS `api.example.com` and `app.example.com` to the VPS.
 2. Install nginx and certbot; obtain certificates for both hostnames.
 3. Proxy:

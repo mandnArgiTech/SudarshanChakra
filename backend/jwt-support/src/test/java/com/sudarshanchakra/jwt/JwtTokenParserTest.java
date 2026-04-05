@@ -44,6 +44,25 @@ class JwtTokenParserTest {
         assertThat(pj.farmId()).isEqualTo(farm);
         assertThat(pj.permissions()).containsExactly("devices:view", "alerts:acknowledge");
         assertThat(pj.isSuperAdmin()).isFalse();
+        assertThat(pj.userId()).isNull();
+    }
+
+    @Test
+    void parsesUserIdClaim() {
+        String secret = "unit-test-jwt-parser-secret-32bytes!!";
+        SecretKey key = Keys.hmacShaKeyFor(pad(secret));
+        UUID farm = UUID.randomUUID();
+        UUID uid = UUID.randomUUID();
+        String token = Jwts.builder()
+                .subject("bob")
+                .claim("role", "viewer")
+                .claim("farm_id", farm.toString())
+                .claim("user_id", uid.toString())
+                .claim("permissions", List.of())
+                .signWith(key)
+                .compact();
+        JwtTokenParser.ParsedJwt pj = new JwtTokenParser(secret).parse(token);
+        assertThat(pj.userId()).isEqualTo(uid);
     }
 
     @Test
