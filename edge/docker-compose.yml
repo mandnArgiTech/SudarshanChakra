@@ -2,49 +2,33 @@
 # SudarshanChakra — Edge Node Docker Compose
 # ==============================================================================
 # Runs on Node A (i5-10400 / RTX 3060 / 32GB RAM)
-# Duplicate for Node B with different VPN config and NODE_ID
+#
+# BOOT ORDER: All 3 services start IMMEDIATELY and work OFFLINE.
+#   mosquitto  → accepts ESP8266 connections on farm LAN instantly
+#   edge-ai    → starts camera processing, caches alerts locally
+#   openvpn    → connects to VPS when internet is available
+#
+# When VPN comes up:
+#   mosquitto bridge auto-connects to VPS RabbitMQ (retry built-in)
+#   edge-ai MQTT client auto-connects to VPS RabbitMQ (retry built-in)
+#   Cached data flows to backend
+#
+# When VPN is DOWN:
+#   Everything still works locally — cameras process, alerts cache,
+#   ESP8266 water readings store in mosquitto, siren triggers locally.
+#   Nothing is lost. Sync happens when VPN recovers.
 #
 # Usage:
 #   docker compose up -d
 #   docker compose logs -f edge-ai
 # ==============================================================================
 
-version: "3.8"
-
 services:
-  # ── OpenVPN Client ──────────────────────────────────────────────────────
-  # Establishes VPN tunnel to VPS at vivasvan-tech.in
-  # All traffic from edge-ai routes through this tunnel
-  openvpn-client:
-    image: dperson/openvpn-client
-    container_name: openvpn-client
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun
-    volumes:
-      - ./vpn/edge-node-a.ovpn:/vpn/vpn.conf:ro
-    environment:
-      - FIREWALL=
-    restart: always
-    networks:
-      - farm-net
-    healthcheck:
-      test: ["CMD", "ping", "-c", "1", "-W", "3", "10.8.0.1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   # ── Local MQTT Broker (Mosquitto) ─────────────────────────────────────
-  # ESP8266 water sensor + farm IoT connect here (plain MQTT, no TLS).
-  # Mosquitto bridges selected topics to VPS RabbitMQ over VPN.
-  # ESP8266 config: set MQTT broker to this machine's LAN IP, port 1883.
+  # STARTS FIRST, INDEPENDENTLY. No VPN dependency.
+  # ESP8266, LoRa bridge, PA system connect here on farm LAN.
+  # Bridge to VPS auto-retries in background — works without VPN.
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: farm-mqtt
@@ -53,11 +37,15 @@ services:
       - mosquitto-data:/mosquitto/data
     ports:
       - "1883:1883"       # Farm LAN — ESP8266 and IoT devices connect here
-    depends_on:
-      openvpn-client:
-        condition: service_healthy
-    network_mode: "service:openvpn-client"   # Uses VPN tunnel to reach VPS
+    networks:
+      - farm-net
     restart: always
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/broker/uptime", "-C", "1", "-W", "3"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     logging:
       driver: json-file
       options:
@@ -65,7 +53,10 @@ services:
         max-file: "3"
 
   # ── Edge AI Pipeline + Flask GUI ────────────────────────────────────────
-  # YOLO inference, zone engine, LoRa receiver, alert publisher
+  # STARTS INDEPENDENTLY. No VPN dependency.
+  # Cameras are on farm LAN — always reachable.
+  # MQTT to VPS retries in background (farm_edge_node.py has reconnect loop).
+  # Alerts cache locally when VPS is unreachable.
   edge-ai:
     build:
       context: .
@@ -77,7 +68,13 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       # Node identity
       - NODE_ID=edge-node-a
-      # MQTT broker (VPS via VPN)
+      # MQTT — connect to LOCAL Mosquitto first (always available).
+      # Mosquitto bridges to VPS. Edge-ai also connects directly to VPS
+      # for admin commands (zone reload, model update) when VPN is up.
+      - LOCAL_MQTT_BROKER=farm-mqtt
+      - LOCAL_MQTT_PORT=1883
+      # VPS broker — used for direct connection (alerts, admin commands)
+      # Fails gracefully when VPN is down; retries every 5s.
       - VPN_BROKER_IP=10.8.0.1
       - MQTT_PORT=1883
       - MQTT_USER=edge-publisher
@@ -89,28 +86,28 @@ services:
       # LoRa
       - LORA_ENABLED=true
       - LORA_PORT=/dev/ttyUSB0
-      # PA system bridge (optional — if Pi PA controller is on local network)
-      - PA_MQTT_BROKER=${PA_BROKER_IP:-}
+      # PA system (local network — always reachable)
+      - PA_MQTT_BROKER=${PA_BROKER_IP:-farm-mqtt}
       # Tuning
       - CONFIDENCE_THRESHOLD=0.40
       - INPUT_SIZE=640
       - ALERT_DEDUP_SECONDS=30
       - LOG_LEVEL=INFO
     volumes:
-      # Persist TensorRT engine across container restarts
       - ./models:/app/models
-      # Persist zone configs
       - ./config:/app/config
-      # Snapshots (temporary — on host tmpfs ideally)
       - /tmp/farm-snapshots:/tmp/snapshots
+      # Video recording storage
+      - ${VIDEO_STORAGE_PATH:-/mnt/ssd}:/data/video
     ports:
-      - "5000:5000"   # Edge Flask GUI
+      - "5000:5000"       # Edge Flask GUI — farm LAN
     devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0  # LoRa USB-Serial receiver
+      - /dev/ttyUSB0:/dev/ttyUSB0   # LoRa USB-Serial receiver
     depends_on:
-      openvpn-client:
-        condition: service_healthy
-    network_mode: "service:openvpn-client"
+      mosquitto:
+        condition: service_healthy   # Only depends on LOCAL mosquitto
+    networks:
+      - farm-net
     restart: always
     deploy:
       resources:
@@ -126,6 +123,43 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+
+  # ── OpenVPN Client ──────────────────────────────────────────────────────
+  # STARTS INDEPENDENTLY. Connects to VPS when internet is available.
+  # Other services do NOT depend on this — they work without it.
+  # VPN just opens the route to 10.8.0.0/24 subnet.
+  #
+  # When VPN connects:
+  #   - Mosquitto bridge detects 10.8.0.1 is reachable, auto-connects
+  #   - edge-ai MQTT client detects VPS broker, auto-connects
+  # When VPN drops:
+  #   - Mosquitto bridge retries (no data loss, QoS 1, persistent session)
+  #   - edge-ai caches alerts locally, retries every 5s
+  openvpn-client:
+    image: dperson/openvpn-client
+    container_name: openvpn-client
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    volumes:
+      - ./vpn/edge-node-a.ovpn:/vpn/vpn.conf:ro
+    environment:
+      - FIREWALL=
+    networks:
+      - farm-net
+    restart: always
+    healthcheck:
+      test: ["CMD", "ping", "-c", "1", "-W", "3", "10.8.0.1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   farm-net:
