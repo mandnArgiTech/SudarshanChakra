@@ -41,6 +41,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ── Local MQTT Broker (Mosquitto) ─────────────────────────────────────
+  # ESP8266 water sensor + farm IoT connect here (plain MQTT, no TLS).
+  # Mosquitto bridges selected topics to VPS RabbitMQ over VPN.
+  # ESP8266 config: set MQTT broker to this machine's LAN IP, port 1883.
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: farm-mqtt
+    volumes:
+      - ./config/mosquitto-bridge.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    ports:
+      - "1883:1883"       # Farm LAN — ESP8266 and IoT devices connect here
+    depends_on:
+      openvpn-client:
+        condition: service_healthy
+    network_mode: "service:openvpn-client"   # Uses VPN tunnel to reach VPS
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # ── Edge AI Pipeline + Flask GUI ────────────────────────────────────────
   # YOLO inference, zone engine, LoRa receiver, alert publisher
   edge-ai:
@@ -107,3 +130,6 @@ services:
 networks:
   farm-net:
     driver: bridge
+
+volumes:
+  mosquitto-data:
