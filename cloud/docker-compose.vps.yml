@@ -189,6 +189,39 @@ services:
       - react-dashboard
     restart: always
 
+  # ── OpenVPN Server ────────────────────────────────────────────────────
+  # Farm edge nodes dial in here. Creates 10.8.0.0/24 tunnel.
+  # VPS = 10.8.0.1, Edge Node A = 10.8.0.10, Edge Node B = 10.8.0.11
+  # Edge Mosquitto bridges MQTT over this tunnel to RabbitMQ :1883.
+  #
+  # First-time setup:
+  #   1. Run cloud/vpn/setup_vpn_server.sh to generate PKI + certs
+  #   2. Copy client .ovpn files to edge nodes
+  #   3. docker compose up -d openvpn-server
+  openvpn-server:
+    profiles: [full, security]
+    image: kylemanna/openvpn:2.4
+    container_name: openvpn-server
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    ports:
+      - "1194:1194/udp"
+    volumes:
+      - openvpn-data:/etc/openvpn
+    restart: always
+    healthcheck:
+      test: ["CMD", "pgrep", "openvpn"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   simulator:
     profiles: [dev]
     image: sudarshanchakra/simulator:latest
@@ -205,3 +238,4 @@ services:
 volumes:
   pg_data:
   rabbitmq_data:
+  openvpn-data:

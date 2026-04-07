@@ -1,82 +1,81 @@
 #!/usr/bin/env bash
-# SudarshanChakra — OpenVPN server bootstrap (Ubuntu 22.04+ VPS)
-# Uses easy-rsa under $OVPN_ROOT/easy-rsa. Run as root. See cloud/vpn/README.md
+# ═══════════════════════════════════════════════════════════════
+# SudarshanChakra — OpenVPN Server Setup (runs on VPS)
+# ═══════════════════════════════════════════════════════════════
+#
+# One-time setup. Generates PKI, server cert, and client configs.
+# Uses kylemanna/openvpn Docker image for all crypto operations.
+#
+# Usage:
+#   cd cloud/vpn
+#   ./setup_vpn_server.sh
+#
+# After running:
+#   - VPN server ready in Docker Compose
+#   - Client configs saved to ./clients/
+#   - Copy .ovpn files to edge nodes
+# ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
-if [[ "${EUID:-0}" -ne 0 ]]; then
-  echo "Run as root: sudo $0"
-  exit 1
-fi
+VPS_DOMAIN="${1:-vivasvan-tech.in}"
+COMPOSE_FILE="../docker-compose.vps.yml"
+VOLUME="cloud_openvpn-data"
 
-OVPN_ROOT="${OVPN_ROOT:-/etc/openvpn/sc-farm}"
-EASYRSA_CA_CN="${EASYRSA_CA_CN:-SudarshanChakra-VPN-CA}"
-export EASYRSA_BATCH="${EASYRSA_BATCH:-1}"
+G=$'\033[32m' Y=$'\033[33m' B=$'\033[34m' W=$'\033[1m' X=$'\033[0m'
+info(){ printf "${B}[VPN]${X} %s\n" "$1"; }
+ok(){ printf "${G}[VPN] ✓${X} %s\n" "$1"; }
 
-echo "==> Installing packages..."
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq openvpn easy-rsa openssl
+info "Setting up OpenVPN server for $VPS_DOMAIN"
 
-mkdir -p "$OVPN_ROOT/ccd" /var/log/openvpn
-chmod 755 "$OVPN_ROOT" "$OVPN_ROOT/ccd"
+# Step 1: Generate server config + PKI
+info "Generating server config (UDP, 10.8.0.0/24, DNS push)..."
+docker run -v "$VOLUME:/etc/openvpn" --rm kylemanna/openvpn:2.4 \
+  ovpn_genconfig -u "udp://$VPS_DOMAIN" \
+  -s 10.8.0.0/24 \
+  -e 'client-to-client' \
+  -e 'topology subnet'
 
-EASY_SRC="/usr/share/easy-rsa"
-EASY_HOME="$OVPN_ROOT/easy-rsa"
-if [[ ! -d "$EASY_SRC" ]]; then
-  echo "easy-rsa not found at $EASY_SRC"
-  exit 1
-fi
+# Step 2: Initialize PKI (will prompt for CA passphrase)
+info "Initializing PKI — you will be asked to set a CA passphrase..."
+docker run -v "$VOLUME:/etc/openvpn" --rm -it kylemanna/openvpn:2.4 \
+  ovpn_initpki
 
-if [[ ! -f "$EASY_HOME/pki/ca.crt" ]]; then
-  echo "==> Installing easy-rsa into $EASY_HOME and building PKI ..."
-  mkdir -p "$EASY_HOME"
-  cp -a "$EASY_SRC/." "$EASY_HOME/"
-  cd "$EASY_HOME"
-  ./easyrsa init-pki
-  EASYRSA_REQ_CN="$EASYRSA_CA_CN" ./easyrsa build-ca nopass
-  EASYRSA_REQ_CN="server" ./easyrsa gen-req server nopass
-  ./easyrsa sign-req server server
-  ./easyrsa gen-dh
-  for cn in edge-node-a edge-node-b; do
-    EASYRSA_REQ_CN="$cn" ./easyrsa gen-req "$cn" nopass
-    ./easyrsa sign-req client "$cn"
-  done
-  cd - >/dev/null
-  openvpn --genkey secret "$OVPN_ROOT/ta.key"
-  chmod 600 "$OVPN_ROOT/ta.key"
-else
-  echo "==> PKI already present at $EASY_HOME/pki — skipping cert generation"
-  [[ -f "$OVPN_ROOT/ta.key" ]] || openvpn --genkey secret "$OVPN_ROOT/ta.key"
-  chmod 600 "$OVPN_ROOT/ta.key"
-fi
+ok "PKI initialized"
 
-echo "==> Writing CCD (static IPs) ..."
-install -m 0644 /dev/stdin "$OVPN_ROOT/ccd/edge-node-a" <<'CCD'
-ifconfig-push 10.8.0.10 255.255.255.0
-CCD
-install -m 0644 /dev/stdin "$OVPN_ROOT/ccd/edge-node-b" <<'CCD'
-ifconfig-push 10.8.0.11 255.255.255.0
-CCD
+# Step 3: Generate client certs for edge nodes
+mkdir -p clients
+for client in edge-node-a edge-node-b; do
+  info "Generating client cert: $client..."
+  docker run -v "$VOLUME:/etc/openvpn" --rm -it kylemanna/openvpn:2.4 \
+    easyrsa build-client-full "$client" nopass
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-install -m 0644 "$SCRIPT_DIR/server.conf" "$OVPN_ROOT/server.conf"
-sed -i "s|/etc/openvpn/sc-farm|$OVPN_ROOT|g" "$OVPN_ROOT/server.conf"
+  info "Exporting $client.ovpn..."
+  docker run -v "$VOLUME:/etc/openvpn" --rm kylemanna/openvpn:2.4 \
+    ovpn_getclient "$client" > "clients/$client.ovpn"
 
+  ok "Client config: clients/$client.ovpn"
+done
+
+# Step 4: Assign static IPs via CCD
+info "Setting static IPs (edge-node-a=10.8.0.10, edge-node-b=10.8.0.11)..."
+docker run -v "$VOLUME:/etc/openvpn" --rm kylemanna/openvpn:2.4 \
+  bash -c 'mkdir -p /etc/openvpn/ccd && \
+    echo "ifconfig-push 10.8.0.10 255.255.255.0" > /etc/openvpn/ccd/edge-node-a && \
+    echo "ifconfig-push 10.8.0.11 255.255.255.0" > /etc/openvpn/ccd/edge-node-b'
+
+ok "Static IPs configured"
+
+# Summary
+printf "\n${W}  OpenVPN Server Setup Complete${X}\n\n"
+echo "  VPS domain:    $VPS_DOMAIN:1194/udp"
+echo "  VPN subnet:    10.8.0.0/24"
+echo "  Server IP:     10.8.0.1"
+echo "  Edge Node A:   10.8.0.10  (clients/edge-node-a.ovpn)"
+echo "  Edge Node B:   10.8.0.11  (clients/edge-node-b.ovpn)"
 echo ""
-echo "==> Next steps (manual):"
-echo "  1) IP forwarding:"
-echo "     echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-openvpn-forward.conf"
-echo "     sysctl -p /etc/sysctl.d/99-openvpn-forward.conf"
-echo "  2) Firewall: ufw allow 1194/udp && ufw reload"
-echo "  3) NAT (optional): iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o \$(ip route | awk '/default/ {print \$5; exit}') -j MASQUERADE"
-echo "  4) Start:"
-echo "     openvpn --config $OVPN_ROOT/server.conf --daemon --writepid /var/run/openvpn-sc.pid"
+echo "  Next steps:"
+echo "    1. Start server:  docker compose -f $COMPOSE_FILE up -d openvpn-server"
+echo "    2. Copy to edge:  scp clients/edge-node-a.ovpn devi@192.168.1.50:~/SudarshanChakra/edge/vpn/"
+echo "    3. Start edge:    cd edge && docker compose up -d"
+echo "    4. Verify:        ping 10.8.0.10 (from VPS)"
 echo ""
-echo "==> Client certs for .ovpn bundles:"
-echo "     CA:     $EASY_HOME/pki/ca.crt"
-echo "     Node A: $EASY_HOME/pki/issued/edge-node-a.crt + private/edge-node-a.key"
-echo "     Node B: $EASY_HOME/pki/issued/edge-node-b.crt + private/edge-node-b.key"
-echo "     ta.key: $OVPN_ROOT/ta.key  (client key-direction 1)"
-echo ""
-echo "==> Verify from VPS when connected:"
-echo "     ping -c 3 10.8.0.10 && ping -c 3 10.8.0.11"
